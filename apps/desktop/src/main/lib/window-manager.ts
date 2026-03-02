@@ -3,6 +3,7 @@ import { settings, workspaces } from "@superset/local-db";
 import { and, eq, isNull } from "drizzle-orm";
 import { BrowserWindow, nativeTheme } from "electron";
 import { createWindow } from "lib/electron-app/factories/windows/create";
+import { clearTabsStateForWindow } from "main/lib/app-state/tabs-state";
 import { localDb } from "main/lib/local-db";
 import { PLATFORM } from "shared/constants";
 import { productName } from "~/package.json";
@@ -36,7 +37,9 @@ function openWindowWithRoute({
 	query,
 }: OpenWindowOptions): BrowserWindow {
 	const sourceWindow =
-		BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+		BrowserWindow.getFocusedWindow() ??
+		BrowserWindow.getAllWindows()[0] ??
+		null;
 
 	const [sourceWidth, sourceHeight] = sourceWindow
 		? sourceWindow.getSize()
@@ -101,6 +104,7 @@ function openWindowWithRoute({
 	);
 
 	window.on("close", () => {
+		clearTabsStateForWindow(window.id);
 		ipcWindowHandler?.detachWindow(window);
 	});
 

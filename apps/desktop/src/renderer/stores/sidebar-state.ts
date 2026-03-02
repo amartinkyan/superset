@@ -1,4 +1,3 @@
-import { getWindowScopedStorageKey } from "renderer/lib/window-scoped-storage";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
@@ -117,7 +116,7 @@ export const useSidebarStore = create<SidebarState>()(
 				},
 			}),
 			{
-				name: getWindowScopedStorageKey("sidebar-store"),
+				name: "sidebar-store",
 				migrate: (persistedState: unknown, _version: number) => {
 					const state = persistedState as Partial<SidebarState>;
 					// Convert old percentage-based values (<100) to pixel widths

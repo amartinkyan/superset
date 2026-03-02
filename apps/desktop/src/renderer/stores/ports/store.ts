@@ -1,4 +1,3 @@
-import { getWindowScopedStorageKey } from "renderer/lib/window-scoped-storage";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
@@ -21,7 +20,7 @@ export const usePortsStore = create<PortsState>()(
 					set({ isListCollapsed: !get().isListCollapsed }),
 			}),
 			{
-				name: getWindowScopedStorageKey("ports-store"),
+				name: "ports-store",
 				partialize: (state) => ({
 					isListCollapsed: state.isListCollapsed,
 				}),

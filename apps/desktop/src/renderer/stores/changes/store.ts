@@ -1,4 +1,3 @@
-import { getWindowScopedStorageKey } from "renderer/lib/window-scoped-storage";
 import type {
 	ChangeCategory,
 	ChangedFile,
@@ -144,7 +143,7 @@ export const useChangesStore = create<ChangesState>()(
 				},
 			}),
 			{
-				name: getWindowScopedStorageKey("changes-store"),
+				name: "changes-store",
 				version: 2,
 				migrate: (persisted, version) => {
 					const state = persisted as Record<string, unknown>;

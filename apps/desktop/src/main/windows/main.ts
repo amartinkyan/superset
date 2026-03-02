@@ -13,7 +13,10 @@ import {
 import type { AgentLifecycleEvent } from "shared/notification-types";
 import { createIPCHandler } from "trpc-electron/main";
 import { productName } from "~/package.json";
-import { getMergedTabsState } from "../lib/app-state/tabs-state";
+import {
+	clearTabsStateForWindow,
+	getMergedTabsState,
+} from "../lib/app-state/tabs-state";
 import { browserManager } from "../lib/browser/browser-manager";
 import { createApplicationMenu, registerMenuHotkeyUpdates } from "../lib/menu";
 import { playNotificationSound } from "../lib/notification-sound";
@@ -280,6 +283,7 @@ export async function MainWindow() {
 		// Remove terminal listeners to prevent duplicates when window reopens on macOS
 		getWorkspaceRuntimeRegistry().getDefault().terminal.detachAllListeners();
 		// Detach window from IPC handler (handler stays alive for window reopen)
+		clearTabsStateForWindow(window.id);
 		ipcHandler?.detachWindow(window);
 		currentWindow = null;
 	});

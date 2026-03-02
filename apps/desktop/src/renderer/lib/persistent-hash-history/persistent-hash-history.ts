@@ -3,9 +3,8 @@ import {
 	type HistoryLocation,
 	type RouterHistory,
 } from "@tanstack/react-router";
-import { getWindowScopedStorageKey } from "renderer/lib/window-scoped-storage";
 
-const STORAGE_KEY = getWindowScopedStorageKey("router-history");
+const STORAGE_KEY = "router-history";
 const MAX_ENTRIES = 100;
 
 type LocationState = HistoryLocation["state"];
@@ -15,6 +14,19 @@ interface PersistedState {
 	index: number;
 }
 
+function getHistoryStorage(): Storage | null {
+	if (typeof window === "undefined") return null;
+	try {
+		return window.sessionStorage ?? localStorage;
+	} catch {
+		try {
+			return localStorage;
+		} catch {
+			return null;
+		}
+	}
+}
+
 export interface HistoryEntry {
 	path: string;
 	timestamp: number;
@@ -22,7 +34,7 @@ export interface HistoryEntry {
 
 function loadPersistedState(): PersistedState {
 	try {
-		const raw = localStorage.getItem(STORAGE_KEY);
+		const raw = getHistoryStorage()?.getItem(STORAGE_KEY);
 		if (raw) {
 			const parsed = JSON.parse(raw) as PersistedState;
 			if (
@@ -43,6 +55,8 @@ function loadPersistedState(): PersistedState {
 
 function persistState(entries: string[], index: number) {
 	try {
+		const storage = getHistoryStorage();
+		if (!storage) return;
 		const capped =
 			entries.length > MAX_ENTRIES
 				? entries.slice(entries.length - MAX_ENTRIES)
@@ -51,7 +65,7 @@ function persistState(entries: string[], index: number) {
 			entries.length > MAX_ENTRIES
 				? index - (entries.length - MAX_ENTRIES)
 				: index;
-		localStorage.setItem(
+		storage.setItem(
 			STORAGE_KEY,
 			JSON.stringify({ entries: capped, index: cappedIndex }),
 		);

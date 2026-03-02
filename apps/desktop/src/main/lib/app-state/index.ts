@@ -18,10 +18,6 @@ function ensureValidShape(data: Partial<AppState>): AppState {
 			...defaultAppState.tabsState,
 			...(data.tabsState ?? {}),
 		},
-		tabsStateByWindow: {
-			...defaultAppState.tabsStateByWindow,
-			...(data.tabsStateByWindow ?? {}),
-		},
 		themeState: {
 			...defaultAppState.themeState,
 			...(data.themeState ?? {}),

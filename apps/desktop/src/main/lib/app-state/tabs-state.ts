@@ -5,9 +5,7 @@ import {
 	type WindowTabsState,
 } from "./schemas";
 
-function getWindowKey(windowId: number | null | undefined): string | null {
-	return windowId === null || windowId === undefined ? null : String(windowId);
-}
+const runtimeWindowTabsState = new Map<number, WindowTabsState>();
 
 function toWindowTabsState(
 	state: Partial<TabsState> | undefined,
@@ -23,10 +21,10 @@ export function getTabsStateForWindow(
 	windowId: number | null | undefined,
 ): TabsState {
 	const sharedState = appState.data.tabsState ?? defaultAppState.tabsState;
-	const key = getWindowKey(windowId);
 	const windowState =
-		(key ? appState.data.tabsStateByWindow[key] : undefined) ??
-		toWindowTabsState(sharedState);
+		(windowId !== null && windowId !== undefined
+			? runtimeWindowTabsState.get(windowId)
+			: undefined) ?? toWindowTabsState(sharedState);
 
 	return {
 		tabs: sharedState.tabs,
@@ -39,9 +37,8 @@ export function getTabsStateForWindow(
 
 function getMergedWindowTabsState(): WindowTabsState {
 	const merged = toWindowTabsState(appState.data.tabsState);
-	const byWindow = appState.data.tabsStateByWindow;
 
-	for (const state of Object.values(byWindow ?? {})) {
+	for (const state of runtimeWindowTabsState.values()) {
 		const windowState = toWindowTabsState(state);
 		Object.assign(merged.activeTabIds, windowState.activeTabIds);
 		Object.assign(merged.focusedPaneIds, windowState.focusedPaneIds);
@@ -61,22 +58,18 @@ export function setTabsStateForWindow(
 		tabHistoryStacks: tabsState.tabHistoryStacks,
 	};
 
-	const key = getWindowKey(windowId);
-	if (key) {
-		appState.data.tabsStateByWindow = {
-			...appState.data.tabsStateByWindow,
-			[key]: windowState,
-		};
+	if (windowId !== null && windowId !== undefined) {
+		runtimeWindowTabsState.set(windowId, windowState);
 	}
 
 	// Shared across windows: tab/pane topology.
-	// Legacy fallback keeps the latest caller's view state.
+	// Keep per-window view state runtime-only.
 	appState.data.tabsState = {
 		tabs: tabsState.tabs,
 		panes: tabsState.panes,
-		activeTabIds: windowState.activeTabIds,
-		focusedPaneIds: windowState.focusedPaneIds,
-		tabHistoryStacks: windowState.tabHistoryStacks,
+		activeTabIds: defaultAppState.tabsState.activeTabIds,
+		focusedPaneIds: defaultAppState.tabsState.focusedPaneIds,
+		tabHistoryStacks: defaultAppState.tabsState.tabHistoryStacks,
 	};
 }
 
@@ -95,5 +88,12 @@ export function getMergedTabsState(): TabsState {
 
 export function resetTabsState(): void {
 	appState.data.tabsState = defaultAppState.tabsState;
-	appState.data.tabsStateByWindow = {};
+	runtimeWindowTabsState.clear();
+}
+
+export function clearTabsStateForWindow(
+	windowId: number | null | undefined,
+): void {
+	if (windowId === null || windowId === undefined) return;
+	runtimeWindowTabsState.delete(windowId);
 }

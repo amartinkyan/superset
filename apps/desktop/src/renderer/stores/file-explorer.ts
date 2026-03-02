@@ -1,4 +1,3 @@
-import { getWindowScopedStorageKey } from "renderer/lib/window-scoped-storage";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
@@ -159,7 +158,7 @@ export const useFileExplorerStore = create<FileExplorerState>()(
 				},
 			}),
 			{
-				name: getWindowScopedStorageKey("file-explorer-store"),
+				name: "file-explorer-store",
 				partialize: (state) => ({
 					showHiddenFiles: state.showHiddenFiles,
 					sortBy: state.sortBy,
