@@ -5,6 +5,11 @@ import type { BrowserWindow } from "electron";
 import { app, Notification, nativeTheme } from "electron";
 import { createWindow } from "lib/electron-app/factories/windows/create";
 import { createAppRouter } from "lib/trpc/routers";
+import {
+	detachWindowFromIpcHandler,
+	getIpcHandler,
+	setIpcHandler,
+} from "main/lib/ipc-handler";
 import { localDb } from "main/lib/local-db";
 import { NOTIFICATION_EVENTS, PLATFORM } from "shared/constants";
 import {
@@ -34,9 +39,6 @@ import {
 	saveWindowState,
 } from "../lib/window-state";
 import { getWorkspaceRuntimeRegistry } from "../lib/workspace-runtime";
-
-// Singleton IPC handler to prevent duplicate handlers on window reopen (macOS)
-let ipcHandler: ReturnType<typeof createIPCHandler> | null = null;
 
 function getWorkspaceNameFromDb(workspaceId: string | undefined): string {
 	if (!workspaceId) return "Workspace";
@@ -135,13 +137,16 @@ export async function MainWindow() {
 		window.webContents.setBackgroundThrottling(false);
 	}
 
+	const ipcHandler = getIpcHandler();
 	if (ipcHandler) {
 		ipcHandler.attachWindow(window);
 	} else {
-		ipcHandler = createIPCHandler({
-			router: createAppRouter(getWindow),
-			windows: [window],
-		});
+		setIpcHandler(
+			createIPCHandler({
+				router: createAppRouter(getWindow),
+				windows: [window],
+			}),
+		);
 	}
 
 	const server = notificationsApp.listen(
@@ -274,7 +279,7 @@ export async function MainWindow() {
 		// Remove terminal listeners to prevent duplicates when window reopens on macOS
 		getWorkspaceRuntimeRegistry().getDefault().terminal.detachAllListeners();
 		// Detach window from IPC handler (handler stays alive for window reopen)
-		ipcHandler?.detachWindow(window);
+		detachWindowFromIpcHandler(window);
 		currentWindow = null;
 	});
 

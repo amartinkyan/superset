@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { BrowserWindow } from "electron";
 import { nativeTheme } from "electron";
 import { createWindow } from "lib/electron-app/factories/windows/create";
+import { attachWindowToIpcHandler } from "main/lib/ipc-handler";
 
 const paneWindows = new Map<string, BrowserWindow>();
 
@@ -48,6 +49,7 @@ export function openPaneWindow({
 		},
 		hash: `/pane/${encodeURIComponent(paneId)}`,
 	});
+	attachWindowToIpcHandler(window);
 
 	paneWindows.set(paneId, window);
 
