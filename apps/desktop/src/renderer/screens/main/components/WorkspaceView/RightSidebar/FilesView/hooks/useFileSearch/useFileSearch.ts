@@ -21,6 +21,8 @@ export function useFileSearch({
 }: UseFileSearchParams) {
 	const trimmedQuery = searchTerm.trim();
 	const debouncedQuery = useDebouncedValue(trimmedQuery, 150);
+	const isDebouncing =
+		trimmedQuery.length > 0 && trimmedQuery !== debouncedQuery;
 
 	const { data: searchResults, isFetching } =
 		electronTrpc.filesystem.searchFiles.useQuery(
@@ -41,7 +43,7 @@ export function useFileSearch({
 
 	return {
 		searchResults: searchResults ?? [],
-		isFetching,
+		isFetching: isFetching || isDebouncing,
 		hasQuery: trimmedQuery.length > 0,
 	};
 }

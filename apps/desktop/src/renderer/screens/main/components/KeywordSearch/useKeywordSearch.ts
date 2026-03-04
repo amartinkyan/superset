@@ -47,6 +47,8 @@ export function useKeywordSearch({
 	);
 	const trimmedQuery = query.trim();
 	const debouncedQuery = useDebouncedValue(trimmedQuery, 150);
+	const isDebouncing =
+		trimmedQuery.length > 0 && trimmedQuery !== debouncedQuery;
 
 	const { data: searchResults, isFetching } =
 		electronTrpc.filesystem.searchKeyword.useQuery(
@@ -128,6 +130,6 @@ export function useKeywordSearch({
 		toggle,
 		selectMatch,
 		searchResults: searchResults ?? [],
-		isFetching,
+		isFetching: isFetching || isDebouncing,
 	};
 }
