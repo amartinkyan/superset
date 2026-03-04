@@ -232,6 +232,7 @@ export function RightSidebar() {
 					<ChangesView
 						onFileOpen={handleFileOpen}
 						isExpandedView={isExpanded}
+						isActive={rightSidebarTab === RightSidebarTab.Changes}
 					/>
 				</div>
 			)}
