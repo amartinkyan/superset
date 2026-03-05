@@ -13,7 +13,8 @@ export type PaneType =
 	| "webview"
 	| "file-viewer"
 	| "chat-mastra"
-	| "devtools";
+	| "devtools"
+	| "notes";
 
 /**
  * Pane status for agent lifecycle indicators
@@ -139,6 +140,7 @@ export interface Pane {
 	chatMastra?: ChatMastraPaneState; // For Mastra chat panes
 	browser?: BrowserPaneState; // For browser (webview) panes
 	devtools?: DevToolsPaneState; // For devtools panes
+	notes?: NotesPaneState; // For notes panes
 }
 
 export interface ChatMastraLaunchConfig {
@@ -197,6 +199,14 @@ export interface BrowserPaneState {
 export interface DevToolsPaneState {
 	/** The pane ID of the browser pane being inspected */
 	targetPaneId: string;
+}
+
+/**
+ * Notes pane-specific properties
+ */
+export interface NotesPaneState {
+	content: string;
+	filePath: string;
 }
 
 /**
