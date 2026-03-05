@@ -23,14 +23,86 @@ interface TrpcStorageConfig {
 	writeDebounceMs?: number;
 }
 
+const PENDING_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
+const LOCAL_SNAPSHOT_WRITE_DEBOUNCE_MS = 250;
+
 function createTrpcStorageAdapter(config: TrpcStorageConfig): StateStorage {
 	const debounceMs = config.writeDebounceMs ?? 0;
 	let pendingValue: string | null = null;
 	let lastFlushedValue: string | null = null;
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
 	let isFlushing = false;
+	let pendingSnapshotValue: string | null = null;
+	let pendingSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const getPendingSnapshotKey = (name: string) => `${name}:pending`;
+	const getPendingSnapshotUpdatedAtKey = (name: string) =>
+		`${name}:pending:updatedAt`;
+	const pendingSnapshotDebounceMs =
+		debounceMs > 0
+			? Math.min(debounceMs, LOCAL_SNAPSHOT_WRITE_DEBOUNCE_MS)
+			: LOCAL_SNAPSHOT_WRITE_DEBOUNCE_MS;
+
+	const clearPendingSnapshot = (name: string, expectedValue?: string): void => {
+		try {
+			const pendingKey = getPendingSnapshotKey(name);
+			if (
+				expectedValue !== undefined &&
+				localStorage.getItem(pendingKey) !== expectedValue
+			) {
+				return;
+			}
+			localStorage.removeItem(pendingKey);
+			localStorage.removeItem(getPendingSnapshotUpdatedAtKey(name));
+		} catch (error) {
+			console.error("[trpc-storage] Failed to clear pending snapshot:", error);
+		}
+	};
+
+	const schedulePendingSnapshotPersist = (
+		name: string,
+		snapshot: string,
+	): void => {
+		pendingSnapshotValue = snapshot;
+
+		if (pendingSnapshotTimer) {
+			clearTimeout(pendingSnapshotTimer);
+			pendingSnapshotTimer = null;
+		}
+
+		pendingSnapshotTimer = setTimeout(() => {
+			pendingSnapshotTimer = null;
+			const valueToPersist = pendingSnapshotValue;
+			pendingSnapshotValue = null;
+			if (!valueToPersist) return;
+
+			try {
+				localStorage.setItem(getPendingSnapshotKey(name), valueToPersist);
+				localStorage.setItem(
+					getPendingSnapshotUpdatedAtKey(name),
+					String(Date.now()),
+				);
+			} catch (error) {
+				console.error(
+					"[trpc-storage] Failed to cache pending snapshot in localStorage:",
+					error,
+				);
+			}
+		}, pendingSnapshotDebounceMs);
+	};
+
+	const scheduleImmediateFlush = (name: string, snapshot: string): void => {
+		// Ensure pending snapshot eventually syncs to appState.
+		if (pendingValue === null) {
+			pendingValue = snapshot;
+		}
+		if (!isFlushing && flushTimer === null) {
+			flushTimer = setTimeout(() => {
+				flushTimer = null;
+				void flushPendingWrite(name);
+			}, 0);
+		}
+	};
 
 	const flushPendingWrite = async (name: string): Promise<void> => {
 		if (isFlushing || pendingValue === null) return;
@@ -52,11 +124,13 @@ function createTrpcStorageAdapter(config: TrpcStorageConfig): StateStorage {
 			await config.set(parsed.state);
 			lastFlushedValue = valueToFlush;
 
-			// Clear crash-recovery snapshot only if this exact value was flushed.
-			const pendingSnapshotKey = getPendingSnapshotKey(name);
-			if (localStorage.getItem(pendingSnapshotKey) === valueToFlush) {
-				localStorage.removeItem(pendingSnapshotKey);
+			// Cancel delayed snapshot write if this exact snapshot was already flushed.
+			if (pendingSnapshotValue === valueToFlush && pendingSnapshotTimer) {
+				clearTimeout(pendingSnapshotTimer);
+				pendingSnapshotTimer = null;
+				pendingSnapshotValue = null;
 			}
+			clearPendingSnapshot(name, valueToFlush);
 		} catch (error) {
 			console.error("[trpc-storage] Failed to set state:", error);
 		} finally {
@@ -77,33 +151,55 @@ function createTrpcStorageAdapter(config: TrpcStorageConfig): StateStorage {
 	return {
 		getItem: async (name: string): Promise<string | null> => {
 			try {
-				// Prefer the latest pending snapshot to avoid dropping state on fast exit.
-				const pendingSnapshot = localStorage.getItem(
-					getPendingSnapshotKey(name),
-				);
-				if (pendingSnapshot) {
-					// Ensure pending snapshot eventually syncs to appState.
-					if (pendingValue === null) {
-						pendingValue = pendingSnapshot;
-					}
-					if (!isFlushing && flushTimer === null) {
-						flushTimer = setTimeout(() => {
-							flushTimer = null;
-							void flushPendingWrite(name);
-						}, 0);
-					}
-					return pendingSnapshot;
-				}
-
 				const state = await config.get();
-				if (!state) return null;
-				// Version is stored in localStorage as a sidecar since the
-				// tRPC backend validates bare state and rejects envelopes.
 				const version = Number.parseInt(
 					localStorage.getItem(`${name}:version`) ?? "0",
 					10,
 				);
-				return JSON.stringify({ state, version });
+				const canonicalSnapshot = state
+					? JSON.stringify({ state, version })
+					: null;
+
+				const pendingSnapshot = localStorage.getItem(
+					getPendingSnapshotKey(name),
+				);
+				const pendingUpdatedAt = Number.parseInt(
+					localStorage.getItem(getPendingSnapshotUpdatedAtKey(name)) ?? "0",
+					10,
+				);
+				const pendingAgeMs =
+					Number.isFinite(pendingUpdatedAt) && pendingUpdatedAt > 0
+						? Date.now() - pendingUpdatedAt
+						: Number.POSITIVE_INFINITY;
+				const isPendingFresh = pendingAgeMs <= PENDING_SNAPSHOT_TTL_MS;
+
+				if (pendingSnapshot) {
+					if (!canonicalSnapshot) {
+						if (isPendingFresh) {
+							scheduleImmediateFlush(name, pendingSnapshot);
+							return pendingSnapshot;
+						}
+						clearPendingSnapshot(name);
+						return null;
+					}
+
+					if (pendingSnapshot === canonicalSnapshot) {
+						clearPendingSnapshot(name);
+						return canonicalSnapshot;
+					}
+
+					// Only trust pending snapshots that are very recent; otherwise
+					// canonical appState remains the source of truth.
+					if (isPendingFresh) {
+						scheduleImmediateFlush(name, pendingSnapshot);
+						return pendingSnapshot;
+					}
+
+					clearPendingSnapshot(name);
+					return canonicalSnapshot;
+				}
+
+				return canonicalSnapshot;
 			} catch (error) {
 				console.error("[trpc-storage] Failed to get state:", error);
 				return null;
@@ -115,16 +211,7 @@ function createTrpcStorageAdapter(config: TrpcStorageConfig): StateStorage {
 			}
 
 			pendingValue = value;
-			try {
-				localStorage.setItem(getPendingSnapshotKey(name), value);
-			} catch (error) {
-				// Storage can fail (quota/incognito/policy). Continue with in-memory
-				// pending write so persistence still reaches appState.
-				console.error(
-					"[trpc-storage] Failed to cache pending snapshot in localStorage:",
-					error,
-				);
-			}
+			schedulePendingSnapshotPersist(name, value);
 			if (flushTimer) {
 				clearTimeout(flushTimer);
 				flushTimer = null;
