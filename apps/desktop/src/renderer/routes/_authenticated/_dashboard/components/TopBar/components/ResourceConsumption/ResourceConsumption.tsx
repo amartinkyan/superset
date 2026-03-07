@@ -1,4 +1,3 @@
-import { cn } from "@superset/ui/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -11,11 +10,6 @@ import { WorkspaceResourceSection } from "./components/WorkspaceResourceSection"
 import type { UsageValues } from "./types";
 import { formatCpu, formatMemory, formatPercent } from "./utils/formatters";
 import { normalizeResourceMetricsSnapshot } from "./utils/normalizeSnapshot";
-import {
-	getTrackedHostMemorySeverity,
-	getUsageClasses,
-	getUsageSeverity,
-} from "./utils/resourceSeverity";
 
 function getTotalUsage(
 	cpu: number | undefined,
@@ -115,10 +109,6 @@ export function ResourceConsumption() {
 		normalizedSnapshot?.totalCpu,
 		normalizedSnapshot?.totalMemory,
 	);
-	const totalSeverity = getUsageSeverity(totalUsage, totalUsage, {
-		includeShare: false,
-	});
-	const totalUsageClasses = getUsageClasses(totalSeverity);
 
 	const trackedMemorySharePercent = normalizedSnapshot
 		? getTrackedMemorySharePercent(
@@ -126,37 +116,17 @@ export function ResourceConsumption() {
 				normalizedSnapshot.host.totalMemory,
 			)
 		: 0;
-	const trackedHostMemorySeverity = getTrackedHostMemorySeverity(
-		trackedMemorySharePercent,
-	);
-
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<button
 					type="button"
-					className={cn(
-						"no-drag flex items-center gap-1.5 h-6 px-1.5 rounded border border-border/60 bg-secondary/50 hover:bg-secondary hover:border-border transition-all duration-150 ease-out focus:outline-none focus:ring-1 focus:ring-ring",
-						totalSeverity === "elevated" &&
-							"border-amber-500/25 bg-amber-500/8 hover:bg-amber-500/12",
-						totalSeverity === "high" &&
-							"border-destructive/25 bg-destructive/8 hover:bg-destructive/12",
-					)}
+					className="no-drag flex items-center gap-1.5 h-6 px-1.5 rounded border border-border/60 bg-secondary/50 hover:bg-secondary hover:border-border transition-all duration-150 ease-out focus:outline-none focus:ring-1 focus:ring-ring"
 					aria-label="Resource consumption"
 				>
-					<HiOutlineCpuChip
-						className={cn(
-							"h-3.5 w-3.5 shrink-0",
-							totalUsageClasses.metricClass,
-						)}
-					/>
+					<HiOutlineCpuChip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 					{normalizedSnapshot && (
-						<span
-							className={cn(
-								"text-xs font-medium tabular-nums",
-								totalUsageClasses.metricClass,
-							)}
-						>
+						<span className="text-xs font-medium tabular-nums text-muted-foreground">
 							{formatMemory(normalizedSnapshot.totalMemory)}
 						</span>
 					)}
@@ -186,19 +156,16 @@ export function ResourceConsumption() {
 							<MetricBadge
 								label="CPU"
 								value={formatCpu(normalizedSnapshot.totalCpu)}
-								severity={totalSeverity}
 								tooltip="Sum of CPU used by Superset and monitored terminal process trees. Over 100% means multiple CPU cores are busy. Sustained high values usually cause UI sluggishness and higher battery drain."
 							/>
 							<MetricBadge
 								label="Memory"
 								value={formatMemory(normalizedSnapshot.totalMemory)}
-								severity={totalSeverity}
 								tooltip="Resident memory used by Superset and monitored terminal process trees. If this keeps climbing without dropping, a workspace process may be retaining memory. High values increase swap risk and can cause stutter."
 							/>
 							<MetricBadge
 								label="RAM Share"
 								value={formatPercent(trackedMemorySharePercent)}
-								severity={trackedHostMemorySeverity}
 								tooltip="Percent of total system RAM used by monitored Superset resources only (not all apps). A high share means Superset is a major contributor to system memory pressure; a low share means pressure is likely elsewhere."
 							/>
 						</div>

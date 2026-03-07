@@ -1,6 +1,7 @@
 import type { AppRouter } from "@superset/trpc";
 import type { createTRPCClient } from "@trpc/client";
 import type { createMastraCode } from "mastracode";
+import { generateTitleFromMessage } from "./title-generation";
 
 export type RuntimeHarness = Awaited<
 	ReturnType<typeof createMastraCode>
@@ -42,6 +43,78 @@ interface TextContentPart {
 interface MessageLike {
 	role: string;
 	content: Array<{ type: string; text?: string }>;
+}
+
+interface RuntimeRestartPayload {
+	messageId: string;
+	payload: {
+		content: string;
+		files?: Array<{
+			data: string;
+			mediaType: string;
+			filename?: string;
+		}>;
+	};
+	metadata?: {
+		model?: string;
+	};
+}
+
+interface RuntimeStoredMessage {
+	id: string;
+	role: string;
+}
+
+interface RuntimeStoredThread {
+	id: string;
+	resourceId: string;
+	title?: string;
+}
+
+interface RuntimeMemoryStore {
+	getThreadById(args: {
+		threadId: string;
+	}): Promise<RuntimeStoredThread | null>;
+	listMessages(args: {
+		threadId: string;
+		perPage: false;
+		orderBy: { field: "createdAt"; direction: "ASC" };
+	}): Promise<{ messages: RuntimeStoredMessage[] }>;
+	cloneThread(args: {
+		sourceThreadId: string;
+		resourceId?: string;
+		title?: string;
+		options?: {
+			messageFilter?: {
+				messageIds?: string[];
+			};
+		};
+	}): Promise<{ thread: RuntimeStoredThread }>;
+}
+
+interface HarnessWithConfig {
+	config?: {
+		storage?: {
+			getStore: (domain: "memory") => Promise<RuntimeMemoryStore | null>;
+		};
+	};
+}
+
+async function getRuntimeMemoryStore(
+	runtime: RuntimeSession,
+): Promise<RuntimeMemoryStore> {
+	const harness = runtime.harness as unknown as HarnessWithConfig;
+	const storage = harness.config?.storage;
+	if (!storage) {
+		throw new Error("Mastra storage is not configured for this session");
+	}
+
+	const memoryStore = await storage.getStore("memory");
+	if (!memoryStore) {
+		throw new Error("Mastra memory storage is unavailable for this session");
+	}
+
+	return memoryStore;
 }
 
 /**
@@ -96,12 +169,9 @@ export async function destroyRuntime(runtime: RuntimeSession): Promise<void> {
 
 /**
  * Subscribe to harness lifecycle events for a runtime session.
- * Call once after creating a runtime — handles stop hooks and title generation.
+ * Call once after creating a runtime — handles runtime error state and stop hooks.
  */
-export function subscribeToSessionEvents(
-	runtime: RuntimeSession,
-	apiClient: ApiClient,
-): void {
+export function subscribeToSessionEvents(runtime: RuntimeSession): void {
 	runtime.harness.subscribe((event: unknown) => {
 		if (isHarnessErrorEvent(event) || isHarnessWorkspaceErrorEvent(event)) {
 			runtime.lastErrorMessage = toRuntimeErrorMessage(event.error);
@@ -126,9 +196,6 @@ export function subscribeToSessionEvents(
 			const reason = raw === "aborted" || raw === "error" ? raw : "complete";
 			if (runtime.hookManager) {
 				void runtime.hookManager.runStop(undefined, reason).catch(() => {});
-			}
-			if (reason === "complete") {
-				void generateAndSetTitle(runtime, apiClient);
 			}
 		}
 	});
@@ -237,33 +304,120 @@ function extractProviderMessage(error: unknown): string | null {
 	return null;
 }
 
-async function generateAndSetTitle(
+export async function restartRuntimeFromUserMessage(
+	runtime: RuntimeSession,
+	input: RuntimeRestartPayload,
+): Promise<void> {
+	const threadId = runtime.harness.getCurrentThreadId();
+	if (!threadId) {
+		throw new Error("No active Mastra thread is available for editing");
+	}
+
+	const memoryStore = await getRuntimeMemoryStore(runtime);
+	const sourceThread = await memoryStore.getThreadById({ threadId });
+	if (!sourceThread) {
+		throw new Error(`Mastra thread not found: ${threadId}`);
+	}
+
+	const sourceMessages = await memoryStore.listMessages({
+		threadId,
+		perPage: false,
+		orderBy: { field: "createdAt", direction: "ASC" },
+	});
+	const targetIndex = sourceMessages.messages.findIndex(
+		(message) => message.id === input.messageId,
+	);
+	if (targetIndex === -1) {
+		throw new Error("The selected message is no longer available to edit");
+	}
+
+	const targetMessage = sourceMessages.messages[targetIndex];
+	if (targetMessage?.role !== "user") {
+		throw new Error("Only user messages can be edited or resent");
+	}
+
+	const clonedThread = await memoryStore.cloneThread({
+		sourceThreadId: threadId,
+		resourceId: sourceThread.resourceId,
+		title: sourceThread.title,
+		options: {
+			messageFilter: {
+				messageIds: sourceMessages.messages
+					.slice(0, targetIndex)
+					.map((message) => message.id),
+			},
+		},
+	});
+
+	runtime.harness.abort();
+	await runtime.harness.switchThread({ threadId: clonedThread.thread.id });
+
+	const selectedModel = input.metadata?.model?.trim();
+	if (selectedModel) {
+		await runtime.harness.switchModel({
+			modelId: selectedModel,
+			scope: "thread",
+		});
+	}
+
+	runtime.lastErrorMessage = null;
+	await runtime.harness.sendMessage(input.payload);
+}
+
+function extractTextContent(parts: MessageLike["content"]): string {
+	return parts
+		.filter(
+			(c): c is TextContentPart =>
+				c.type === "text" && typeof c.text === "string",
+		)
+		.map((c) => c.text)
+		.join(" ");
+}
+
+export async function generateAndSetTitle(
 	runtime: RuntimeSession,
 	apiClient: ApiClient,
+	options?: {
+		submittedUserMessage?: string;
+	},
 ): Promise<void> {
 	try {
 		const messages: MessageLike[] = await runtime.harness.listMessages();
-		const userMessages = messages.filter((m) => m.role === "user");
+		const submittedUserMessage = options?.submittedUserMessage?.trim();
+		const latestPersistedUserMessage = [...messages]
+			.reverse()
+			.find((message) => message.role === "user");
+		const submittedAlreadyPersisted =
+			Boolean(submittedUserMessage) &&
+			latestPersistedUserMessage !== undefined &&
+			extractTextContent(latestPersistedUserMessage.content).trim() ===
+				submittedUserMessage;
+		const messagesForTitle: MessageLike[] = submittedUserMessage
+			? submittedAlreadyPersisted
+				? messages
+				: [
+						...messages,
+						{
+							role: "user",
+							content: [{ type: "text", text: submittedUserMessage }],
+						},
+					]
+			: messages;
+		const userMessages = messagesForTitle.filter((m) => m.role === "user");
 		const userCount = userMessages.length;
 
 		const isFirst = userCount === 1;
 		const isRename = userCount > 1 && userCount % 10 === 0;
 		if (!isFirst && !isRename) return;
 
-		const extractText = (parts: MessageLike["content"]): string =>
-			parts
-				.filter((c): c is TextContentPart => c.type === "text")
-				.map((c) => c.text)
-				.join(" ");
-
 		let text: string;
 		const firstMessage = userMessages[0];
 		if (isFirst && firstMessage) {
-			text = extractText(firstMessage.content).slice(0, 500);
+			text = extractTextContent(firstMessage.content).slice(0, 500);
 		} else {
-			text = messages
+			text = messagesForTitle
 				.slice(-10)
-				.map((m) => `${m.role}: ${extractText(m.content)}`)
+				.map((m) => `${m.role}: ${extractTextContent(m.content)}`)
 				.join("\n")
 				.slice(0, 2000);
 		}
@@ -273,10 +427,10 @@ async function generateAndSetTitle(
 		const agent =
 			typeof mode.agent === "function" ? mode.agent({}) : mode.agent;
 
-		const title = await agent.generateTitleFromUserMessage({
+		const title = await generateTitleFromMessage({
+			agent,
 			message: text,
-			model: runtime.harness.getFullModelId(),
-			tracingContext: {},
+			modelId: runtime.harness.getFullModelId(),
 		});
 		if (!title?.trim()) return;
 

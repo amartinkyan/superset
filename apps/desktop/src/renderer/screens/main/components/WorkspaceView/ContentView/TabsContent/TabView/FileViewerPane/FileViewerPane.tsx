@@ -1,13 +1,12 @@
-import type * as Monaco from "monaco-editor";
 import { basename, relative } from "pathe";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { useChangesStore } from "renderer/stores/changes";
 import { useTabsStore } from "renderer/stores/tabs/store";
-import type { Tab } from "renderer/stores/tabs/types";
-import { isDiffEditable } from "shared/changes-types";
+import type { SplitPaneOptions, Tab } from "renderer/stores/tabs/types";
 import { isImageFile, isMarkdownFile } from "shared/file-types";
 import type { FileViewerMode } from "shared/tabs-types";
+import type { CodeEditorAdapter } from "../../../components";
 import { BasePaneWindow } from "../components";
 import { FileViewerContent } from "./components/FileViewerContent";
 import { FileViewerToolbar } from "./components/FileViewerToolbar";
@@ -31,11 +30,13 @@ interface FileViewerPaneProps {
 		tabId: string,
 		sourcePaneId: string,
 		path?: MosaicBranch[],
+		options?: SplitPaneOptions,
 	) => void;
 	splitPaneVertical: (
 		tabId: string,
 		sourcePaneId: string,
 		path?: MosaicBranch[],
+		options?: SplitPaneOptions,
 	) => void;
 	removePane: (paneId: string) => void;
 	setFocusedPane: (tabId: string, paneId: string) => void;
@@ -68,13 +69,12 @@ export function FileViewerPane({
 		toggleHideUnchangedRegions,
 	} = useChangesStore();
 
-	const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+	const editorRef = useRef<CodeEditorAdapter | null>(null);
 	const markdownContainerRef = useRef<HTMLDivElement>(null);
 	const [isDirty, setIsDirty] = useState(false);
 	const originalContentRef = useRef<string>("");
 	const draftContentRef = useRef<string | null>(null);
 	const originalDiffContentRef = useRef<string>("");
-	const currentDiffContentRef = useRef<string>("");
 	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 	const [isSavingAndSwitching, setIsSavingAndSwitching] = useState(false);
 	const pendingModeRef = useRef<FileViewerMode | null>(null);
@@ -96,7 +96,7 @@ export function FileViewerPane({
 		filePath,
 	});
 
-	const { handleSaveRaw, handleSaveDiff } = useFileSave({
+	const { handleSaveRaw } = useFileSave({
 		worktreePath,
 		filePath,
 		paneId,
@@ -129,6 +129,7 @@ export function FileViewerPane({
 
 	const handleEditorChange = useCallback((value: string | undefined) => {
 		if (value === undefined) return;
+		draftContentRef.current = value;
 		if (originalContentRef.current === "") {
 			originalContentRef.current = value;
 			return;
@@ -141,7 +142,6 @@ export function FileViewerPane({
 		setIsDirty(false);
 		originalContentRef.current = "";
 		originalDiffContentRef.current = "";
-		currentDiffContentRef.current = "";
 		draftContentRef.current = null;
 	}, [filePath]);
 
@@ -151,15 +151,6 @@ export function FileViewerPane({
 			pinPane(paneId);
 		}
 	}, [isDirty, isPinned, paneId, pinPane]);
-
-	const handleDiffChange = useCallback((content: string) => {
-		currentDiffContentRef.current = content;
-		if (originalDiffContentRef.current === "") {
-			originalDiffContentRef.current = content;
-			return;
-		}
-		setIsDirty(content !== originalDiffContentRef.current);
-	}, []);
 
 	if (!fileViewer) {
 		return (
@@ -225,19 +216,10 @@ export function FileViewerPane({
 				await handleSaveRaw();
 				originalContentRef.current = savedContent;
 				originalDiffContentRef.current = "";
-			} else if (
-				viewMode === "diff" &&
-				currentDiffContentRef.current !== undefined
-			) {
-				const savedContent = currentDiffContentRef.current;
-				await handleSaveDiff(savedContent);
-				originalDiffContentRef.current = savedContent;
-				originalContentRef.current = "";
 			}
 
 			setIsDirty(false);
 			draftContentRef.current = null;
-			currentDiffContentRef.current = "";
 
 			switchToMode(pendingModeRef.current);
 			pendingModeRef.current = null;
@@ -258,7 +240,6 @@ export function FileViewerPane({
 
 		setIsDirty(false);
 		draftContentRef.current = null;
-		currentDiffContentRef.current = "";
 
 		switchToMode(pendingModeRef.current);
 		pendingModeRef.current = null;
@@ -273,9 +254,6 @@ export function FileViewerPane({
 	})();
 	const hasRenderedMode = isMarkdownFile(filePath) || isImageFile(filePath);
 	const hasDiff = !!diffCategory;
-	const hasDraft = draftContentRef.current !== null;
-	const canEditDiff =
-		diffCategory != null && isDiffEditable(diffCategory) && !hasDraft;
 
 	return (
 		<>
@@ -320,7 +298,6 @@ export function FileViewerPane({
 					rawFileData={rawFileData}
 					imageData={imageData}
 					diffData={diffData}
-					isDiffEditable={canEditDiff}
 					editorRef={editorRef}
 					originalContentRef={originalContentRef}
 					draftContentRef={draftContentRef}
@@ -329,13 +306,17 @@ export function FileViewerPane({
 					diffViewMode={diffViewMode}
 					hideUnchangedRegions={hideUnchangedRegions}
 					onSaveRaw={handleSaveRaw}
-					onSaveDiff={canEditDiff ? handleSaveDiff : undefined}
 					onEditorChange={handleEditorChange}
-					onDiffChange={canEditDiff ? handleDiffChange : undefined}
 					setIsDirty={setIsDirty}
 					// Context menu props
 					onSplitHorizontal={() => splitPaneHorizontal(tabId, paneId, path)}
 					onSplitVertical={() => splitPaneVertical(tabId, paneId, path)}
+					onSplitWithNewChat={() =>
+						splitPaneVertical(tabId, paneId, path, { paneType: "chat-mastra" })
+					}
+					onSplitWithNewBrowser={() =>
+						splitPaneVertical(tabId, paneId, path, { paneType: "webview" })
+					}
 					onClosePane={() => removePane(paneId)}
 					currentTabId={tabId}
 					availableTabs={availableTabs}

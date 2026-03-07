@@ -7,10 +7,12 @@ import { searchFiles } from "./utils/file-search";
 import {
 	authenticateRuntimeMcpServer,
 	destroyRuntime,
+	generateAndSetTitle,
 	getRuntimeMcpOverview,
 	onUserPromptSubmit,
 	type RuntimeSession,
 	reloadHookConfig,
+	restartRuntimeFromUserMessage,
 	runSessionStartHook,
 	subscribeToSessionEvents,
 } from "./utils/runtime";
@@ -23,6 +25,7 @@ import {
 	mcpServerAuthInput,
 	planRespondInput,
 	questionRespondInput,
+	restartFromMessageInput,
 	searchFilesInput,
 	sendMessageInput,
 	sessionIdInput,
@@ -107,7 +110,7 @@ export class ChatMastraService {
 					cwd: runtimeCwd,
 				};
 				await runSessionStartHook(runtime).catch(() => {});
-				subscribeToSessionEvents(runtime, this.apiClient);
+				subscribeToSessionEvents(runtime);
 				this.runtimes.set(sessionId, runtime);
 				return runtime;
 			} finally {
@@ -228,6 +231,7 @@ export class ChatMastraService {
 						const userMessage =
 							input.payload.content.trim() || "[non-text message]";
 						await onUserPromptSubmit(runtime, userMessage);
+						const submittedUserMessage = input.payload.content.trim();
 						const selectedModel = input.metadata?.model?.trim();
 						if (selectedModel) {
 							await runtime.harness.switchModel({
@@ -235,16 +239,53 @@ export class ChatMastraService {
 								scope: "thread",
 							});
 						}
+						void generateAndSetTitle(runtime, this.apiClient, {
+							submittedUserMessage:
+								submittedUserMessage.length > 0
+									? submittedUserMessage
+									: undefined,
+						});
 						return runtime.harness.sendMessage(input.payload);
 					}),
 
+				restartFromMessage: t.procedure
+					.input(restartFromMessageInput)
+					.mutation(async ({ input }) => {
+						const runtime = await this.getOrCreateRuntime(
+							input.sessionId,
+							input.cwd,
+						);
+						runtime.lastErrorMessage = null;
+						const userMessage =
+							input.payload.content.trim() || "[non-text message]";
+						await onUserPromptSubmit(runtime, userMessage);
+						const submittedUserMessage = input.payload.content.trim();
+						await restartRuntimeFromUserMessage(runtime, {
+							messageId: input.messageId,
+							payload: input.payload,
+							metadata: input.metadata,
+						});
+						void generateAndSetTitle(runtime, this.apiClient, {
+							submittedUserMessage:
+								submittedUserMessage.length > 0
+									? submittedUserMessage
+									: undefined,
+						});
+					}),
+
 				stop: t.procedure.input(sessionIdInput).mutation(async ({ input }) => {
-					const runtime = await this.getOrCreateRuntime(input.sessionId);
+					const runtime = await this.getOrCreateRuntime(
+						input.sessionId,
+						input.cwd,
+					);
 					runtime.harness.abort();
 				}),
 
 				abort: t.procedure.input(sessionIdInput).mutation(async ({ input }) => {
-					const runtime = await this.getOrCreateRuntime(input.sessionId);
+					const runtime = await this.getOrCreateRuntime(
+						input.sessionId,
+						input.cwd,
+					);
 					runtime.harness.abort();
 				}),
 
@@ -252,7 +293,10 @@ export class ChatMastraService {
 					respond: t.procedure
 						.input(approvalRespondInput)
 						.mutation(async ({ input }) => {
-							const runtime = await this.getOrCreateRuntime(input.sessionId);
+							const runtime = await this.getOrCreateRuntime(
+								input.sessionId,
+								input.cwd,
+							);
 							return runtime.harness.respondToToolApproval(input.payload);
 						}),
 				}),
@@ -261,7 +305,10 @@ export class ChatMastraService {
 					respond: t.procedure
 						.input(questionRespondInput)
 						.mutation(async ({ input }) => {
-							const runtime = await this.getOrCreateRuntime(input.sessionId);
+							const runtime = await this.getOrCreateRuntime(
+								input.sessionId,
+								input.cwd,
+							);
 							if (
 								runtime.pendingSandboxQuestion?.questionId ===
 								input.payload.questionId
@@ -276,7 +323,10 @@ export class ChatMastraService {
 					respond: t.procedure
 						.input(planRespondInput)
 						.mutation(async ({ input }) => {
-							const runtime = await this.getOrCreateRuntime(input.sessionId);
+							const runtime = await this.getOrCreateRuntime(
+								input.sessionId,
+								input.cwd,
+							);
 							return runtime.harness.respondToPlanApproval(input.payload);
 						}),
 				}),

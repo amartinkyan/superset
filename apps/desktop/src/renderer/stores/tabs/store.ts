@@ -340,7 +340,9 @@ export const useTabsStore = create<TabsStore>()(
 				setTabAutoTitle: (tabId, title) => {
 					set((state) => {
 						const tab = state.tabs.find((t) => t.id === tabId);
-						if (!tab || tab.name === title) return state;
+						if (!tab || tab.name === title || tab.userTitle?.trim()) {
+							return state;
+						}
 						return {
 							tabs: state.tabs.map((t) =>
 								t.id === tabId ? { ...t, name: title } : t,
@@ -981,7 +983,7 @@ export const useTabsStore = create<TabsStore>()(
 
 					const newPanes = {
 						...state.panes,
-						[paneId]: { ...pane, name },
+						[paneId]: { ...pane, name, userTitle: name },
 					};
 					const tabName = deriveTabName(newPanes, pane.tabId);
 
@@ -990,6 +992,20 @@ export const useTabsStore = create<TabsStore>()(
 						tabs: state.tabs.map((t) =>
 							t.id === pane.tabId ? { ...t, name: tabName } : t,
 						),
+					});
+				},
+				setPaneAutoTitle: (paneId, title) => {
+					set((state) => {
+						const pane = state.panes[paneId];
+						if (!pane || pane.name === title || pane.userTitle?.trim()) {
+							return state;
+						}
+						return {
+							panes: {
+								...state.panes,
+								[paneId]: { ...pane, name: title },
+							},
+						};
 					});
 				},
 
@@ -1119,8 +1135,19 @@ export const useTabsStore = create<TabsStore>()(
 					const sourcePane = state.panes[sourcePaneId];
 					if (!sourcePane || sourcePane.tabId !== tabId) return;
 
-					// Always create a new terminal when splitting
-					const newPane = createPane(tabId, "terminal", options);
+					const paneType = options?.paneType ?? "terminal";
+					const newPane =
+						paneType === "chat-mastra"
+							? createChatMastraPane(tabId)
+							: paneType === "webview"
+								? createBrowserPane(tabId)
+								: createPane(tabId, "terminal", options);
+					const panelType =
+						paneType === "chat-mastra"
+							? "chat"
+							: paneType === "webview"
+								? "browser"
+								: "terminal";
 
 					let newLayout: MosaicNode<string>;
 					if (path && path.length > 0) {
@@ -1163,7 +1190,7 @@ export const useTabsStore = create<TabsStore>()(
 					});
 
 					posthog.capture("panel_opened", {
-						panel_type: "terminal",
+						panel_type: panelType,
 						workspace_id: tab.workspaceId,
 						pane_id: newPane.id,
 					});
@@ -1177,8 +1204,19 @@ export const useTabsStore = create<TabsStore>()(
 					const sourcePane = state.panes[sourcePaneId];
 					if (!sourcePane || sourcePane.tabId !== tabId) return;
 
-					// Always create a new terminal when splitting
-					const newPane = createPane(tabId, "terminal", options);
+					const paneType = options?.paneType ?? "terminal";
+					const newPane =
+						paneType === "chat-mastra"
+							? createChatMastraPane(tabId)
+							: paneType === "webview"
+								? createBrowserPane(tabId)
+								: createPane(tabId, "terminal", options);
+					const panelType =
+						paneType === "chat-mastra"
+							? "chat"
+							: paneType === "webview"
+								? "browser"
+								: "terminal";
 
 					let newLayout: MosaicNode<string>;
 					if (path && path.length > 0) {
@@ -1221,7 +1259,7 @@ export const useTabsStore = create<TabsStore>()(
 					});
 
 					posthog.capture("panel_opened", {
-						panel_type: "terminal",
+						panel_type: panelType,
 						workspace_id: tab.workspaceId,
 						pane_id: newPane.id,
 					});

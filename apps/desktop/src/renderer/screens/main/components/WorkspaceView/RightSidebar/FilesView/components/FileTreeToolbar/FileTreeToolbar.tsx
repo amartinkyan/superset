@@ -5,8 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	LuArrowUp,
 	LuChevronsDownUp,
-	LuEye,
-	LuEyeOff,
 	LuFilePlus,
 	LuFolderPlus,
 	LuHouse,
@@ -22,8 +20,6 @@ interface FileTreeToolbarProps {
 	onNewFolder: () => void;
 	onCollapseAll: () => void;
 	onRefresh: () => void;
-	showHiddenFiles: boolean;
-	onToggleHiddenFiles: () => void;
 	isRefreshing?: boolean;
 	onNavigateToParent?: () => void;
 	onNavigateHome?: (() => void) | undefined;
@@ -36,8 +32,6 @@ export function FileTreeToolbar({
 	onNewFolder,
 	onCollapseAll,
 	onRefresh,
-	showHiddenFiles,
-	onToggleHiddenFiles,
 	isRefreshing = false,
 	onNavigateToParent,
 	onNavigateHome,
@@ -174,26 +168,6 @@ export function FileTreeToolbar({
 				</Tooltip>
 
 				<div className="flex-1" />
-
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<Button
-							variant="ghost"
-							size="icon"
-							className="size-6"
-							onClick={onToggleHiddenFiles}
-						>
-							{showHiddenFiles ? (
-								<LuEye className="size-3.5" />
-							) : (
-								<LuEyeOff className="size-3.5" />
-							)}
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">
-						{showHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files"}
-					</TooltipContent>
-				</Tooltip>
 
 				<Tooltip>
 					<TooltipTrigger asChild>

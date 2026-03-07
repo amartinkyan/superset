@@ -18,7 +18,6 @@ import { dirname } from "pathe";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuChevronRight, LuFile, LuFolder, LuHouse } from "react-icons/lu";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { useFileExplorerStore } from "renderer/stores/file-explorer";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { DirectoryEntry } from "shared/file-tree-types";
 import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
@@ -47,16 +46,10 @@ export function FilesView() {
 	const isOutsideWorktree = browseRoot !== null && browseRoot !== worktreePath;
 
 	const projectId = workspace?.project?.id;
-	const showHiddenFiles = useFileExplorerStore((s) =>
-		projectId ? (s.showHiddenFiles[projectId] ?? false) : false,
-	);
-	const toggleHiddenFiles = useFileExplorerStore((s) => s.toggleHiddenFiles);
 
 	// Refs avoid stale closure in dataLoader callbacks
 	const effectiveRootRef = useRef(effectiveRoot);
 	effectiveRootRef.current = effectiveRoot;
-	const showHiddenFilesRef = useRef(showHiddenFiles);
-	showHiddenFilesRef.current = showHiddenFiles;
 
 	const trpcUtils = electronTrpc.useUtils();
 
@@ -98,7 +91,6 @@ export function FilesView() {
 					const entries = await trpcUtils.filesystem.readDirectory.fetch({
 						dirPath,
 						rootPath: currentRoot,
-						includeHidden: showHiddenFilesRef.current,
 					});
 					return entries.map(
 						(e) =>
@@ -168,7 +160,6 @@ export function FilesView() {
 	} = useFileSearch({
 		worktreePath: effectiveRoot,
 		searchTerm,
-		includeHidden: showHiddenFiles,
 	});
 
 	const addFileViewerPane = useTabsStore((s) => s.addFileViewerPane);
@@ -303,20 +294,6 @@ export function FilesView() {
 		}
 	}, [tree]);
 
-	const handleToggleHiddenFiles = useCallback(() => {
-		if (!projectId) return;
-		// Update ref synchronously so invalidation uses correct value
-		showHiddenFilesRef.current = !showHiddenFilesRef.current;
-		toggleHiddenFiles(projectId);
-		// invalidateChildrenIds doesn't cascade, so invalidate every directory
-		tree.getItemInstance("root")?.invalidateChildrenIds();
-		for (const item of tree.getItems()) {
-			if (item.getItemData()?.isDirectory) {
-				item.invalidateChildrenIds();
-			}
-		}
-	}, [tree, projectId, toggleHiddenFiles]);
-
 	const searchResultEntries = useMemo(() => {
 		return searchResults.map((result) => ({
 			id: result.id,
@@ -354,8 +331,6 @@ export function FilesView() {
 				onNewFolder={() => handleNewFolder(effectiveRoot ?? worktreePath)}
 				onCollapseAll={handleCollapseAll}
 				onRefresh={handleRefresh}
-				showHiddenFiles={showHiddenFiles}
-				onToggleHiddenFiles={handleToggleHiddenFiles}
 				onNavigateToParent={navigateToParent}
 				onNavigateHome={isOutsideWorktree ? navigateHome : undefined}
 			/>

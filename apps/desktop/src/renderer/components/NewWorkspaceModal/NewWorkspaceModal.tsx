@@ -15,10 +15,7 @@ import { launchAgentSession } from "renderer/lib/agent-session-orchestrator";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { resolveEffectiveWorkspaceBaseBranch } from "renderer/lib/workspaceBaseBranch";
 import { useOpenProject } from "renderer/react-query/projects";
-import {
-	useCreateWorkspace,
-	useUpdateWorkspace,
-} from "renderer/react-query/workspaces";
+import { useCreateWorkspace } from "renderer/react-query/workspaces";
 import {
 	useCloseNewWorkspaceModal,
 	useNewWorkspaceModalOpen,
@@ -102,8 +99,6 @@ export function NewWorkspaceModal() {
 		resolveInitialCommands: (commands) =>
 			runSetupScriptRef.current ? commands : null,
 	});
-	const updateWorkspace = useUpdateWorkspace();
-	const generateName = electronTrpc.workspaces.generateName.useMutation();
 	const { openNew } = useOpenProject();
 	const selectableAgents =
 		STARTABLE_AGENT_TYPES as readonly StartableAgentType[];
@@ -162,7 +157,9 @@ export function NewWorkspaceModal() {
 	}, [selectedProjectId]);
 
 	const branchSlug = branchNameEdited
-		? sanitizeBranchNameWithMaxLength(branchName)
+		? sanitizeBranchNameWithMaxLength(branchName, undefined, {
+				preserveFirstSegmentCase: true,
+			})
 		: "";
 
 	const applyPrefix = !branchNameEdited;
@@ -193,6 +190,8 @@ export function NewWorkspaceModal() {
 	}, [isOpen, selectedProjectId, mode]);
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {
+		if (e.defaultPrevented) return;
+
 		const isTextareaTarget = e.target instanceof HTMLTextAreaElement;
 		const isSubmitShortcutInTextarea =
 			isTextareaTarget && (e.metaKey || e.ctrlKey);
@@ -325,6 +324,7 @@ export function NewWorkspaceModal() {
 				{
 					projectId: selectedProjectId,
 					name: workspaceName,
+					prompt: prompt || undefined,
 					branchName: branchSlug || undefined,
 					baseBranch: baseBranch || undefined,
 					applyPrefix,
@@ -333,20 +333,6 @@ export function NewWorkspaceModal() {
 					? { agentLaunchRequest: launchRequestTemplate }
 					: undefined,
 			);
-
-			if (prompt && !result.wasExisting) {
-				generateName
-					.mutateAsync({ prompt })
-					.then((res) => {
-						if (res.name) {
-							updateWorkspace.mutate({
-								id: result.workspace.id,
-								patch: { name: res.name, isUnnamed: false },
-							});
-						}
-					})
-					.catch(() => {});
-			}
 
 			const launchRequest = launchRequestTemplate
 				? {

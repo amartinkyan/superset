@@ -101,6 +101,8 @@ export default defineConfig({
 					"terminal-host": resolve("src/main/terminal-host/index.ts"),
 					// PTY subprocess - spawned by terminal-host for each terminal
 					"pty-subprocess": resolve("src/main/terminal-host/pty-subprocess.ts"),
+					// Worker-thread entrypoint for heavy git/status computations
+					"git-task-worker": resolve("src/main/git-task-worker.ts"),
 				},
 				output: {
 					dir: resolve(devPath, "main"),
@@ -237,10 +239,6 @@ export default defineConfig({
 
 		worker: {
 			format: "es",
-		},
-
-		optimizeDeps: {
-			include: ["monaco-editor"],
 		},
 
 		publicDir: resolve(resources, "public"),

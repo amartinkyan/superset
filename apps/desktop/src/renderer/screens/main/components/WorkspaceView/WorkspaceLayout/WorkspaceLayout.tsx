@@ -1,5 +1,6 @@
 import type { ExternalApp } from "@superset/local-db";
 import {
+	DEFAULT_SIDEBAR_WIDTH,
 	MAX_SIDEBAR_WIDTH,
 	MIN_SIDEBAR_WIDTH,
 	SidebarMode,
@@ -23,14 +24,12 @@ export function WorkspaceLayout({
 	onOpenQuickOpen,
 }: WorkspaceLayoutProps) {
 	useBrowserLifecycle();
-	const {
-		isSidebarOpen,
-		sidebarWidth,
-		setSidebarWidth,
-		isResizing,
-		setIsResizing,
-		currentMode,
-	} = useSidebarStore();
+	const isSidebarOpen = useSidebarStore((s) => s.isSidebarOpen);
+	const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
+	const setSidebarWidth = useSidebarStore((s) => s.setSidebarWidth);
+	const isResizing = useSidebarStore((s) => s.isResizing);
+	const setIsResizing = useSidebarStore((s) => s.setIsResizing);
+	const currentMode = useSidebarStore((s) => s.currentMode);
 
 	const isExpanded = currentMode === SidebarMode.Changes;
 
@@ -57,6 +56,7 @@ export function WorkspaceLayout({
 					maxWidth={MAX_SIDEBAR_WIDTH}
 					handleSide="left"
 					className={isExpanded ? "border-l-0" : undefined}
+					onDoubleClickHandle={() => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
 				>
 					<RightSidebar />
 				</ResizablePanel>

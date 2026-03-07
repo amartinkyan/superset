@@ -1,9 +1,9 @@
-import type * as Monaco from "monaco-editor";
 import { isAbsolute, relative, resolve } from "pathe";
 import { type MutableRefObject, useCallback, useMemo, useRef } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { ChangeCategory } from "shared/changes-types";
+import type { CodeEditorAdapter } from "../../../../../components";
 
 interface UseFileSaveParams {
 	worktreePath: string;
@@ -11,7 +11,7 @@ interface UseFileSaveParams {
 	filePath: string;
 	paneId: string;
 	diffCategory?: ChangeCategory;
-	editorRef: MutableRefObject<Monaco.editor.IStandaloneCodeEditor | null>;
+	editorRef: MutableRefObject<CodeEditorAdapter | null>;
 	originalContentRef: MutableRefObject<string>;
 	originalDiffContentRef: MutableRefObject<string>;
 	draftContentRef: MutableRefObject<string | null>;
@@ -40,7 +40,6 @@ export function useFileSave({
 		return rel.startsWith("..") ? null : rel;
 	}, [worktreePath, filePath]);
 	const savingFromRawRef = useRef(false);
-	const savingDiffContentRef = useRef<string | null>(null);
 	const utils = electronTrpc.useUtils();
 
 	const saveFileMutation = electronTrpc.changes.saveFile.useMutation({
@@ -49,14 +48,11 @@ export function useFileSave({
 			if (editorRef.current) {
 				originalContentRef.current = editorRef.current.getValue();
 			}
-			if (savingDiffContentRef.current !== null) {
-				originalDiffContentRef.current = savingDiffContentRef.current;
-				savingDiffContentRef.current = null;
-			}
 			if (savingFromRawRef.current) {
 				draftContentRef.current = null;
 			}
 			savingFromRawRef.current = false;
+			originalDiffContentRef.current = "";
 
 			utils.changes.readWorkingFile.invalidate();
 			utils.changes.getFileContents.invalidate();
@@ -93,23 +89,8 @@ export function useFileSave({
 		});
 	}, [worktreePath, relativeFilePath, saveFileMutation, editorRef]);
 
-	const handleSaveDiff = useCallback(
-		async (content: string) => {
-			if (!relativeFilePath || !worktreePath) return;
-			savingFromRawRef.current = false;
-			savingDiffContentRef.current = content;
-			await saveFileMutation.mutateAsync({
-				worktreePath,
-				filePath: relativeFilePath,
-				content,
-			});
-		},
-		[worktreePath, relativeFilePath, saveFileMutation],
-	);
-
 	return {
 		handleSaveRaw,
-		handleSaveDiff,
 		isSaving: saveFileMutation.isPending,
 	};
 }
