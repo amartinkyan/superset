@@ -2,6 +2,7 @@ import { generateTitleFromMessage } from "@superset/chat/host";
 import type { AppRouter } from "@superset/trpc";
 import type { createTRPCClient } from "@trpc/client";
 import type { createMastraCode } from "mastracode";
+import type { ThinkingLevel } from "../../zod";
 
 export type RuntimeHarness = Awaited<
 	ReturnType<typeof createMastraCode>
@@ -61,7 +62,7 @@ interface RuntimeRestartPayload {
 	};
 	metadata?: {
 		model?: string;
-		thinkingLevel?: "off" | "low" | "medium" | "high" | "xhigh";
+		thinkingLevel?: ThinkingLevel;
 	};
 }
 

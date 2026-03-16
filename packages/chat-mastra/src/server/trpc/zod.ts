@@ -136,3 +136,4 @@ export type RestartFromMessageInput = z.infer<typeof restartFromMessageInput>;
 export type ApprovalRespondInput = z.infer<typeof approvalRespondInput>;
 export type QuestionRespondInput = z.infer<typeof questionRespondInput>;
 export type PlanRespondInput = z.infer<typeof planRespondInput>;
+export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;

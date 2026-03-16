@@ -25,8 +25,14 @@ interface ThinkingLevelOption {
 	description: string;
 }
 
+const DEFAULT_OPTION: ThinkingLevelOption = {
+	value: "off",
+	label: "Off",
+	description: "No extended thinking",
+};
+
 const THINKING_LEVELS: ThinkingLevelOption[] = [
-	{ value: "off", label: "Off", description: "No extended thinking" },
+	DEFAULT_OPTION,
 	{ value: "low", label: "Low", description: "Minimal reasoning effort" },
 	{
 		value: "medium",
@@ -56,8 +62,8 @@ export const ThinkingToggle = ({
 	...props
 }: ThinkingToggleProps) => {
 	const isActive = level !== "off";
-	// biome-ignore lint: THINKING_LEVELS always has entries and `level` always matches one
-	const activeOption = THINKING_LEVELS.find((o) => o.value === level)!;
+	const activeOption =
+		THINKING_LEVELS.find((o) => o.value === level) ?? DEFAULT_OPTION;
 
 	return (
 		<DropdownMenu>
@@ -79,19 +85,13 @@ export const ThinkingToggle = ({
 								<span>{activeOption.label}</span>
 								<ChevronDownIcon className="size-2.5 opacity-50" />
 								<span className="sr-only">
-									{isActive
-										? `Extended thinking: ${activeOption.label}`
-										: "Enable extended thinking"}
+									Extended thinking: {activeOption.label}
 								</span>
 							</Button>
 						</DropdownMenuTrigger>
 					</TooltipTrigger>
 					<TooltipContent>
-						<p>
-							{isActive
-								? `Extended thinking: ${activeOption.label}`
-								: "Enable extended thinking"}
-						</p>
+						<p>Extended thinking: {activeOption.label}</p>
 					</TooltipContent>
 				</Tooltip>
 			</TooltipProvider>
@@ -101,7 +101,7 @@ export const ThinkingToggle = ({
 					return (
 						<DropdownMenuItem
 							key={option.value}
-							onClick={() => onLevelChange(option.value)}
+							onSelect={() => onLevelChange(option.value)}
 							className="flex items-center gap-2"
 						>
 							<div className="flex flex-1 flex-col gap-0.5">
