@@ -34,7 +34,6 @@ import { toOptimisticUserMessage } from "./utils/optimisticUserMessage";
 import {
 	type ChatSendMessageInput,
 	sendMessageForSession,
-	type ThinkingLevel,
 	toSendFailureMessage,
 } from "./utils/sendMessage";
 import {
@@ -207,7 +206,12 @@ export function ChatMastraInterface({
 		availableModels.find((model) => model.id === selectedModelId) ?? null;
 	const activeModel = selectedModel ?? defaultModel;
 	const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
-	const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>("off");
+	const thinkingLevel = useChatPreferencesStore(
+		(state) => state.thinkingLevel,
+	);
+	const setThinkingLevel = useChatPreferencesStore(
+		(state) => state.setThinkingLevel,
+	);
 	const [permissionMode, setPermissionMode] =
 		useState<PermissionMode>("bypassPermissions");
 	const [submitStatus, setSubmitStatus] = useState<ChatStatus | undefined>(
