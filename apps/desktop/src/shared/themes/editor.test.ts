@@ -22,7 +22,12 @@ describe("getEditorTheme", () => {
 		}
 		expect(editorTheme.colors.addition).toBe(brightGreen);
 		expect(editorTheme.colors.deletion).toBe(brightRed);
-		expect(editorTheme.syntax.comment).toBe("#a8a5a3");
+		const explicitComment = darkTheme.editor?.syntax?.comment;
+		expect(explicitComment).toBeDefined();
+		if (!explicitComment) {
+			throw new Error("Dark theme should define an explicit editor comment color");
+		}
+		expect(editorTheme.syntax.comment).toBe(explicitComment);
 		expect(editorTheme.syntax.keyword).toBe(
 			darkTheme.terminal?.magenta ?? darkTheme.ui.foreground,
 		);
@@ -53,6 +58,7 @@ describe("getEditorTheme", () => {
 		const editorTheme = getEditorTheme({
 			...darkTheme,
 			terminal: undefined,
+			editor: undefined,
 			ui: {
 				...darkTheme.ui,
 				background: "#101820",
@@ -82,7 +88,7 @@ describe("getEditorTheme", () => {
 		expect(editorTheme.colors.deletion).toBe("#ff6b6b");
 		expect(editorTheme.colors.modified).toBe("#6bbcff");
 		expect(editorTheme.syntax.keyword).toBe("#e39b57");
-		expect(editorTheme.syntax.comment).toBe("#a8a5a3");
+		expect(editorTheme.syntax.comment).toBe("#8ea3b7");
 		expect(editorTheme.syntax.string).toBe("#4dd4ac");
 	});
 });
