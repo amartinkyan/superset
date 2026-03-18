@@ -129,6 +129,7 @@ export function ProjectSection({
 		canAccept: (item) =>
 			item.sectionId !== null && item.projectId === projectId,
 		targetSectionId: null,
+		getTargetIndex: () => topLevelChildren.length,
 	});
 
 	const handleNewWorkspace = () => {
