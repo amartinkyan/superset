@@ -56,7 +56,7 @@ export function useSectionDropZone({
 				autoExpandTimer.current = null;
 			}
 			const item = getActiveDragItem();
-			if (item && canAccept(item)) {
+			if (item && canAccept(item) && !item.handled) {
 				if (item.selectedIds && item.selectedIds.length > 1) {
 					bulkMoveToSection.mutate({
 						workspaceIds: item.selectedIds,

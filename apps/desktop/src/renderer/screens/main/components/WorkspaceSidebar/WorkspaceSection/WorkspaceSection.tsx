@@ -200,23 +200,25 @@ export function WorkspaceSection({
 
 	return (
 		<div
-			{...dropZone.handlers}
 			className={cn(isSectionDragging && "opacity-30")}
 			style={sectionBorderStyle}
 		>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					<div
+						{...(isCollapsed ? dropZone.handlers : {})}
 						ref={(node) => {
 							sectionDrag(sectionDrop(node));
 						}}
 						className={cn(
 							"flex items-center w-full pl-2 pr-2 py-2 text-[11px] font-medium uppercase tracking-wider",
 							"text-muted-foreground hover:bg-muted/50 transition-colors",
-							dropZone.isDropTarget &&
+							isCollapsed &&
+								dropZone.isDropTarget &&
 								!dropZone.isDragOver &&
 								"border border-dashed border-primary/20 rounded-sm",
-							dropZone.isDragOver &&
+							isCollapsed &&
+								dropZone.isDragOver &&
 								"bg-primary/10 border border-solid border-primary/40 rounded-sm",
 						)}
 						style={{ cursor: isSectionDragging ? "grabbing" : "grab" }}
@@ -324,6 +326,21 @@ export function WorkspaceSection({
 								sectionId={sectionId}
 								sections={allSections}
 								orderedWorkspaceIds={orderedWorkspaceIds}
+							/>
+							<div
+								{...dropZone.handlers}
+								className={cn(
+									"transition-colors rounded-sm",
+									(workspaces.length === 0 ||
+										dropZone.isDropTarget ||
+										dropZone.isDragOver) &&
+										"min-h-6",
+									dropZone.isDropTarget &&
+										!dropZone.isDragOver &&
+										"border border-dashed border-primary/20",
+									dropZone.isDragOver &&
+										"bg-primary/5 border border-solid border-primary/30",
+								)}
 							/>
 						</div>
 					</motion.div>
