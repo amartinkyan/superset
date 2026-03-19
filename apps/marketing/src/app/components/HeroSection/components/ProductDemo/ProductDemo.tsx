@@ -74,8 +74,8 @@ export function ProductDemo({ scrollYProgress }: ProductDemoProps) {
 				}}
 			>
 				<div className="relative">
-					{/* Single soft ambient shadow behind the mockup */}
-					<div className="absolute inset-[12%] top-[24%] rounded-[32px] bg-black/45 blur-[72px] pointer-events-none" />
+					{/* Large diffuse back-shadow */}
+					<div className="absolute inset-[10%] top-[20%] rounded-3xl bg-white/[0.07] blur-[60px] pointer-events-none" />
 					<div className="relative overflow-x-auto scrollbar-hide">
 						<AppMockup activeDemo={activeOption} />
 					</div>
