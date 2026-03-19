@@ -14,10 +14,10 @@ interface LeftSidebarProps {
 export function LeftSidebar({ activeDemo }: LeftSidebarProps) {
 	return (
 		<div className="flex w-[210px] shrink-0 flex-col border-r border-white/[0.06] bg-white/[0.02] backdrop-blur-lg">
-			<div className="border-b border-white/[0.06]">
+			<div className="border-b border-white/[0.06] h-12">
 				<button
 					type="button"
-					className="flex w-full cursor-pointer items-center gap-2.5 px-4 py-3 text-[11px] text-muted-foreground/42 hover:bg-white/[0.025] hover:text-muted-foreground/60"
+					className="flex w-full cursor-pointer items-center gap-2.5 px-4 text-[11px] text-muted-foreground/42 hover:bg-white/[0.025] hover:text-muted-foreground/60 size-full"
 				>
 					<LuPlus className="size-4" />
 					<span>New Workspace</span>

@@ -14,7 +14,7 @@ interface MainPanelProps {
 export function MainPanel({ activeDemo }: MainPanelProps) {
 	return (
 		<div className="flex min-w-0 flex-1 flex-col">
-			<div className="flex items-center gap-1 border-b border-white/[0.06] bg-white/[0.02] px-4 py-2.5 backdrop-blur-md">
+			<div className="flex items-center gap-1 border-b border-white/[0.06] bg-white/[0.02] px-4 py-2.5 backdrop-blur-md h-12">
 				<div className="flex items-center gap-1.5 rounded-t-xs border-b-2 border-orange-500/75 bg-orange-500/[0.05] px-4 py-2 text-[11px] font-medium text-foreground/90">
 					{activeDemo === "Create Parallel Branches" ? (
 						<>
@@ -132,10 +132,6 @@ export function MainPanel({ activeDemo }: MainPanelProps) {
 							<div className="text-muted-foreground/60">
 								config:{" "}
 								<span className="text-muted-foreground/45">.mcp.json</span>
-							</div>
-
-							<div className="text-muted-foreground/60">
-								tip: <span className="text-[#D97757]/65">/mcp disable</span>
 							</div>
 						</div>
 					</div>

@@ -31,8 +31,8 @@ export function RightSidebar({ activeDemo }: RightSidebarProps) {
 					pointerEvents: activeDemo === "See Changes" ? "none" : "auto",
 				}}
 			>
-				<div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5">
-					<span className="text-[10px] uppercase tracking-[0.14em] text-foreground/52">
+				<div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5 h-12">
+					<span className="text-[10px] font-normal tracking-[0.14em] text-foreground/52">
 						Review Changes
 					</span>
 					<div className="flex items-center gap-1 text-[11px]">
