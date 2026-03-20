@@ -93,7 +93,11 @@ describe("External worktree detection and import", () => {
 
 	test("external worktree can be created and detected", () => {
 		// Create external worktree manually (simulates user creating it outside Superset)
-		createExternalWorktree(mainRepoPath, "feature-external", externalWorktreePath);
+		createExternalWorktree(
+			mainRepoPath,
+			"feature-external",
+			externalWorktreePath,
+		);
 
 		// Verify worktree was created
 		expect(existsSync(externalWorktreePath)).toBe(true);
@@ -113,27 +117,27 @@ describe("External worktree detection and import", () => {
 		createExternalWorktree(mainRepoPath, "feature-test", externalWorktreePath);
 
 		// Import the listExternalWorktrees function
-		const { listExternalWorktrees } = await import(
-			"../utils/git"
-		);
+		const { listExternalWorktrees } = await import("../utils/git");
 
 		// List external worktrees
 		const externalWorktrees = await listExternalWorktrees(mainRepoPath);
 
 		// Find our external worktree
-		const found = externalWorktrees.find(
-			(wt) => wt.branch === "feature-test",
-		);
+		const found = externalWorktrees.find((wt) => wt.branch === "feature-test");
 
 		expect(found).toBeDefined();
-		expect(found!.path).toBe(externalWorktreePath);
-		expect(found!.isBare).toBe(false);
-		expect(found!.isDetached).toBe(false);
+		expect(found?.path).toBe(externalWorktreePath);
+		expect(found?.isBare).toBe(false);
+		expect(found?.isDetached).toBe(false);
 	});
 
 	test("external worktree data survives simulated deletion", () => {
 		// Create external worktree with important data
-		createExternalWorktree(mainRepoPath, "feature-preserve", externalWorktreePath);
+		createExternalWorktree(
+			mainRepoPath,
+			"feature-preserve",
+			externalWorktreePath,
+		);
 
 		// Write additional important data
 		writeFileSync(

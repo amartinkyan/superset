@@ -496,7 +496,10 @@ export const createCreateProcedures = () => {
 
 						activateProject(project);
 
-						copySupersetConfigToWorktree(project.mainRepoPath, externalMatch.path);
+						copySupersetConfigToWorktree(
+							project.mainRepoPath,
+							externalMatch.path,
+						);
 
 						await setBranchBaseConfig({
 							repoPath: project.mainRepoPath,

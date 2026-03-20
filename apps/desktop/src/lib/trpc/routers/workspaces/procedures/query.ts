@@ -79,6 +79,7 @@ export const createQueryProcedures = () => {
 								branch: worktree.branch,
 								// Normalize to null to ensure consistent "incomplete init" detection in UI
 								gitStatus: worktree.gitStatus ?? null,
+								createdBySuperset: worktree.createdBySuperset,
 							}
 						: null,
 				};
@@ -109,6 +110,7 @@ export const createQueryProcedures = () => {
 				lastOpenedAt: number;
 				isUnread: boolean;
 				isUnnamed: boolean;
+				createdBySuperset: boolean | null;
 			};
 
 			type SectionItem = {
@@ -136,6 +138,9 @@ export const createQueryProcedures = () => {
 			const allWorktrees = localDb.select().from(worktrees).all();
 			const worktreePathMap: WorktreePathMap = new Map(
 				allWorktrees.map((wt) => [wt.id, wt.path]),
+			);
+			const worktreeCreatedBySupersetMap = new Map(
+				allWorktrees.map((wt) => [wt.id, wt.createdBySuperset]),
 			);
 
 			const allSections = localDb.select().from(workspaceSections).all();
@@ -215,6 +220,9 @@ export const createQueryProcedures = () => {
 						worktreePath,
 						isUnread: workspace.isUnread ?? false,
 						isUnnamed: workspace.isUnnamed ?? false,
+						createdBySuperset: workspace.worktreeId
+							? (worktreeCreatedBySupersetMap.get(workspace.worktreeId) ?? null)
+							: null,
 					};
 
 					if (workspace.sectionId) {
