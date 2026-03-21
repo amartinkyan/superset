@@ -9,7 +9,7 @@ import {
 } from "./types";
 
 const PR_JSON_FIELDS =
-	"number,title,url,state,isDraft,mergedAt,additions,deletions,headRefOid,headRefName,headRepositoryOwner,reviewDecision,statusCheckRollup,reviewRequests";
+	"number,title,url,state,isDraft,mergedAt,additions,deletions,headRefOid,headRefName,headRepository,headRepositoryOwner,isCrossRepository,reviewDecision,statusCheckRollup,reviewRequests";
 
 export async function getPRForBranch(
 	worktreePath: string,
@@ -87,7 +87,7 @@ export function prMatchesLocalBranch(
 		return localBranch === pr.headRefName;
 	}
 
-	return pr.headRepositoryOwner?.login.toLowerCase() === ownerPrefix;
+	return pr.headRepositoryOwner?.login?.toLowerCase() === ownerPrefix;
 }
 
 function sortPRCandidates(
@@ -332,6 +332,10 @@ function formatPRData(data: GHPRResponse): NonNullable<GitHubStatus["pr"]> {
 		mergedAt: data.mergedAt ? new Date(data.mergedAt).getTime() : undefined,
 		additions: data.additions,
 		deletions: data.deletions,
+		headRefName: data.headRefName,
+		headRepositoryOwner: data.headRepositoryOwner?.login,
+		headRepositoryName: data.headRepository?.name,
+		isCrossRepository: data.isCrossRepository,
 		reviewDecision: mapReviewDecision(data.reviewDecision),
 		checksStatus: computeChecksStatus(data.statusCheckRollup),
 		checks: parseChecks(data.statusCheckRollup),

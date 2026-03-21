@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import type { SimpleGit } from "simple-git";
+import type { RemoteWithRefs, SimpleGit } from "simple-git";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import {
@@ -7,6 +7,8 @@ import {
 	getSimpleGitWithShellPath,
 } from "../workspaces/utils/git-client";
 import {
+	clearGitHubStatusCacheForWorktree,
+	fetchGitHubPRStatus,
 	getPullRequestRepoArgs,
 	getRepoContext,
 } from "../workspaces/utils/github";
@@ -17,6 +19,11 @@ import {
 	isUpstreamMissingError,
 } from "./git-utils";
 import { assertRegisteredWorktree } from "./security/path-validation";
+import {
+	type GitRemoteInfo,
+	isOpenPullRequestState,
+	resolveRemoteNameForExistingPRHead,
+} from "./utils/existing-pr-push-target";
 import { mergePullRequest } from "./utils/merge-pull-request";
 import {
 	buildPullRequestCompareUrl,
@@ -28,6 +35,19 @@ import { clearWorktreeStatusCaches } from "./utils/worktree-status-caches";
 
 export { isUpstreamMissingError };
 
+async function getTrackingRef(
+	git: SimpleGit,
+): Promise<{ remoteName: string; branchName: string } | null> {
+	try {
+		const upstream = (
+			await git.raw(["rev-parse", "--abbrev-ref", "@{upstream}"])
+		).trim();
+		return parseUpstreamRef(upstream);
+	} catch {
+		return null;
+	}
+}
+
 async function hasUpstreamBranch(git: SimpleGit): Promise<boolean> {
 	try {
 		await git.raw(["rev-parse", "--abbrev-ref", "@{upstream}"]);
@@ -38,19 +58,15 @@ async function hasUpstreamBranch(git: SimpleGit): Promise<boolean> {
 }
 
 async function getTrackingRemote(git: SimpleGit): Promise<string> {
-	try {
-		const upstream = (
-			await git.raw(["rev-parse", "--abbrev-ref", "@{upstream}"])
-		).trim();
-		return resolveTrackingRemoteName(upstream);
-	} catch {
-		return "origin";
-	}
+	const trackingRef = await getTrackingRef(git);
+	return trackingRef?.remoteName ?? "origin";
 }
 
 async function fetchCurrentBranch(git: SimpleGit): Promise<void> {
-	const branch = (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
-	const remote = await getTrackingRemote(git);
+	const localBranch = (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
+	const trackingRef = await getTrackingRef(git);
+	const branch = trackingRef?.branchName ?? localBranch;
+	const remote = trackingRef?.remoteName ?? resolveTrackingRemoteName(null);
 	try {
 		await git.fetch([remote, branch]);
 	} catch (error) {
@@ -79,14 +95,14 @@ async function fetchCurrentBranch(git: SimpleGit): Promise<void> {
 
 async function pushWithSetUpstream({
 	git,
-	branch,
+	targetBranch,
 	remote,
 }: {
 	git: SimpleGit;
-	branch: string;
+	targetBranch: string;
 	remote?: string;
 }): Promise<void> {
-	const trimmedBranch = branch.trim();
+	const trimmedBranch = targetBranch.trim();
 	if (!trimmedBranch || trimmedBranch === "HEAD") {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
@@ -104,6 +120,93 @@ async function pushWithSetUpstream({
 		targetRemote,
 		`HEAD:refs/heads/${trimmedBranch}`,
 	]);
+}
+
+interface ExistingPullRequestPushTarget {
+	remote: string;
+	targetBranch: string;
+}
+
+function toGitRemoteInfo(remote: RemoteWithRefs): GitRemoteInfo {
+	return {
+		name: remote.name,
+		fetchUrl: remote.refs.fetch,
+		pushUrl: remote.refs.push,
+	};
+}
+
+async function resolveExistingPullRequestPushTarget({
+	git,
+	worktreePath,
+	fallbackRemote,
+}: {
+	git: SimpleGit;
+	worktreePath: string;
+	fallbackRemote: string;
+}): Promise<ExistingPullRequestPushTarget | null> {
+	clearGitHubStatusCacheForWorktree(worktreePath);
+	const githubStatus = await fetchGitHubPRStatus(worktreePath);
+	const pr = githubStatus?.pr;
+	if (!pr || !isOpenPullRequestState(pr.state) || !pr.headRefName?.trim()) {
+		return null;
+	}
+
+	const targetBranch = pr.headRefName.trim();
+	const remotes = (await git.getRemotes(true)).map(toGitRemoteInfo);
+	const remote = resolveRemoteNameForExistingPRHead({
+		remotes,
+		pr,
+		fallbackRemote,
+	});
+
+	if (remote) {
+		return { remote, targetBranch };
+	}
+
+	if (pr.isCrossRepository) {
+		const repoLabel =
+			pr.headRepositoryOwner && pr.headRepositoryName
+				? `${pr.headRepositoryOwner}/${pr.headRepositoryName}`
+				: "the PR head repository";
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: `Found open pull request ${pr.url}, but couldn't find a git remote for ${repoLabel}. Reattach the PR branch or add that remote before pushing.`,
+		});
+	}
+
+	return null;
+}
+
+async function pushWithResolvedUpstream({
+	git,
+	worktreePath,
+	localBranch,
+}: {
+	git: SimpleGit;
+	worktreePath: string;
+	localBranch: string;
+}): Promise<void> {
+	const fallbackRemote = await getTrackingRemote(git);
+	const existingPullRequestTarget = await resolveExistingPullRequestPushTarget({
+		git,
+		worktreePath,
+		fallbackRemote,
+	});
+
+	if (existingPullRequestTarget) {
+		await pushWithSetUpstream({
+			git,
+			remote: existingPullRequestTarget.remote,
+			targetBranch: existingPullRequestTarget.targetBranch,
+		});
+		return;
+	}
+
+	await pushWithSetUpstream({
+		git,
+		remote: fallbackRemote,
+		targetBranch: localBranch,
+	});
 }
 
 function shouldRetryPushWithUpstream(message: string): boolean {
@@ -396,8 +499,12 @@ export const createGitOperationsRouter = () => {
 				const hasUpstream = await hasUpstreamBranch(git);
 
 				if (input.setUpstream && !hasUpstream) {
-					const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-					await pushWithSetUpstream({ git, branch });
+					const localBranch = await git.revparse(["--abbrev-ref", "HEAD"]);
+					await pushWithResolvedUpstream({
+						git,
+						worktreePath: input.worktreePath,
+						localBranch,
+					});
 				} else {
 					try {
 						await git.push();
@@ -405,8 +512,12 @@ export const createGitOperationsRouter = () => {
 						const message =
 							error instanceof Error ? error.message : String(error);
 						if (shouldRetryPushWithUpstream(message)) {
-							const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-							await pushWithSetUpstream({ git, branch });
+							const localBranch = await git.revparse(["--abbrev-ref", "HEAD"]);
+							await pushWithResolvedUpstream({
+								git,
+								worktreePath: input.worktreePath,
+								localBranch,
+							});
 						} else {
 							throw error;
 						}
@@ -459,8 +570,12 @@ export const createGitOperationsRouter = () => {
 					const message =
 						error instanceof Error ? error.message : String(error);
 					if (isUpstreamMissingError(message)) {
-						const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-						await pushWithSetUpstream({ git, branch });
+						const localBranch = await git.revparse(["--abbrev-ref", "HEAD"]);
+						await pushWithResolvedUpstream({
+							git,
+							worktreePath: input.worktreePath,
+							localBranch,
+						});
 						await fetchCurrentBranch(git);
 						clearStatusCacheForWorktree(input.worktreePath);
 						return { success: true };
@@ -514,7 +629,11 @@ export const createGitOperationsRouter = () => {
 
 					// Ensure remote branch exists and local commits are available on remote before PR create.
 					if (!hasUpstream) {
-						await pushWithSetUpstream({ git, branch });
+						await pushWithResolvedUpstream({
+							git,
+							worktreePath: input.worktreePath,
+							localBranch: branch,
+						});
 					} else {
 						try {
 							await git.push();
@@ -522,7 +641,11 @@ export const createGitOperationsRouter = () => {
 							const message =
 								error instanceof Error ? error.message : String(error);
 							if (shouldRetryPushWithUpstream(message)) {
-								await pushWithSetUpstream({ git, branch });
+								await pushWithResolvedUpstream({
+									git,
+									worktreePath: input.worktreePath,
+									localBranch: branch,
+								});
 							} else if (
 								input.allowOutOfDate &&
 								isBehindUpstream &&

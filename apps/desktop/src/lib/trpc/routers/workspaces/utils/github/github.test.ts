@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolveRemoteBranchNameForGitHubStatus } from "./github";
 import {
 	branchMatchesPR,
 	getPRHeadBranchCandidates,
@@ -111,5 +112,34 @@ describe("prMatchesLocalBranch", () => {
 				headRepositoryOwner: null,
 			}),
 		).toBe(false);
+	});
+});
+
+describe("resolveRemoteBranchNameForGitHubStatus", () => {
+	test("prefers the tracked upstream branch name", () => {
+		expect(
+			resolveRemoteBranchNameForGitHubStatus({
+				localBranchName: "kitenite/feature/my-thing",
+				upstreamBranchName: "feature/my-thing",
+				prHeadRefName: "feature/my-thing",
+			}),
+		).toBe("feature/my-thing");
+	});
+
+	test("falls back to PR head branch name when no upstream is configured", () => {
+		expect(
+			resolveRemoteBranchNameForGitHubStatus({
+				localBranchName: "kitenite/feature/my-thing",
+				prHeadRefName: "feature/my-thing",
+			}),
+		).toBe("feature/my-thing");
+	});
+
+	test("falls back to the local branch name when no better remote branch is known", () => {
+		expect(
+			resolveRemoteBranchNameForGitHubStatus({
+				localBranchName: "feature/my-thing",
+			}),
+		).toBe("feature/my-thing");
 	});
 });
