@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	branchMatchesPR,
 	getPRHeadBranchCandidates,
-	getPullRequestRepoArgs,
 	prMatchesLocalBranch,
-} from "./github";
+} from "./pr-resolution";
+import { getPullRequestRepoArgs } from "./repo-context";
 
 describe("branchMatchesPR", () => {
 	test("matches same-repo branch exactly", () => {
