@@ -1,5 +1,6 @@
 import { toast } from "@superset/ui/sonner";
 import { useCallback, useRef, useState } from "react";
+import { getPortsToKillForPane, useKillPort } from "renderer/hooks/useKillPort";
 import { buildTerminalCommand } from "renderer/lib/terminal/launch-command";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { useTabsStore } from "renderer/stores/tabs/store";
@@ -29,6 +30,7 @@ export function useWorkspaceRunCommand({
 	const getRestartCallback = useTerminalCallbacksStore(
 		(s) => s.getRestartCallback,
 	);
+	const { killPorts } = useKillPort();
 
 	// Derive run state from pane metadata (single source of truth)
 	const runPane = useTabsStore((s) => {
@@ -47,10 +49,28 @@ export function useWorkspaceRunCommand({
 		// STOP: if currently running, kill it
 		if (isRunning && runPane) {
 			setIsPending(true);
+			setPaneWorkspaceRunState(runPane.id, "stopped-by-user");
 			try {
-				await electronTrpcClient.terminal.kill.mutate({ paneId: runPane.id });
-				setPaneWorkspaceRunState(runPane.id, "stopped-by-user");
+				const portsToKill = getPortsToKillForPane(
+					await electronTrpcClient.ports.getAll.query(),
+					runPane.id,
+				);
+
+				if (portsToKill.length > 0) {
+					const { failedCount } = await killPorts(portsToKill);
+					if (failedCount > 0) {
+						setPaneWorkspaceRunState(runPane.id, "running");
+					}
+					return;
+				}
+
+				await electronTrpcClient.terminal.write.mutate({
+					paneId: runPane.id,
+					data: "\u0003",
+					throwOnError: true,
+				});
 			} catch (error) {
+				setPaneWorkspaceRunState(runPane.id, "running");
 				toast.error("Failed to stop workspace run command", {
 					description: error instanceof Error ? error.message : "Unknown error",
 				});
@@ -168,6 +188,7 @@ export function useWorkspaceRunCommand({
 		addTab,
 		getRestartCallback,
 		isRunning,
+		killPorts,
 		runPane,
 		setActiveTab,
 		setFocusedPane,
