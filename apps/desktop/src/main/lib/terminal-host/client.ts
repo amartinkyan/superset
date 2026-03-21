@@ -318,7 +318,9 @@ export class TerminalHostClient extends EventEmitter {
 				this.isDaemonScriptStale()
 			) {
 				if (DEBUG_CLIENT) {
-					console.log("[TerminalHostClient] Daemon script rebuilt, restarting...");
+					console.log(
+						"[TerminalHostClient] Daemon script rebuilt, restarting...",
+					);
 				}
 				this.resetConnectionState({ emitDisconnected: false });
 				this.killDaemonFromPidFile();
