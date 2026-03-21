@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import { killTerminalForPane } from "renderer/stores/tabs/utils/terminal-cleanup";
+import { isTerminalAttachCanceledMessage } from "../attach-cancel";
 import { scheduleTerminalAttach } from "../attach-scheduler";
 import { isCommandEchoed, sanitizeForTitle } from "../commandBuffer";
 import { DEBUG_TERMINAL, FIRST_RENDER_RESTORE_FALLBACK_MS } from "../config";
@@ -44,11 +45,6 @@ type UnregisterCallback = (paneId: string) => void;
 
 const attachInFlightByPane = new Map<string, number>();
 const attachWaitersByPane = new Map<string, Set<() => void>>();
-const TERMINAL_ATTACH_CANCELED_MESSAGE = "TERMINAL_ATTACH_CANCELED";
-
-function isTerminalAttachCanceledMessage(message?: string): boolean {
-	return message?.includes(TERMINAL_ATTACH_CANCELED_MESSAGE) ?? false;
-}
 
 function markAttachInFlight(paneId: string, attachId: number): void {
 	attachInFlightByPane.set(paneId, attachId);

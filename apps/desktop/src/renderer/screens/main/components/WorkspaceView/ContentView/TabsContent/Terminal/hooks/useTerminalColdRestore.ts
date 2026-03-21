@@ -1,7 +1,7 @@
-import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { useCallback, useRef, useState } from "react";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
+import { isTerminalAttachCanceledMessage } from "../attach-cancel";
 import { coldRestoreState } from "../state";
 import type {
 	CreateOrAttachMutate,
@@ -10,18 +10,11 @@ import type {
 } from "../types";
 import { scrollToBottom } from "../utils";
 
-const TERMINAL_ATTACH_CANCELED_MESSAGE = "TERMINAL_ATTACH_CANCELED";
-
-function isTerminalAttachCanceledMessage(message?: string): boolean {
-	return message?.includes(TERMINAL_ATTACH_CANCELED_MESSAGE) ?? false;
-}
-
 export interface UseTerminalColdRestoreOptions {
 	paneId: string;
 	tabId: string;
 	workspaceId: string;
 	xtermRef: React.MutableRefObject<XTerm | null>;
-	fitAddonRef: React.MutableRefObject<FitAddon | null>;
 	isStreamReadyRef: React.MutableRefObject<boolean>;
 	isExitedRef: React.MutableRefObject<boolean>;
 	wasKilledByUserRef: React.MutableRefObject<boolean>;
@@ -59,7 +52,6 @@ export function useTerminalColdRestore({
 	tabId,
 	workspaceId,
 	xtermRef,
-	fitAddonRef,
 	isStreamReadyRef,
 	isExitedRef,
 	wasKilledByUserRef,
@@ -175,8 +167,7 @@ export function useTerminalColdRestore({
 
 	const handleStartShell = useCallback(() => {
 		const xterm = xtermRef.current;
-		const fitAddon = fitAddonRef.current;
-		if (!xterm || !fitAddon) return;
+		if (!xterm) return;
 
 		// Drop any queued events from the pre-restore session
 		pendingEventsRef.current = [];
@@ -245,7 +236,6 @@ export function useTerminalColdRestore({
 		tabId,
 		workspaceId,
 		xtermRef,
-		fitAddonRef,
 		isStreamReadyRef,
 		isExitedRef,
 		wasKilledByUserRef,

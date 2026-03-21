@@ -16,11 +16,9 @@ import {
 	getCommandShellArgs,
 	getShellArgs,
 } from "../lib/agent-setup/shell-wrappers";
+import { raceWithAbort, throwIfAborted } from "../lib/terminal/abort";
 import { buildSafeEnv } from "../lib/terminal/env";
-import {
-	isTerminalAttachCanceledError,
-	TerminalAttachCanceledError,
-} from "../lib/terminal/errors";
+import { isTerminalAttachCanceledError } from "../lib/terminal/errors";
 import { HeadlessEmulator } from "../lib/terminal-host/headless-emulator";
 import type {
 	CreateOrAttachRequest,
@@ -80,38 +78,6 @@ type SpawnProcess = (
 	args: readonly string[],
 	options: Parameters<typeof spawn>[2],
 ) => ChildProcess;
-
-function throwIfAborted(signal?: AbortSignal): void {
-	if (signal?.aborted) {
-		throw new TerminalAttachCanceledError();
-	}
-}
-
-function raceWithAbort<T>(
-	promise: Promise<T>,
-	signal?: AbortSignal,
-): Promise<T> {
-	if (!signal) return promise;
-	if (signal.aborted) {
-		return Promise.reject(new TerminalAttachCanceledError());
-	}
-
-	return new Promise<T>((resolve, reject) => {
-		const onAbort = () => {
-			reject(new TerminalAttachCanceledError());
-		};
-		signal.addEventListener("abort", onAbort, { once: true });
-		promise
-			.then((value) => {
-				signal.removeEventListener("abort", onAbort);
-				resolve(value);
-			})
-			.catch((error) => {
-				signal.removeEventListener("abort", onAbort);
-				reject(error);
-			});
-	});
-}
 
 // =============================================================================
 // Types

@@ -10,8 +10,9 @@ import {
 	type TerminalHostClient,
 } from "../../terminal-host/client";
 import type { ListSessionsResponse } from "../../terminal-host/types";
+import { raceWithAbort, throwIfAborted } from "../abort";
 import { buildTerminalEnv, getDefaultShell } from "../env";
-import { TerminalAttachCanceledError, TerminalKilledError } from "../errors";
+import { TerminalKilledError } from "../errors";
 import { portManager } from "../port-manager";
 import type { CreateSessionParams, SessionResult } from "../types";
 import {
@@ -29,37 +30,6 @@ interface PendingCreateOrAttach {
 	requestId: string;
 	abortController: AbortController;
 	promise: Promise<SessionResult>;
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-	if (signal.aborted) {
-		throw new TerminalAttachCanceledError();
-	}
-}
-
-function raceWithAbort<T>(
-	promise: Promise<T>,
-	signal: AbortSignal,
-): Promise<T> {
-	if (signal.aborted) {
-		return Promise.reject(new TerminalAttachCanceledError());
-	}
-
-	return new Promise<T>((resolve, reject) => {
-		const onAbort = () => {
-			reject(new TerminalAttachCanceledError());
-		};
-		signal.addEventListener("abort", onAbort, { once: true });
-		promise
-			.then((value) => {
-				signal.removeEventListener("abort", onAbort);
-				resolve(value);
-			})
-			.catch((error) => {
-				signal.removeEventListener("abort", onAbort);
-				reject(error);
-			});
-	});
 }
 
 export class DaemonTerminalManager extends EventEmitter {

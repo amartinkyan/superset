@@ -229,7 +229,6 @@ export const Terminal = ({ paneId, tabId, workspaceId }: TerminalProps) => {
 		tabId,
 		workspaceId,
 		xtermRef,
-		fitAddonRef,
 		isStreamReadyRef,
 		isExitedRef,
 		wasKilledByUserRef,
