@@ -172,6 +172,8 @@ function hasMacosSystemCertBundle(): boolean {
 export function resetTerminalEnvCachesForTests(): void {
 	cachedProcessEnvSnapshot = null;
 	cachedMacosSystemCertAvailable = null;
+	cachedUtf8Locale = null;
+	localeProbeInFlight = false;
 }
 
 /**
