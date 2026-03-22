@@ -24,6 +24,7 @@ import {
 	LuFolderPlus,
 	LuMinus,
 	LuPencil,
+	LuWrench,
 } from "react-icons/lu";
 import {
 	useCreateSectionFromWorkspaces,
@@ -40,9 +41,11 @@ interface WorkspaceContextMenuProps {
 	projectId: string;
 	name: string;
 	isBranchWorkspace: boolean;
+	isRepairRequired: boolean;
 	isUnread: boolean;
 	workspaceStatus: string | null | undefined;
 	sections: { id: string; name: string }[];
+	onRecoverWorktree: () => void;
 	onRename: () => void;
 	onOpenInFinder: () => void;
 	onCopyPath: () => void;
@@ -56,9 +59,11 @@ export function WorkspaceContextMenu({
 	projectId,
 	name,
 	isBranchWorkspace,
+	isRepairRequired,
 	isUnread,
 	workspaceStatus,
 	sections,
+	onRecoverWorktree,
 	onRename,
 	onOpenInFinder,
 	onCopyPath,
@@ -196,6 +201,15 @@ export function WorkspaceContextMenu({
 					<ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
 				</HoverCardTrigger>
 				<ContextMenuContent>
+					{isRepairRequired && (
+						<>
+							<ContextMenuItem onSelect={onRecoverWorktree}>
+								<LuWrench className="size-4 mr-2" strokeWidth={STROKE_WIDTH} />
+								Recover worktree
+							</ContextMenuItem>
+							<ContextMenuSeparator />
+						</>
+					)}
 					<ContextMenuItem onSelect={onRename}>
 						<LuPencil className="size-4 mr-2" strokeWidth={STROKE_WIDTH} />
 						Rename

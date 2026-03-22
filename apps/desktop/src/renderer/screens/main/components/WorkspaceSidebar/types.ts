@@ -2,11 +2,15 @@ export interface SidebarWorkspace {
 	id: string;
 	projectId: string;
 	worktreePath: string;
+	existsOnDisk: boolean;
 	type: "worktree" | "branch";
 	branch: string;
 	name: string;
 	tabOrder: number;
 	isUnread: boolean;
+	repairCommand?: string | null;
+	repairMessage?: string | null;
+	repairState?: "ok" | "missing" | "repair_required" | "repairing";
 }
 
 export interface DragItem {

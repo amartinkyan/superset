@@ -1,5 +1,7 @@
+import { existsSync } from "node:fs";
 import {
 	projects,
+	type SelectWorkspace,
 	workspaceSections,
 	workspaces,
 	worktrees,
@@ -11,11 +13,58 @@ import { z } from "zod";
 import { publicProcedure, router } from "../../..";
 import { getWorkspace } from "../utils/db-helpers";
 import { getProjectChildItems } from "../utils/project-children-order";
+import {
+	resolveWorktreePathWithRepairMetadata,
+	type TrackedWorktreeRepairState,
+} from "../utils/repair-worktree-path";
 import { loadSetupConfig } from "../utils/setup";
 import { computeVisualOrder } from "../utils/visual-order";
-import { getWorkspacePath } from "../utils/worktree";
 
-type WorktreePathMap = Map<string, string>;
+interface WorkspaceQueryPathState {
+	worktreePath: string;
+	existsOnDisk: boolean;
+	repairState: TrackedWorktreeRepairState;
+	repairMessage: string | null;
+	repairCommand: string | null;
+}
+
+async function resolveWorkspacePathState(input: {
+	workspace: SelectWorkspace;
+	mainRepoPath: string | null | undefined;
+}): Promise<WorkspaceQueryPathState> {
+	if (input.workspace.type === "branch") {
+		const worktreePath = input.mainRepoPath ?? "";
+		return {
+			worktreePath,
+			existsOnDisk: !!worktreePath && existsSync(worktreePath),
+			repairState: "ok",
+			repairMessage: null,
+			repairCommand: null,
+		};
+	}
+
+	if (!input.workspace.worktreeId) {
+		return {
+			worktreePath: "",
+			existsOnDisk: false,
+			repairState: "missing",
+			repairMessage: "Tracked worktree could not be found.",
+			repairCommand: null,
+		};
+	}
+
+	const resolution = await resolveWorktreePathWithRepairMetadata(
+		input.workspace.worktreeId,
+	);
+
+	return {
+		worktreePath: resolution.path ?? "",
+		existsOnDisk: !!resolution.path && existsSync(resolution.path),
+		repairState: resolution.repairState,
+		repairMessage: resolution.repairMessage,
+		repairCommand: resolution.repairCommand,
+	};
+}
 
 /** Returns workspace IDs in sidebar visual order (by project.tabOrder, then ungrouped workspaces, then sections by tabOrder). */
 function getWorkspacesInVisualOrder(): string[] {
@@ -61,11 +110,19 @@ export const createQueryProcedures = () => {
 							.where(eq(worktrees.id, workspace.worktreeId))
 							.get()
 					: null;
+				const pathState = await resolveWorkspacePathState({
+					workspace,
+					mainRepoPath: project?.mainRepoPath,
+				});
 
 				return {
 					...workspace,
 					type: workspace.type as "worktree" | "branch",
-					worktreePath: getWorkspacePath(workspace) ?? "",
+					worktreePath: pathState.worktreePath,
+					existsOnDisk: pathState.existsOnDisk,
+					repairState: pathState.repairState,
+					repairMessage: pathState.repairMessage,
+					repairCommand: pathState.repairCommand,
 					project: project
 						? {
 								id: project.id,
@@ -94,13 +151,17 @@ export const createQueryProcedures = () => {
 				.sort((a, b) => a.tabOrder - b.tabOrder);
 		}),
 
-		getAllGrouped: publicProcedure.query(() => {
+		getAllGrouped: publicProcedure.query(async () => {
 			type WorkspaceItem = {
 				id: string;
 				projectId: string;
 				sectionId: string | null;
 				worktreeId: string | null;
 				worktreePath: string;
+				existsOnDisk: boolean;
+				repairState: TrackedWorktreeRepairState;
+				repairMessage: string | null;
+				repairCommand: string | null;
 				type: "worktree" | "branch";
 				branch: string;
 				name: string;
@@ -133,11 +194,6 @@ export const createQueryProcedures = () => {
 				.from(projects)
 				.where(isNotNull(projects.tabOrder))
 				.all();
-
-			const allWorktrees = localDb.select().from(worktrees).all();
-			const worktreePathMap: WorktreePathMap = new Map(
-				allWorktrees.map((wt) => [wt.id, wt.path]),
-			);
 
 			const allSections = localDb.select().from(workspaceSections).all();
 
@@ -199,38 +255,53 @@ export const createQueryProcedures = () => {
 				.all()
 				.sort((a, b) => a.tabOrder - b.tabOrder);
 
-			for (const workspace of allWorkspaces) {
-				const group = groupsMap.get(workspace.projectId);
-				if (group) {
-					let worktreePath = "";
-					if (workspace.type === "worktree" && workspace.worktreeId) {
-						worktreePath = worktreePathMap.get(workspace.worktreeId) ?? "";
-					} else if (workspace.type === "branch") {
-						worktreePath = group.project.mainRepoPath;
+			const resolvedWorkspaces = await Promise.all(
+				allWorkspaces.map(async (workspace) => {
+					const group = groupsMap.get(workspace.projectId);
+					if (!group) {
+						return null;
 					}
+
+					const pathState = await resolveWorkspacePathState({
+						workspace,
+						mainRepoPath: group.project.mainRepoPath,
+					});
 
 					const item: WorkspaceItem = {
 						...workspace,
 						sectionId: workspace.sectionId ?? null,
 						type: workspace.type as "worktree" | "branch",
-						worktreePath,
+						worktreePath: pathState.worktreePath,
+						existsOnDisk: pathState.existsOnDisk,
+						repairState: pathState.repairState,
+						repairMessage: pathState.repairMessage,
+						repairCommand: pathState.repairCommand,
 						isUnread: workspace.isUnread ?? false,
 						isUnnamed: workspace.isUnnamed ?? false,
 					};
 
-					if (workspace.sectionId) {
-						const section = group.sections.find(
-							(s) => s.id === workspace.sectionId,
-						);
-						if (section) {
-							section.workspaces.push(item);
-						} else {
-							// Orphan: section not found, fall back to ungrouped
-							group.workspaces.push(item);
-						}
+					return { workspace, group, item };
+				}),
+			);
+
+			for (const resolvedWorkspace of resolvedWorkspaces) {
+				if (!resolvedWorkspace) {
+					continue;
+				}
+
+				const { workspace, group, item } = resolvedWorkspace;
+				if (workspace.sectionId) {
+					const section = group.sections.find(
+						(s) => s.id === workspace.sectionId,
+					);
+					if (section) {
+						section.workspaces.push(item);
 					} else {
+						// Orphan: section not found, fall back to ungrouped
 						group.workspaces.push(item);
 					}
+				} else {
+					group.workspaces.push(item);
 				}
 			}
 
@@ -291,7 +362,7 @@ export const createQueryProcedures = () => {
 
 		getResolvedRunCommands: publicProcedure
 			.input(z.object({ workspaceId: z.string() }))
-			.query(({ input }) => {
+			.query(async ({ input }) => {
 				const workspace = localDb
 					.select()
 					.from(workspaces)
@@ -313,17 +384,13 @@ export const createQueryProcedures = () => {
 					return { commands: [] };
 				}
 
-				const worktree = workspace.worktreeId
-					? localDb
-							.select()
-							.from(worktrees)
-							.where(eq(worktrees.id, workspace.worktreeId))
-							.get()
-					: null;
-
 				const worktreePath =
-					workspace.type === "worktree" && worktree?.path
-						? worktree.path
+					workspace.type === "worktree" && workspace.worktreeId
+						? ((
+								await resolveWorktreePathWithRepairMetadata(
+									workspace.worktreeId,
+								)
+							).path ?? undefined)
 						: workspace.type === "branch"
 							? project.mainRepoPath
 							: undefined;

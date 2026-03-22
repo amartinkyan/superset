@@ -26,6 +26,9 @@ export function WorkspaceList({
 					id={workspace.id}
 					projectId={workspace.projectId}
 					worktreePath={workspace.worktreePath}
+					repairCommand={workspace.repairCommand}
+					repairMessage={workspace.repairMessage}
+					repairState={workspace.repairState}
 					name={workspace.name}
 					branch={workspace.branch}
 					type={workspace.type}

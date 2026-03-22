@@ -4,10 +4,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { HiMiniXMark } from "react-icons/hi2";
+import { HiMiniExclamationTriangle, HiMiniXMark } from "react-icons/hi2";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { useWorkspaceDeleteHandler } from "renderer/react-query/workspaces";
+import {
+	useRecoverTrackedWorktree,
+	useWorkspaceDeleteHandler,
+} from "renderer/react-query/workspaces";
 import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { WorkspaceRunIndicator } from "renderer/screens/main/components/WorkspaceRunIndicator";
 import { useBranchSyncInvalidation } from "renderer/screens/main/hooks/useBranchSyncInvalidation";
@@ -35,6 +38,9 @@ interface WorkspaceListItemProps {
 	id: string;
 	projectId: string;
 	worktreePath: string;
+	repairCommand?: string | null;
+	repairMessage?: string | null;
+	repairState?: "ok" | "missing" | "repair_required" | "repairing";
 	name: string;
 	branch: string;
 	type: "worktree" | "branch";
@@ -51,6 +57,9 @@ export function WorkspaceListItem({
 	id,
 	projectId,
 	worktreePath,
+	repairCommand,
+	repairMessage,
+	repairState = "ok",
 	name,
 	branch,
 	type,
@@ -129,6 +138,10 @@ export function WorkspaceListItem({
 
 	const { showDeleteDialog, setShowDeleteDialog, handleDeleteClick } =
 		useWorkspaceDeleteHandler();
+	const { recoverTrackedWorktree } = useRecoverTrackedWorktree({
+		workspaceId: id,
+		defaultPath: worktreePath || undefined,
+	});
 
 	const { data: githubStatus } =
 		electronTrpc.workspaces.getGitHubStatus.useQuery(
@@ -232,6 +245,9 @@ export function WorkspaceListItem({
 			: null);
 
 	const showBranchSubtitle = isBranchWorkspace || (!!name && name !== branch);
+	const isRepairRequired =
+		!isBranchWorkspace && repairState === "repair_required";
+	const shouldShowRepairWarning = isRepairRequired && !!repairMessage;
 
 	if (isCollapsed) {
 		return (
@@ -363,6 +379,30 @@ export function WorkspaceListItem({
 							>
 								{isBranchWorkspace ? "local" : name || branch}
 							</span>
+							{shouldShowRepairWarning && (
+								<Tooltip delayDuration={300}>
+									<TooltipTrigger asChild>
+										<span className="shrink-0 text-amber-500">
+											<HiMiniExclamationTriangle className="size-3.5" />
+										</span>
+									</TooltipTrigger>
+									<TooltipContent
+										side="top"
+										sideOffset={4}
+										className="max-w-80"
+									>
+										<p className="text-xs font-medium">Recover worktree</p>
+										<p className="text-xs text-muted-foreground">
+											{repairMessage}
+										</p>
+										{repairCommand && (
+											<code className="mt-2 block whitespace-pre-wrap break-all text-[11px]">
+												{repairCommand}
+											</code>
+										)}
+									</TooltipContent>
+								</Tooltip>
+							)}
 
 							{isBranchWorkspace && aheadBehind && (
 								<WorkspaceAheadBehind
@@ -440,9 +480,11 @@ export function WorkspaceListItem({
 				projectId={projectId}
 				name={name}
 				isBranchWorkspace={isBranchWorkspace}
+				isRepairRequired={isRepairRequired}
 				isUnread={isUnread}
 				workspaceStatus={workspaceStatus}
 				sections={sections}
+				onRecoverWorktree={() => void recoverTrackedWorktree()}
 				onRename={rename.startRename}
 				onOpenInFinder={handleOpenInFinder}
 				onCopyPath={handleCopyPath}

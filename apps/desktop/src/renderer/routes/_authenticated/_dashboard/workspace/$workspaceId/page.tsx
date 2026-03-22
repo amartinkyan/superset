@@ -1,3 +1,4 @@
+import { Button } from "@superset/ui/button";
 import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
@@ -6,6 +7,7 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { usePresets } from "renderer/react-query/presets";
+import { useRecoverTrackedWorktree } from "renderer/react-query/workspaces";
 import type { WorkspaceSearchParams } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { navigateToWorkspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { usePresetHotkeys } from "renderer/routes/_authenticated/_dashboard/workspace/$workspaceId/hooks/usePresetHotkeys";
@@ -123,8 +125,12 @@ function WorkspacePage() {
 
 	// Check for incomplete init after app restart
 	const gitStatus = workspace?.worktree?.gitStatus;
+	const showRecoveryView =
+		workspace?.type === "worktree" &&
+		workspace.repairState === "repair_required";
 	const hasIncompleteInit =
 		workspace?.type === "worktree" &&
+		!showRecoveryView &&
 		(gitStatus === null || gitStatus === undefined);
 
 	// Show full-screen initialization view for:
@@ -375,6 +381,11 @@ function WorkspacePage() {
 
 	// Copy path shortcut
 	const { copyToClipboard } = useCopyToClipboard();
+	const { recoverTrackedWorktree, isPending: isRecoverTrackedWorktreePending } =
+		useRecoverTrackedWorktree({
+			workspaceId,
+			defaultPath: workspace?.project?.mainRepoPath,
+		});
 	useAppHotkey(
 		"COPY_PATH",
 		() => {
@@ -385,6 +396,13 @@ function WorkspacePage() {
 		undefined,
 		[workspace?.worktreePath],
 	);
+	const handleCopyRepairCommand = useCallback(() => {
+		if (!workspace?.repairCommand) {
+			return;
+		}
+
+		void copyToClipboard(workspace.repairCommand);
+	}, [copyToClipboard, workspace?.repairCommand]);
 
 	// Open PR shortcut (⌘⇧P)
 	const { pr } = usePRStatus({ workspaceId });
@@ -632,6 +650,43 @@ function WorkspacePage() {
 						workspaceName={workspace?.name ?? "Workspace"}
 						isInterrupted={hasIncompleteInit && !isInitializing}
 					/>
+				) : showRecoveryView ? (
+					<div className="flex flex-1 items-center justify-center px-8">
+						<div className="w-full max-w-lg rounded-xl border bg-background p-6 shadow-sm">
+							<div className="space-y-2">
+								<h2 className="text-lg font-medium">Recover worktree</h2>
+								<p className="text-sm text-muted-foreground">
+									{workspace?.repairMessage}
+								</p>
+							</div>
+							{workspace?.repairCommand && (
+								<pre className="mt-4 overflow-x-auto rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+									{workspace.repairCommand}
+								</pre>
+							)}
+							<div className="mt-4 flex gap-2">
+								<Button
+									size="sm"
+									onClick={() => void recoverTrackedWorktree()}
+									disabled={isRecoverTrackedWorktreePending}
+								>
+									{isRecoverTrackedWorktreePending
+										? "Recovering..."
+										: "Recover worktree"}
+								</Button>
+								{workspace?.repairCommand && (
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={handleCopyRepairCommand}
+										disabled={isRecoverTrackedWorktreePending}
+									>
+										Copy command
+									</Button>
+								)}
+							</div>
+						</div>
+					</div>
 				) : (
 					<WorkspaceLayout
 						defaultExternalApp={defaultApp}

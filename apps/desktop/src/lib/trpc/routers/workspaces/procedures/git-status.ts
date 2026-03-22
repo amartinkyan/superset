@@ -23,6 +23,10 @@ import {
 	fetchGitHubPRStatus,
 	type PullRequestCommentsTarget,
 } from "../utils/github";
+import {
+	resolveWorktreePathOrThrow,
+	resolveWorktreePathWithRepair,
+} from "../utils/repair-worktree-path";
 
 const gitHubPRCommentsInputSchema = z.object({
 	workspaceId: z.string(),
@@ -107,8 +111,13 @@ export const createGitStatusProcedures = () => {
 
 				await fetchDefaultBranch(project.mainRepoPath, defaultBranch);
 
+				const worktreePath = await resolveWorktreePathOrThrow(worktree.id);
+				if (!worktreePath) {
+					throw new Error(`Worktree ${worktree.id} path could not be resolved`);
+				}
+
 				const { ahead, behind } = await getAheadBehindCount({
-					repoPath: worktree.path,
+					repoPath: worktreePath,
 					defaultBranch,
 				});
 
@@ -163,7 +172,12 @@ export const createGitStatusProcedures = () => {
 					return null;
 				}
 
-				const freshStatus = await fetchGitHubPRStatus(worktree.path);
+				const worktreePath = await resolveWorktreePathWithRepair(worktree.id);
+				if (!worktreePath) {
+					return null;
+				}
+
+				const freshStatus = await fetchGitHubPRStatus(worktreePath);
 
 				if (freshStatus) {
 					localDb
@@ -192,9 +206,13 @@ export const createGitStatusProcedures = () => {
 				}
 
 				const cachedGitHubStatus = worktree.githubStatus ?? null;
+				const worktreePath = await resolveWorktreePathWithRepair(worktree.id);
+				if (!worktreePath) {
+					return [];
+				}
 
 				return fetchGitHubPRComments({
-					worktreePath: worktree.path,
+					worktreePath,
 					pullRequest: resolveCommentsPullRequestTarget({
 						input,
 						githubStatus: cachedGitHubStatus,
@@ -204,7 +222,7 @@ export const createGitStatusProcedures = () => {
 
 		getWorktreeInfo: publicProcedure
 			.input(z.object({ workspaceId: z.string() }))
-			.query(({ input }) => {
+			.query(async ({ input }) => {
 				const workspace = getWorkspace(input.workspaceId);
 				if (!workspace) {
 					return null;
@@ -217,7 +235,8 @@ export const createGitStatusProcedures = () => {
 					return null;
 				}
 
-				const worktreeName = worktree.path.split("/").pop() ?? worktree.branch;
+				const resolvedPath = await resolveWorktreePathWithRepair(worktree.id);
+				const worktreeName = resolvedPath?.split("/").pop() ?? worktree.branch;
 				const branchName = worktree.branch;
 
 				return {
