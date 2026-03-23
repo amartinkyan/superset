@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { execFileSync } from "node:child_process";
 import {
 	chmodSync,
+	existsSync,
 	mkdirSync,
 	readFileSync,
 	rmSync,
@@ -169,6 +170,91 @@ describe("agent-wrappers copilot", () => {
 		const updated = readFileSync(hookFile, "utf-8");
 		expect(updated).toContain(hookScriptPath);
 		expect(updated).not.toContain("/tmp/old-hook.sh");
+	});
+
+	it("adds git exclude entry in a worktree where .git is a file", () => {
+		// Simulate a git worktree: .git is a file pointing to the real git dir
+		const projectDir = path.join(TEST_ROOT, "worktree-project");
+		const hooksDir = path.join(projectDir, ".github", "hooks");
+		const hookFile = path.join(hooksDir, "superset-notify.json");
+		const realBinDir = path.join(TEST_ROOT, "real-bin");
+		const realCopilot = path.join(realBinDir, "copilot");
+		const wrapperPath = path.join(TEST_BIN_DIR, "copilot");
+		const hookScriptPath = getCopilotHookScriptPath();
+
+		// Create a real git repo and a worktree to test against
+		const mainRepo = path.join(TEST_ROOT, "main-repo");
+		mkdirSync(mainRepo, { recursive: true });
+		execFileSync("git", ["init", mainRepo]);
+		execFileSync("git", [
+			"-C",
+			mainRepo,
+			"config",
+			"user.email",
+			"test@test.com",
+		]);
+		execFileSync("git", ["-C", mainRepo, "config", "user.name", "Test"]);
+		// Create an initial commit so we can create a worktree
+		writeFileSync(path.join(mainRepo, "dummy.txt"), "init");
+		execFileSync("git", ["-C", mainRepo, "add", "."]);
+		execFileSync("git", ["-C", mainRepo, "commit", "-m", "init"]);
+		// Create the worktree at projectDir
+		execFileSync("git", [
+			"-C",
+			mainRepo,
+			"worktree",
+			"add",
+			projectDir,
+			"-b",
+			"test-worktree",
+		]);
+
+		// Verify .git is a file (worktree marker), not a directory
+		const gitPath = path.join(projectDir, ".git");
+		expect(existsSync(gitPath)).toBe(true);
+		const gitContent = readFileSync(gitPath, "utf-8");
+		expect(gitContent).toContain("gitdir:");
+
+		mkdirSync(hooksDir, { recursive: true });
+		mkdirSync(realBinDir, { recursive: true });
+
+		writeFileSync(hookScriptPath, "#!/bin/bash\nexit 0\n", { mode: 0o755 });
+		writeFileSync(realCopilot, "#!/bin/bash\necho real-copilot\n", {
+			mode: 0o755,
+		});
+		chmodSync(realCopilot, 0o755);
+
+		const wrapperScript = buildWrapperScript(
+			"copilot",
+			buildCopilotWrapperExecLine(),
+		);
+		writeFileSync(wrapperPath, wrapperScript, { mode: 0o755 });
+		chmodSync(wrapperPath, 0o755);
+
+		execFileSync(wrapperPath, [], {
+			cwd: projectDir,
+			env: {
+				...process.env,
+				PATH: `${TEST_BIN_DIR}:${realBinDir}:${process.env.PATH || ""}`,
+				SUPERSET_TAB_ID: "tab-1",
+			},
+			encoding: "utf-8",
+		});
+
+		// The hook file should be created
+		const updatedHook = readFileSync(hookFile, "utf-8");
+		expect(updatedHook).toContain(hookScriptPath);
+
+		// The exclude entry should be added in the worktree's git dir
+		const worktreeGitDir = execFileSync(
+			"git",
+			["-C", projectDir, "rev-parse", "--git-dir"],
+			{ encoding: "utf-8" },
+		).trim();
+		const excludeFile = path.join(worktreeGitDir, "info", "exclude");
+		expect(existsSync(excludeFile)).toBe(true);
+		const excludeContent = readFileSync(excludeFile, "utf-8");
+		expect(excludeContent).toContain(".github/hooks/superset-notify.json");
 	});
 
 	it("injects codex start + permission watchers and completion notifications in wrapper", () => {

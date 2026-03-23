@@ -93,9 +93,11 @@ if [ -n "$SUPERSET_TAB_ID" ] && [ -f "${hookScriptPath}" ]; then
   mkdir -p "$COPILOT_HOOKS_DIR" 2>/dev/null
   printf '%s\\n' '${escapedJson}' > "$COPILOT_HOOK_FILE" 2>/dev/null
 
-  if [ -d ".git/info" ]; then
-    grep -qF ".github/hooks/superset-notify.json" ".git/info/exclude" 2>/dev/null || \\
-      printf '%s\\n' ".github/hooks/superset-notify.json" >> ".git/info/exclude" 2>/dev/null
+  COPILOT_GIT_DIR="$(git rev-parse --git-dir 2>/dev/null)"
+  if [ -n "$COPILOT_GIT_DIR" ]; then
+    mkdir -p "$COPILOT_GIT_DIR/info" 2>/dev/null
+    grep -qF ".github/hooks/superset-notify.json" "$COPILOT_GIT_DIR/info/exclude" 2>/dev/null || \\
+      printf '%s\\n' ".github/hooks/superset-notify.json" >> "$COPILOT_GIT_DIR/info/exclude" 2>/dev/null
   fi
 fi
 

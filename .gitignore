@@ -84,3 +84,6 @@ superset-dev-data/
 !.codex/config.toml
 !.codex/commands
 !.codex/prompts
+
+# Copilot hooks injected at runtime by Superset desktop wrapper
+.github/hooks/superset-notify.json
