@@ -3,6 +3,7 @@ import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo } from "react";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { useFileOpenMode } from "renderer/hooks/useFileOpenMode";
+import { useWindowTitle } from "renderer/hooks/useWindowTitle";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { getWorkspaceDisplayName } from "renderer/lib/getWorkspaceDisplayName";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
@@ -107,6 +108,19 @@ function WorkspacePage() {
 
 	// Keep the file open mode cache warm for addFileViewerPane
 	useFileOpenMode();
+
+	// Dynamically update the Electron window title
+	useWindowTitle({
+		workspaceId,
+		workspaceDisplayName: workspace
+			? getWorkspaceDisplayName(
+					workspace.name,
+					workspace.type,
+					workspace.project?.name,
+				)
+			: undefined,
+		branch: workspace?.worktree?.branch ?? workspace?.branch,
+	});
 
 	// Handle search-param-driven tab/pane activation (e.g. from notification clicks)
 	useEffect(() => {

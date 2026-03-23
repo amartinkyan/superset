@@ -798,6 +798,26 @@ export const createSettingsRouter = () => {
 				return { success: true };
 			}),
 
+		getWindowTitleFormat: publicProcedure.query(() => {
+			const row = getSettings();
+			return row.windowTitleFormat ?? null;
+		}),
+
+		setWindowTitleFormat: publicProcedure
+			.input(z.object({ format: z.string().nullable() }))
+			.mutation(({ input }) => {
+				localDb
+					.insert(settings)
+					.values({ id: 1, windowTitleFormat: input.format })
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: { windowTitleFormat: input.format },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
 		// TODO: remove telemetry procedures once telemetry_enabled column is dropped
 		getTelemetryEnabled: publicProcedure.query(() => {
 			return true;

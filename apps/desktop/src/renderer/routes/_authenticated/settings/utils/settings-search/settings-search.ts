@@ -26,6 +26,7 @@ export const SETTING_ITEM_ID = {
 	BEHAVIOR_FILE_OPEN_MODE: "behavior-file-open-mode",
 	BEHAVIOR_RESOURCE_MONITOR: "behavior-resource-monitor",
 	BEHAVIOR_OPEN_LINKS_IN_APP: "behavior-open-links-in-app",
+	BEHAVIOR_WINDOW_TITLE: "behavior-window-title",
 
 	GIT_BRANCH_PREFIX: "git-branch-prefix",
 	GIT_DELETE_LOCAL_BRANCH: "git-delete-local-branch",
@@ -484,6 +485,28 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"chat",
 			"terminal",
 			"url",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.BEHAVIOR_WINDOW_TITLE,
+		section: "behavior",
+		title: "Window title format",
+		description:
+			"Customize the window title shown in the taskbar, window switcher, and time-tracking tools",
+		keywords: [
+			"window",
+			"title",
+			"format",
+			"template",
+			"taskbar",
+			"time tracking",
+			"toggl",
+			"rescuetime",
+			"workspace",
+			"branch",
+			"tab",
+			"pane",
+			"dynamic",
 		],
 	},
 	{

@@ -1,4 +1,6 @@
 import type { FileOpenMode } from "@superset/local-db";
+import { Button } from "@superset/ui/button";
+import { Input } from "@superset/ui/input";
 import { Label } from "@superset/ui/label";
 import {
 	Select,
@@ -8,7 +10,12 @@ import {
 	SelectValue,
 } from "@superset/ui/select";
 import { Switch } from "@superset/ui/switch";
+import { useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import {
+	DEFAULT_WINDOW_TITLE_FORMAT,
+	formatWindowTitle,
+} from "shared/window-title";
 import {
 	isItemVisible,
 	SETTING_ITEM_ID,
@@ -38,6 +45,10 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 	);
 	const showOpenLinksInApp = isItemVisible(
 		SETTING_ITEM_ID.BEHAVIOR_OPEN_LINKS_IN_APP,
+		visibleItems,
+	);
+	const showWindowTitle = isItemVisible(
+		SETTING_ITEM_ID.BEHAVIOR_WINDOW_TITLE,
 		visibleItems,
 	);
 
@@ -159,6 +170,58 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 		},
 	);
 
+	const { data: windowTitleFormat, isLoading: isWindowTitleLoading } =
+		electronTrpc.settings.getWindowTitleFormat.useQuery();
+	const setWindowTitleFormat =
+		electronTrpc.settings.setWindowTitleFormat.useMutation({
+			onMutate: async ({ format }) => {
+				await utils.settings.getWindowTitleFormat.cancel();
+				const previous = utils.settings.getWindowTitleFormat.getData();
+				utils.settings.getWindowTitleFormat.setData(undefined, format);
+				return { previous };
+			},
+			onError: (_err, _vars, context) => {
+				if (context?.previous !== undefined) {
+					utils.settings.getWindowTitleFormat.setData(
+						undefined,
+						context.previous,
+					);
+				}
+			},
+			onSettled: () => {
+				utils.settings.getWindowTitleFormat.invalidate();
+			},
+		});
+
+	const [titleDraft, setTitleDraft] = useState<string | null>(null);
+	const currentFormat =
+		titleDraft ?? windowTitleFormat ?? DEFAULT_WINDOW_TITLE_FORMAT;
+	const titlePreview = formatWindowTitle(currentFormat, {
+		workspace: "my-project - feature-auth",
+		branch: "feature/auth",
+		tab: "Terminal 1",
+		pane: "~/Projects/app",
+	});
+
+	const handleTitleFormatChange = (value: string) => {
+		setTitleDraft(value);
+	};
+
+	const handleTitleFormatBlur = () => {
+		if (titleDraft !== null) {
+			const format = titleDraft.trim() || null;
+			setWindowTitleFormat.mutate({
+				format: format === DEFAULT_WINDOW_TITLE_FORMAT ? null : format,
+			});
+			setTitleDraft(null);
+		}
+	};
+
+	const handleTitleFormatReset = () => {
+		setTitleDraft(null);
+		setWindowTitleFormat.mutate({ format: null });
+	};
+
 	return (
 		<div className="p-6 max-w-4xl w-full">
 			<div className="mb-8">
@@ -259,6 +322,55 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 							}
 							disabled={isOpenLinksInAppLoading || setOpenLinksInApp.isPending}
 						/>
+					</div>
+				)}
+
+				{showWindowTitle && (
+					<div className="space-y-2">
+						<div className="space-y-0.5">
+							<Label
+								htmlFor="window-title-format"
+								className="text-sm font-medium"
+							>
+								Window title format
+							</Label>
+							<p className="text-xs text-muted-foreground">
+								Customize the window title shown in the taskbar and window
+								switcher. Variables: {"${workspace}"}, {"${branch}"},{"${tab}"},{" "}
+								{"${pane}"}, {"${appName}"}, {"${separator}"}
+							</p>
+						</div>
+						<div className="flex items-center gap-2">
+							<Input
+								id="window-title-format"
+								value={currentFormat}
+								onChange={(e) => handleTitleFormatChange(e.target.value)}
+								onBlur={handleTitleFormatBlur}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										handleTitleFormatBlur();
+									}
+								}}
+								disabled={isWindowTitleLoading}
+								className="font-mono text-xs"
+								placeholder={DEFAULT_WINDOW_TITLE_FORMAT}
+							/>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={handleTitleFormatReset}
+								disabled={
+									isWindowTitleLoading ||
+									setWindowTitleFormat.isPending ||
+									(!windowTitleFormat && titleDraft === null)
+								}
+							>
+								Reset
+							</Button>
+						</div>
+						<p className="text-xs text-muted-foreground font-mono truncate">
+							Preview: {titlePreview}
+						</p>
 					</div>
 				)}
 

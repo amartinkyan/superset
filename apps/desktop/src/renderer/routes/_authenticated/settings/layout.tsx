@@ -10,6 +10,7 @@ import {
 	type SettingsSection,
 	useSettingsSearchQuery,
 } from "renderer/stores/settings-state";
+import { APP_NAME } from "shared/window-title";
 import { SettingsSidebar } from "./components/SettingsSidebar";
 import { getMatchCountBySection } from "./utils/settings-search";
 
@@ -85,6 +86,11 @@ function SettingsLayout() {
 	const searchQuery = useSettingsSearchQuery();
 	const location = useLocation();
 	const navigate = useNavigate();
+	const setTitle = electronTrpc.window.setTitle.useMutation();
+
+	useEffect(() => {
+		setTitle.mutate({ title: `Settings \u2014 ${APP_NAME}` });
+	}, [setTitle.mutate]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	useEffect(() => {
 		if (!searchQuery) return;

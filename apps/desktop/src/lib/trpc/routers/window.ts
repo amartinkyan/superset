@@ -8,6 +8,15 @@ import { publicProcedure, router } from "..";
 
 export const createWindowRouter = (getWindow: () => BrowserWindow | null) => {
 	return router({
+		setTitle: publicProcedure
+			.input(z.object({ title: z.string() }))
+			.mutation(({ input }) => {
+				const window = getWindow();
+				if (!window) return { success: false };
+				window.setTitle(input.title);
+				return { success: true };
+			}),
+
 		minimize: publicProcedure.mutation(() => {
 			const window = getWindow();
 			if (!window) return { success: false };
