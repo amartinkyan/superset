@@ -1,4 +1,4 @@
-import { db } from "@superset/db/client";
+import { db, dbWs } from "@superset/db/client";
 import {
 	invitations,
 	members,
@@ -7,7 +7,7 @@ import {
 } from "@superset/db/schema/auth";
 import type { BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint } from "better-auth/api";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 function verificationMatchesInvitation({
@@ -46,6 +46,16 @@ function getInvitationAcceptError(error: unknown) {
 	return {
 		error: "Failed to accept invitation.",
 		status: 500,
+	};
+}
+
+function getProcessedInvitationError(status: string) {
+	return {
+		error:
+			status === "accepted"
+				? "This invitation has already been accepted."
+				: "This invitation is no longer available.",
+		status: 409,
 	};
 }
 
@@ -112,19 +122,12 @@ export const acceptInvitationEndpoint = {
 				}
 
 				if (invitation.status !== "pending") {
+					const processedError = getProcessedInvitationError(invitation.status);
 					console.log(
 						"[invitation/accept] ERROR - Invitation already processed:",
 						invitation.status,
 					);
-					return ctx.json(
-						{
-							error:
-								invitation.status === "accepted"
-									? "This invitation has already been accepted."
-									: "This invitation is no longer available.",
-						},
-						{ status: 409 },
-					);
+					return ctx.json({ error: processedError.error }, { status: 409 });
 				}
 
 				// 3. Create or get user
@@ -150,70 +153,97 @@ export const acceptInvitationEndpoint = {
 					user = newUser;
 				}
 
-				// 4. Create member record if needed. Mark the invitation as accepted
-				// only once membership creation succeeds or already exists.
-				const existingMember = await db.query.members.findFirst({
-					where: and(
-						eq(members.organizationId, invitation.organization.id),
-						eq(members.userId, user.id),
-					),
-				});
+				// 4. Hold the invitation row lock while membership is finalized so the
+				// invite cannot be observed as accepted before member creation succeeds.
+				const acceptanceResult = await dbWs.transaction(async (tx) => {
+					const lockedInvitation = await tx.execute<{ status: string }>(
+						sql`select ${invitations.status} as status from ${invitations} where ${invitations.id} = ${invitationId} for update`,
+					);
+					const lockedInvitationStatus = lockedInvitation.rows[0]?.status;
 
-				if (!existingMember) {
-					await db
-						.update(invitations)
-						.set({ status: "accepted" })
-						.where(eq(invitations.id, invitationId));
+					if (!lockedInvitationStatus) {
+						return {
+							ok: false as const,
+							error: "This invitation link is invalid or has expired.",
+							status: 404,
+						};
+					}
 
-					// Dynamic import: this plugin needs to call the organization plugin's
-					// addMember API to trigger billing hooks (beforeAddMember/afterAddMember).
-					// server.ts imports this file as a plugin, so a static import would be circular.
-					// The import resolves at request time when all modules are fully initialized.
-					try {
-						const { auth } = await import("../server");
-						await auth.api.addMember({
-							body: {
-								organizationId: invitation.organization.id,
-								userId: user.id,
-								role:
-									(invitation.role as "member" | "owner" | "admin") ?? "member",
-							},
-						});
-					} catch (error) {
-						const memberAfterError = await db.query.members.findFirst({
-							where: and(
-								eq(members.organizationId, invitation.organization.id),
-								eq(members.userId, user.id),
-							),
-						});
+					if (lockedInvitationStatus !== "pending") {
+						const processedError = getProcessedInvitationError(
+							lockedInvitationStatus,
+						);
+						return {
+							ok: false as const,
+							error: processedError.error,
+							status: processedError.status,
+						};
+					}
 
-						if (!memberAfterError) {
-							await db
-								.update(invitations)
-								.set({ status: "pending" })
-								.where(eq(invitations.id, invitationId));
+					const existingMember = await tx.query.members.findFirst({
+						where: and(
+							eq(members.organizationId, invitation.organization.id),
+							eq(members.userId, user.id),
+						),
+					});
 
-							const acceptError = getInvitationAcceptError(error);
-							console.log(
-								"[invitation/accept] ERROR - Failed to add member:",
+					if (!existingMember) {
+						// Dynamic import: this plugin needs to call the organization plugin's
+						// addMember API to trigger billing hooks (beforeAddMember/afterAddMember).
+						// server.ts imports this file as a plugin, so a static import would be circular.
+						// The import resolves at request time when all modules are fully initialized.
+						try {
+							const { auth } = await import("../server");
+							await auth.api.addMember({
+								body: {
+									organizationId: invitation.organization.id,
+									userId: user.id,
+									role:
+										(invitation.role as "member" | "owner" | "admin") ??
+										"member",
+								},
+							});
+						} catch (error) {
+							const memberAfterError = await tx.query.members.findFirst({
+								where: and(
+									eq(members.organizationId, invitation.organization.id),
+									eq(members.userId, user.id),
+								),
+							});
+
+							if (!memberAfterError) {
+								const acceptError = getInvitationAcceptError(error);
+								console.log(
+									"[invitation/accept] ERROR - Failed to add member:",
+									error,
+								);
+								return {
+									ok: false as const,
+									error: acceptError.error,
+									status: acceptError.status,
+								};
+							}
+
+							console.warn(
+								"[invitation/accept] addMember threw after member creation; continuing",
 								error,
 							);
-							return ctx.json(
-								{ error: acceptError.error },
-								{ status: acceptError.status },
-							);
 						}
-
-						console.warn(
-							"[invitation/accept] addMember threw after member creation; continuing",
-							error,
-						);
 					}
-				} else {
-					await db
+
+					await tx
 						.update(invitations)
 						.set({ status: "accepted" })
 						.where(eq(invitations.id, invitationId));
+
+					return { ok: true as const };
+				});
+
+				if (!acceptanceResult.ok) {
+					return ctx.json(
+						{ error: acceptanceResult.error },
+						{ status: acceptanceResult.status },
+					);
 				}
 
 				// 5. Create session using Better Auth's proper API
