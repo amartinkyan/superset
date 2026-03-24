@@ -6,17 +6,25 @@ import { Octokit } from "@octokit/rest";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createApiClient } from "./api";
-import type { AuthProvider } from "./auth/types";
 import { createDb } from "./db";
-import { createGitFactory } from "./git/createGitFactory";
-import { LocalCredentialProvider } from "./git/providers";
-import type { CredentialProvider } from "./git/types";
+import { registerWorkspaceFilesystemEventsRoute } from "./filesystem";
+import type { AuthProvider } from "./providers/auth";
+import { LocalGitCredentialProvider } from "./providers/git";
+import {
+	LocalModelProvider,
+	type ModelProviderRuntimeResolver,
+} from "./providers/model-providers";
+import { ChatRuntimeManager } from "./runtime/chat";
+import { WorkspaceFilesystemManager } from "./runtime/filesystem";
+import type { GitCredentialProvider } from "./runtime/git";
+import { createGitFactory } from "./runtime/git";
 import { PullRequestRuntimeManager } from "./runtime/pull-requests";
 import { registerWorkspaceTerminalRoute } from "./terminal/terminal";
 import { appRouter } from "./trpc/router";
 
 export interface CreateAppOptions {
-	credentials?: CredentialProvider;
+	credentials?: GitCredentialProvider;
+	modelProviderRuntimeResolver?: ModelProviderRuntimeResolver;
 	auth?: AuthProvider;
 	cloudApiUrl?: string;
 	dbPath?: string;
@@ -30,7 +38,7 @@ export interface CreateAppResult {
 }
 
 export function createApp(options?: CreateAppOptions): CreateAppResult {
-	const credentials = options?.credentials ?? new LocalCredentialProvider();
+	const credentials = options?.credentials ?? new LocalGitCredentialProvider();
 
 	const api =
 		options?.auth && options?.cloudApiUrl
@@ -40,6 +48,8 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
 	const dbPath = options?.dbPath ?? join(homedir(), ".superset", "host.db");
 	const db = createDb(dbPath);
 	const git = createGitFactory(credentials);
+	const modelProviderRuntimeResolver =
+		options?.modelProviderRuntimeResolver ?? new LocalModelProvider();
 	const github = async () => {
 		const token = await credentials.getToken("github.com");
 		if (!token) {
@@ -55,13 +65,25 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
 		github,
 	});
 	pullRequestRuntime.start();
+	const filesystem = new WorkspaceFilesystemManager({ db });
+	const chatRuntime = new ChatRuntimeManager({
+		db,
+		runtimeResolver: modelProviderRuntimeResolver,
+	});
 
 	const runtime = {
+		chat: chatRuntime,
+		filesystem,
 		pullRequests: pullRequestRuntime,
 	};
 	const app = new Hono();
 	const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 	app.use("*", cors());
+	registerWorkspaceFilesystemEventsRoute({
+		app,
+		filesystem,
+		upgradeWebSocket,
+	});
 	registerWorkspaceTerminalRoute({
 		app,
 		db,
