@@ -99,3 +99,55 @@ describe("getCachedGitHubStatusState", () => {
 		}
 	});
 });
+
+describe("branch-specific GitHub status cache entries", () => {
+	test("keeps branch workspace statuses isolated for the same repo path", () => {
+		const repoPath = "/tmp/repos/review-cache-branch-test";
+		const featurePr = {
+			number: 1,
+			title: "Feature branch PR",
+			url: "https://github.com/superset-sh/superset/pull/1",
+			state: "open" as const,
+			additions: 10,
+			deletions: 2,
+			headRefName: "feature/one",
+			headRepositoryOwner: "superset-sh",
+			headRepositoryName: "superset",
+			isCrossRepository: false,
+			reviewDecision: "pending" as const,
+			checksStatus: "none" as const,
+			checks: [],
+			requestedReviewers: [],
+		};
+		const featureStatus: GitHubStatus = {
+			pr: featurePr,
+			repoUrl: "https://github.com/superset-sh/superset",
+			upstreamUrl: "https://github.com/superset-sh/superset",
+			isFork: false,
+			branchExistsOnRemote: true,
+			lastRefreshed: Date.now(),
+		};
+		const mainStatus: GitHubStatus = {
+			...featureStatus,
+			pr: {
+				...featurePr,
+				number: 2,
+				title: "Main branch PR",
+				url: "https://github.com/superset-sh/superset/pull/2",
+				headRefName: "main",
+			},
+		};
+
+		setCachedGitHubStatus(repoPath, featureStatus, "feature/one");
+		setCachedGitHubStatus(repoPath, mainStatus, "main");
+
+		expect(getCachedGitHubStatus(repoPath, "feature/one")).toEqual(
+			featureStatus,
+		);
+		expect(getCachedGitHubStatus(repoPath, "main")).toEqual(mainStatus);
+
+		clearGitHubCachesForWorktree(repoPath);
+		expect(getCachedGitHubStatus(repoPath, "feature/one")).toBeNull();
+		expect(getCachedGitHubStatus(repoPath, "main")).toBeNull();
+	});
+});

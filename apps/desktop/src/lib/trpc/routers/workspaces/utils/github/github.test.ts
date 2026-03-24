@@ -5,7 +5,10 @@ import {
 	parsePaginatedApiArray,
 	parseReviewThreadCommentsResponse,
 } from "./comments";
-import { resolveRemoteBranchNameForGitHubStatus } from "./github";
+import {
+	resolveRemoteBranchNameForGitHubStatus,
+	shouldResolvePullRequestForGitHubStatus,
+} from "./github";
 import {
 	branchMatchesPR,
 	getPRHeadBranchCandidates,
@@ -367,5 +370,33 @@ describe("resolveRemoteBranchNameForGitHubStatus", () => {
 				localBranchName: "feature/my-thing",
 			}),
 		).toBe("feature/my-thing");
+	});
+});
+
+describe("shouldResolvePullRequestForGitHubStatus", () => {
+	test("skips PR lookup on the default branch", () => {
+		expect(
+			shouldResolvePullRequestForGitHubStatus({
+				localBranchName: "main",
+				defaultBranchName: "main",
+			}),
+		).toBe(false);
+	});
+
+	test("allows PR lookup on non-default branches", () => {
+		expect(
+			shouldResolvePullRequestForGitHubStatus({
+				localBranchName: "feature/my-thing",
+				defaultBranchName: "main",
+			}),
+		).toBe(true);
+	});
+
+	test("allows PR lookup when the default branch is unknown", () => {
+		expect(
+			shouldResolvePullRequestForGitHubStatus({
+				localBranchName: "feature/my-thing",
+			}),
+		).toBe(true);
 	});
 });

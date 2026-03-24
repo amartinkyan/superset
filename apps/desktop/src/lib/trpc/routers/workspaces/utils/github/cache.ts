@@ -29,34 +29,63 @@ const repoContextResource = createCachedResource<RepoContext | null>({
 	maxEntries: MAX_GITHUB_REPO_CONTEXT_CACHE_ENTRIES,
 });
 
+function makeGitHubStatusCachePrefix(worktreePath: string): string {
+	return `${worktreePath}::status`;
+}
+
+function makeGitHubStatusCacheKey(
+	worktreePath: string,
+	branchName?: string | null,
+): string {
+	const normalizedBranchName = branchName?.trim();
+	return normalizedBranchName
+		? `${makeGitHubStatusCachePrefix(worktreePath)}::${normalizedBranchName}`
+		: makeGitHubStatusCachePrefix(worktreePath);
+}
+
 export function getCachedGitHubStatus(
 	worktreePath: string,
+	branchName?: string | null,
 ): GitHubStatus | null {
-	return githubStatusResource.get(worktreePath);
+	return githubStatusResource.get(
+		makeGitHubStatusCacheKey(worktreePath, branchName),
+	);
 }
 
 export function getCachedGitHubStatusState(
 	worktreePath: string,
+	branchName?: string | null,
 ): CacheState<GitHubStatus | null> | null {
-	return githubStatusResource.getState(worktreePath);
+	return githubStatusResource.getState(
+		makeGitHubStatusCacheKey(worktreePath, branchName),
+	);
 }
 
 export function setCachedGitHubStatus(
 	worktreePath: string,
 	value: GitHubStatus,
+	branchName?: string | null,
 ): void {
-	githubStatusResource.set(worktreePath, value);
+	githubStatusResource.set(
+		makeGitHubStatusCacheKey(worktreePath, branchName),
+		value,
+	);
 }
 
 export function readCachedGitHubStatus(
 	worktreePath: string,
 	load: () => Promise<GitHubStatus | null>,
 	options?: CachedResourceReadOptions<GitHubStatus | null>,
+	branchName?: string | null,
 ): Promise<GitHubStatus | null> {
-	return githubStatusResource.read(worktreePath, load, {
-		...options,
-		shouldCache: options?.shouldCache ?? ((value) => value !== null),
-	});
+	return githubStatusResource.read(
+		makeGitHubStatusCacheKey(worktreePath, branchName),
+		load,
+		{
+			...options,
+			shouldCache: options?.shouldCache ?? ((value) => value !== null),
+		},
+	);
 }
 
 export function makePullRequestCommentsCachePrefix(
@@ -133,7 +162,9 @@ export function readCachedRepoContext(
 }
 
 export function clearGitHubCachesForWorktree(worktreePath: string): void {
-	githubStatusResource.invalidate(worktreePath);
+	githubStatusResource.invalidatePrefix(
+		makeGitHubStatusCachePrefix(worktreePath),
+	);
 	repoContextResource.invalidate(worktreePath);
 	pullRequestCommentsResource.invalidatePrefix(
 		makePullRequestCommentsCachePrefix(worktreePath),

@@ -162,7 +162,12 @@ export const createGitStatusProcedures = () => {
 					return null;
 				}
 
-				const freshStatus = await fetchGitHubPRStatus(repoPath);
+				const freshStatus = await fetchGitHubPRStatus(
+					repoPath,
+					workspace.type === "branch"
+						? { localBranchName: workspace.branch }
+						: undefined,
+				);
 
 				if (freshStatus && workspace.worktreeId) {
 					localDb

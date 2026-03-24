@@ -1,5 +1,5 @@
 import type { GitHubStatus, PullRequestComment } from "@superset/local-db";
-import { branchExistsOnRemote } from "../git";
+import { branchExistsOnRemote, getDefaultBranch } from "../git";
 import { execGitWithShellPath } from "../git-client";
 import { execWithShellEnv } from "../shell-env";
 import { parseUpstreamRef } from "../upstream-ref";
@@ -22,6 +22,10 @@ import {
 export interface PullRequestCommentsTarget {
 	prNumber: number;
 	repoContext: Pick<RepoContext, "repoUrl" | "upstreamUrl" | "isFork">;
+}
+
+export interface FetchGitHubPRStatusOptions {
+	localBranchName?: string | null;
 }
 
 export { clearGitHubCachesForWorktree };
@@ -82,8 +86,79 @@ export function resolveRemoteBranchNameForGitHubStatus({
 	return upstreamBranchName?.trim() || prHeadRefName?.trim() || localBranchName;
 }
 
+export function shouldResolvePullRequestForGitHubStatus({
+	localBranchName,
+	defaultBranchName,
+}: {
+	localBranchName: string;
+	defaultBranchName?: string | null;
+}): boolean {
+	const normalizedBranchName = localBranchName.trim();
+	const normalizedDefaultBranchName = defaultBranchName?.trim();
+	if (!normalizedBranchName) {
+		return false;
+	}
+
+	if (!normalizedDefaultBranchName) {
+		return true;
+	}
+
+	return normalizedBranchName !== normalizedDefaultBranchName;
+}
+
+async function resolveGitHubStatusTarget(
+	worktreePath: string,
+	options?: FetchGitHubPRStatusOptions,
+): Promise<{
+	branchName: string;
+	headSha?: string;
+	upstreamRef: string | null;
+} | null> {
+	const explicitBranchName = options?.localBranchName?.trim();
+	if (explicitBranchName) {
+		const [shaResult, upstreamResult] = await Promise.all([
+			execGitWithShellPath(["rev-parse", `refs/heads/${explicitBranchName}`], {
+				cwd: worktreePath,
+			}).catch(() => ({ stdout: "", stderr: "" })),
+			execGitWithShellPath(
+				["rev-parse", "--abbrev-ref", `${explicitBranchName}@{upstream}`],
+				{
+					cwd: worktreePath,
+				},
+			).catch(() => ({ stdout: "", stderr: "" })),
+		]);
+
+		return {
+			branchName: explicitBranchName,
+			headSha: shaResult.stdout.trim() || undefined,
+			upstreamRef: upstreamResult.stdout.trim() || null,
+		};
+	}
+
+	const [branchResult, shaResult, upstreamResult] = await Promise.all([
+		execGitWithShellPath(["rev-parse", "--abbrev-ref", "HEAD"], {
+			cwd: worktreePath,
+		}),
+		execGitWithShellPath(["rev-parse", "HEAD"], { cwd: worktreePath }),
+		execGitWithShellPath(["rev-parse", "--abbrev-ref", "@{upstream}"], {
+			cwd: worktreePath,
+		}).catch(() => ({ stdout: "", stderr: "" })),
+	]);
+	const branchName = branchResult.stdout.trim();
+	if (!branchName) {
+		return null;
+	}
+
+	return {
+		branchName,
+		headSha: shaResult.stdout.trim() || undefined,
+		upstreamRef: upstreamResult.stdout.trim() || null,
+	};
+}
+
 async function refreshGitHubPRStatus(
 	worktreePath: string,
+	options?: FetchGitHubPRStatusOptions,
 ): Promise<GitHubStatus | null> {
 	try {
 		const repoContext = await getRepoContext(worktreePath, {
@@ -93,26 +168,31 @@ async function refreshGitHubPRStatus(
 			return null;
 		}
 
-		const [branchResult, shaResult, upstreamResult] = await Promise.all([
-			execGitWithShellPath(["rev-parse", "--abbrev-ref", "HEAD"], {
-				cwd: worktreePath,
-			}),
-			execGitWithShellPath(["rev-parse", "HEAD"], { cwd: worktreePath }),
-			execGitWithShellPath(["rev-parse", "--abbrev-ref", "@{upstream}"], {
-				cwd: worktreePath,
-			}).catch(() => ({ stdout: "", stderr: "" })),
-		]);
-		const branchName = branchResult.stdout.trim();
-		const headSha = shaResult.stdout.trim();
-		const parsedUpstreamRef = parseUpstreamRef(upstreamResult.stdout.trim());
+		const target = await resolveGitHubStatusTarget(worktreePath, options);
+		if (!target) {
+			return null;
+		}
+
+		const branchName = target.branchName;
+		const headSha = target.headSha;
+		const parsedUpstreamRef = parseUpstreamRef(target.upstreamRef ?? "");
 		const trackingRemote = parsedUpstreamRef?.remoteName ?? "origin";
 		const previewBranchName = resolveRemoteBranchNameForGitHubStatus({
 			localBranchName: branchName,
 			upstreamBranchName: parsedUpstreamRef?.branchName,
 		});
+		const defaultBranchName = await getDefaultBranch(worktreePath).catch(
+			() => null,
+		);
+		const shouldResolvePullRequest = shouldResolvePullRequestForGitHubStatus({
+			localBranchName: branchName,
+			defaultBranchName,
+		});
 
 		const [prInfo, previewUrl] = await Promise.all([
-			getPRForBranch(worktreePath, branchName, repoContext, headSha),
+			shouldResolvePullRequest
+				? getPRForBranch(worktreePath, branchName, repoContext, headSha)
+				: Promise.resolve(null),
 			fetchPreviewDeploymentUrl(
 				worktreePath,
 				headSha,
@@ -186,9 +266,13 @@ async function refreshGitHubPRComments({
  */
 export async function fetchGitHubPRStatus(
 	worktreePath: string,
+	options?: FetchGitHubPRStatusOptions,
 ): Promise<GitHubStatus | null> {
-	return readCachedGitHubStatus(worktreePath, () =>
-		refreshGitHubPRStatus(worktreePath),
+	return readCachedGitHubStatus(
+		worktreePath,
+		() => refreshGitHubPRStatus(worktreePath, options),
+		undefined,
+		options?.localBranchName,
 	);
 }
 
@@ -326,7 +410,7 @@ async function queryDeploymentUrl(
  */
 async function fetchPreviewDeploymentUrl(
 	worktreePath: string,
-	headSha: string,
+	headSha: string | undefined,
 	branchName: string,
 	repoContext: RepoContext,
 ): Promise<string | undefined> {
@@ -340,9 +424,15 @@ async function fetchPreviewDeploymentUrl(
 		}
 
 		// Try by commit SHA (works for Vercel, Netlify official integrations)
-		const bySha = await queryDeploymentUrl(worktreePath, nwo, `sha=${headSha}`);
-		if (bySha) {
-			return bySha;
+		if (headSha) {
+			const bySha = await queryDeploymentUrl(
+				worktreePath,
+				nwo,
+				`sha=${headSha}`,
+			);
+			if (bySha) {
+				return bySha;
+			}
 		}
 
 		// Fall back to branch name (works for some CI configurations)

@@ -12,6 +12,7 @@ const mockGetWorkspace = mock();
 const mockGetWorktree = mock();
 const mockGetWorkspacePath = mock();
 const mockFetchGitHubPRStatus = mock();
+const mockFetchGitHubPRComments = mock();
 const mockLocalDb = {
 	update: mock(() => ({
 		set: mock(() => ({
@@ -34,6 +35,7 @@ mock.module("../utils/worktree", () => ({
 }));
 
 mock.module("../utils/github", () => ({
+	fetchGitHubPRComments: mockFetchGitHubPRComments,
 	fetchGitHubPRStatus: mockFetchGitHubPRStatus,
 }));
 
@@ -54,6 +56,7 @@ mock.module("../../..", () => ({
 
 // Also stub the git utils used by refreshGitStatus
 mock.module("../utils/git", () => ({
+	branchExistsOnRemote: mock(() => ({ status: "missing" })),
 	fetchDefaultBranch: mock(),
 	getAheadBehindCount: mock(() => ({ ahead: 0, behind: 0 })),
 	getDefaultBranch: mock(() => "main"),
@@ -85,10 +88,11 @@ describe("getGitHubStatus", () => {
 			projectId: "proj-1",
 			worktreeId: null,
 			type: "branch" as const,
-			branch: "main",
-			name: "Main Branch",
+			branch: "feature/branch-workspace",
+			name: "Feature Branch",
 		};
 
+		mockFetchGitHubPRStatus.mockClear();
 		mockGetWorkspace.mockReturnValue(branchWorkspace);
 		mockGetWorkspacePath.mockReturnValue("/repos/my-project");
 		mockFetchGitHubPRStatus.mockResolvedValue(fakeGitHubStatus);
@@ -99,7 +103,9 @@ describe("getGitHubStatus", () => {
 
 		expect(result).not.toBeNull();
 		expect(mockGetWorkspacePath).toHaveBeenCalledWith(branchWorkspace);
-		expect(mockFetchGitHubPRStatus).toHaveBeenCalledWith("/repos/my-project");
+		expect(mockFetchGitHubPRStatus).toHaveBeenCalledWith("/repos/my-project", {
+			localBranchName: "feature/branch-workspace",
+		});
 	});
 
 	test("returns GitHub status for worktree workspaces", async () => {
@@ -112,6 +118,7 @@ describe("getGitHubStatus", () => {
 			name: "Feature Foo",
 		};
 
+		mockFetchGitHubPRStatus.mockClear();
 		mockGetWorkspace.mockReturnValue(worktreeWorkspace);
 		mockGetWorkspacePath.mockReturnValue(
 			"/repos/my-project/.worktrees/feature-foo",
@@ -125,6 +132,7 @@ describe("getGitHubStatus", () => {
 		expect(result).not.toBeNull();
 		expect(mockFetchGitHubPRStatus).toHaveBeenCalledWith(
 			"/repos/my-project/.worktrees/feature-foo",
+			undefined,
 		);
 	});
 
