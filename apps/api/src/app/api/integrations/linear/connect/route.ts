@@ -39,12 +39,14 @@ export async function GET(request: Request) {
 		organizationId,
 		userId: session.user.id,
 	});
+	const linearPublicApiUrl =
+		env.LINEAR_PUBLIC_API_URL ?? env.NEXT_PUBLIC_API_URL;
 
 	const linearAuthUrl = new URL("https://linear.app/oauth/authorize");
 	linearAuthUrl.searchParams.set("client_id", env.LINEAR_CLIENT_ID);
 	linearAuthUrl.searchParams.set(
 		"redirect_uri",
-		`${env.NEXT_PUBLIC_API_URL}/api/integrations/linear/callback`,
+		`${linearPublicApiUrl}/api/integrations/linear/callback`,
 	);
 	linearAuthUrl.searchParams.set("response_type", "code");
 	linearAuthUrl.searchParams.set("scope", "read,write,issues:create,admin");

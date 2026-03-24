@@ -8,7 +8,9 @@ import { and, eq } from "drizzle-orm";
 import { env } from "../../../env";
 
 const LINEAR_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
-const LINEAR_WEBHOOK_URL = `${env.NEXT_PUBLIC_API_URL}/api/integrations/linear/webhook`;
+const LINEAR_WEBHOOK_URL = `${
+	env.LINEAR_PUBLIC_API_URL ?? env.NEXT_PUBLIC_API_URL
+}/api/integrations/linear/webhook`;
 
 const EXISTING_WEBHOOKS_QUERY = `
 	query ExistingWebhooks {

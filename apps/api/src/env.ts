@@ -22,6 +22,7 @@ export const env = createEnv({
 		BETTER_AUTH_SECRET: z.string(),
 		LINEAR_CLIENT_ID: z.string().min(1),
 		LINEAR_CLIENT_SECRET: z.string().min(1),
+		LINEAR_PUBLIC_API_URL: z.string().url().optional(),
 		LINEAR_WEBHOOK_SECRET: z.string().min(1),
 		GH_APP_ID: z.string().min(1),
 		GH_APP_PRIVATE_KEY: z.string().min(1),

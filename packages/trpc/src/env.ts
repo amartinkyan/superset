@@ -19,6 +19,7 @@ export const env = createEnv({
 		KV_REST_API_TOKEN: z.string().optional(),
 		LINEAR_CLIENT_ID: z.string().min(1),
 		LINEAR_CLIENT_SECRET: z.string().min(1),
+		LINEAR_PUBLIC_API_URL: z.string().url().optional(),
 		// GitHub App credentials
 		GH_APP_ID: z.string().min(1),
 		GH_APP_PRIVATE_KEY: z.string().min(1),

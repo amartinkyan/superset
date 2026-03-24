@@ -8,7 +8,9 @@ import { env } from "@/env";
 import { verifySignedState } from "@/lib/oauth-state";
 
 const qstash = new Client({ token: env.QSTASH_TOKEN });
-const LINEAR_WEBHOOK_URL = `${env.NEXT_PUBLIC_API_URL}/api/integrations/linear/webhook`;
+const LINEAR_PUBLIC_API_URL =
+	env.LINEAR_PUBLIC_API_URL ?? env.NEXT_PUBLIC_API_URL;
+const LINEAR_WEBHOOK_URL = `${LINEAR_PUBLIC_API_URL}/api/integrations/linear/webhook`;
 const ISSUE_RESOURCE_TYPES = ["Issue"];
 
 const EXISTING_WEBHOOKS_QUERY = `
@@ -304,7 +306,7 @@ export async function GET(request: Request) {
 			grant_type: "authorization_code",
 			client_id: env.LINEAR_CLIENT_ID,
 			client_secret: env.LINEAR_CLIENT_SECRET,
-			redirect_uri: `${env.NEXT_PUBLIC_API_URL}/api/integrations/linear/callback`,
+			redirect_uri: `${LINEAR_PUBLIC_API_URL}/api/integrations/linear/callback`,
 			code,
 		}),
 	});
