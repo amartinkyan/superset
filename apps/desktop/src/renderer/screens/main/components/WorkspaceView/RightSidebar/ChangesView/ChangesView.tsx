@@ -48,6 +48,7 @@ interface ChangesViewProps {
 
 const INACTIVE_BRANCH_REFETCH_INTERVAL_MS = 10_000;
 const GITHUB_STATUS_STALE_TIME_MS = 10_000;
+const GITHUB_STATUS_IDLE_STALE_TIME_MS = 60_000;
 const GITHUB_STATUS_REFETCH_INTERVAL_MS = 10_000;
 const GITHUB_PR_COMMENTS_STALE_TIME_MS = 30_000;
 const GITHUB_PR_COMMENTS_REFETCH_INTERVAL_MS = 30_000;
@@ -98,6 +99,8 @@ export function ChangesView({
 	);
 	const worktreePath = workspace?.worktreePath;
 	const projectId = workspace?.projectId;
+	const activeTab = useChangesStore((s) => s.activeTab);
+	const isReviewTabActive = isActive && activeTab === "review";
 
 	const { status, isLoading, effectiveBaseBranch, branchData, refetch } =
 		useGitChangesStatus({
@@ -118,8 +121,13 @@ export function ChangesView({
 		{ workspaceId: workspaceId ?? "" },
 		{
 			enabled: !!workspaceId && isActive,
-			refetchInterval: isActive ? GITHUB_STATUS_REFETCH_INTERVAL_MS : false,
-			staleTime: GITHUB_STATUS_STALE_TIME_MS,
+			refetchInterval: isReviewTabActive
+				? GITHUB_STATUS_REFETCH_INTERVAL_MS
+				: false,
+			refetchOnWindowFocus: isReviewTabActive,
+			staleTime: isReviewTabActive
+				? GITHUB_STATUS_STALE_TIME_MS
+				: GITHUB_STATUS_IDLE_STALE_TIME_MS,
 		},
 	);
 
@@ -282,13 +290,13 @@ export function ChangesView({
 				: {}),
 		},
 		{
-			enabled: !!workspaceId && isActive && !!activePullRequest,
+			enabled: !!workspaceId && isReviewTabActive && !!activePullRequest,
 			refetchInterval:
-				isActive && activePullRequest
+				isReviewTabActive && activePullRequest
 					? GITHUB_PR_COMMENTS_REFETCH_INTERVAL_MS
 					: false,
 			staleTime: GITHUB_PR_COMMENTS_STALE_TIME_MS,
-			refetchOnWindowFocus: false,
+			refetchOnWindowFocus: isReviewTabActive,
 		},
 	);
 
@@ -322,7 +330,6 @@ export function ChangesView({
 	};
 
 	const {
-		activeTab,
 		expandedSections,
 		fileListViewMode,
 		sectionOrder,
