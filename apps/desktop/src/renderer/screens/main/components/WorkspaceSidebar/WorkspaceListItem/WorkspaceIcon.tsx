@@ -1,9 +1,9 @@
 import { cn } from "@superset/ui/utils";
 import {
-	LuCircleDot,
 	LuFolderGit2,
 	LuGitMerge,
 	LuGitPullRequest,
+	LuGitPullRequestClosed,
 	LuLaptop,
 } from "react-icons/lu";
 import { AsciiSpinner } from "renderer/screens/main/components/AsciiSpinner";
@@ -103,7 +103,7 @@ export function WorkspaceIcon({
 					);
 				case "closed":
 					return (
-						<LuCircleDot
+						<LuGitPullRequestClosed
 							className={cn(
 								"size-4",
 								variant === "expanded" && "transition-colors",

@@ -32,6 +32,12 @@ const gitHubPRCommentsInputSchema = z.object({
 	isFork: z.boolean().optional(),
 });
 
+// Map to track pending GitHub status fetches to prevent concurrent requests
+const pendingGitHubStatusFetches = new Map<
+	string,
+	Promise<GitHubStatus | null>
+>();
+
 function resolveCommentsPullRequestTarget({
 	input,
 	githubStatus,
@@ -176,18 +182,34 @@ export const createGitStatusProcedures = () => {
 					return cachedStatus;
 				}
 
-				// Cache is stale or missing, fetch fresh data
-				const freshStatus = await fetchGitHubPRStatus(worktree.path);
-
-				if (freshStatus) {
-					localDb
-						.update(worktrees)
-						.set({ githubStatus: freshStatus })
-						.where(eq(worktrees.id, worktree.id))
-						.run();
+				// Check if there's already a pending fetch for this worktree
+				const pendingFetch = pendingGitHubStatusFetches.get(worktree.id);
+				if (pendingFetch) {
+					// Return the existing promise to avoid duplicate fetches
+					return pendingFetch;
 				}
 
-				return freshStatus;
+				// Cache is stale or missing, fetch fresh data
+				const fetchPromise = fetchGitHubPRStatus(worktree.path)
+					.then((freshStatus) => {
+						if (freshStatus) {
+							localDb
+								.update(worktrees)
+								.set({ githubStatus: freshStatus })
+								.where(eq(worktrees.id, worktree.id))
+								.run();
+						}
+						return freshStatus;
+					})
+					.finally(() => {
+						// Clean up the pending fetch entry
+						pendingGitHubStatusFetches.delete(worktree.id);
+					});
+
+				// Store the promise to deduplicate concurrent requests
+				pendingGitHubStatusFetches.set(worktree.id, fetchPromise);
+
+				return fetchPromise;
 			}),
 
 		getGitHubPRComments: publicProcedure
