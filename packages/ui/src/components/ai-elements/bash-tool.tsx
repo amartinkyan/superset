@@ -112,9 +112,9 @@ export const BashTool = ({
 					<div className="mt-0.5 px-2.5 py-1.5">
 						{/* Command */}
 						{command && (
-							<div className="font-mono text-xs">
+							<div className="overflow-x-auto font-mono text-xs">
 								<span className="text-amber-600 dark:text-amber-400">$ </span>
-								<span className="whitespace-pre-wrap break-all text-foreground">
+								<span className="whitespace-pre text-foreground">
 									{command}
 								</span>
 							</div>
@@ -122,7 +122,7 @@ export const BashTool = ({
 
 						{/* Stdout */}
 						{stdout && (
-							<div className="mt-1.5 whitespace-pre-wrap break-all font-mono text-xs text-muted-foreground">
+							<div className="mt-1.5 overflow-x-auto whitespace-pre font-mono text-xs text-muted-foreground">
 								{stdout}
 							</div>
 						)}
@@ -131,7 +131,7 @@ export const BashTool = ({
 						{stderr && (
 							<div
 								className={cn(
-									"mt-1.5 whitespace-pre-wrap break-all font-mono text-xs",
+									"mt-1.5 overflow-x-auto whitespace-pre font-mono text-xs",
 									exitCode === 0 || exitCode === undefined
 										? "text-amber-600 dark:text-amber-400"
 										: "text-rose-500 dark:text-rose-400",
