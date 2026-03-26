@@ -51,6 +51,7 @@ export async function executeOnDevice({
 			and(
 				eq(devicePresence.deviceId, deviceId),
 				eq(devicePresence.organizationId, ctx.organizationId),
+				eq(devicePresence.userId, ctx.userId),
 			),
 		)
 		.limit(1);
@@ -60,19 +61,7 @@ export async function executeOnDevice({
 			content: [
 				{
 					type: "text" as const,
-					text: `Error: Device ${deviceId} not found in this organization.`,
-				},
-			],
-			isError: true,
-		};
-	}
-
-	if (device.userId !== ctx.userId) {
-		return {
-			content: [
-				{
-					type: "text" as const,
-					text: `Error: Device ${deviceId} does not belong to you. You can only execute commands on your own devices.`,
+					text: `Error: Device ${deviceId} not found or you don't have access to it.`,
 				},
 			],
 			isError: true,

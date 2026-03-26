@@ -26,7 +26,7 @@ async function getOrCreateDeviceId(): Promise<string> {
 export function useDevicePresence() {
 	const { data: session } = useSession();
 	const [deviceId, setDeviceId] = useState<string | null>(null);
-	const registeredRef = useRef(false);
+	const registeredScopeRef = useRef<string | null>(null);
 	const activeOrganizationId = session?.session?.activeOrganizationId;
 
 	useEffect(() => {
@@ -35,8 +35,8 @@ export function useDevicePresence() {
 
 	useEffect(() => {
 		if (!deviceId || !activeOrganizationId) return;
-		if (registeredRef.current) return;
-		registeredRef.current = true;
+		if (registeredScopeRef.current === activeOrganizationId) return;
+		registeredScopeRef.current = activeOrganizationId;
 
 		apiClient.device.registerDevice
 			.mutate({
@@ -48,7 +48,7 @@ export function useDevicePresence() {
 			})
 			.catch(() => {
 				// Registration can fail when offline — will retry on next app launch
-				registeredRef.current = false;
+				registeredScopeRef.current = null;
 			});
 	}, [deviceId, activeOrganizationId]);
 

@@ -10,12 +10,13 @@ import { electronTrpc } from "renderer/lib/electron-trpc";
 export function useDevicePresence() {
 	const { data: session } = authClient.useSession();
 	const { data: deviceInfo } = electronTrpc.auth.getDeviceInfo.useQuery();
-	const registeredRef = useRef(false);
+	const registeredScopeRef = useRef<string | null>(null);
 
 	useEffect(() => {
-		if (!deviceInfo || !session?.session?.activeOrganizationId) return;
-		if (registeredRef.current) return;
-		registeredRef.current = true;
+		const orgId = session?.session?.activeOrganizationId;
+		if (!deviceInfo || !orgId) return;
+		if (registeredScopeRef.current === orgId) return;
+		registeredScopeRef.current = orgId;
 
 		apiTrpcClient.device.registerDevice
 			.mutate({
@@ -25,7 +26,7 @@ export function useDevicePresence() {
 			})
 			.catch(() => {
 				// Registration can fail when offline — will retry on next app launch
-				registeredRef.current = false;
+				registeredScopeRef.current = null;
 			});
 	}, [deviceInfo, session?.session?.activeOrganizationId]);
 
