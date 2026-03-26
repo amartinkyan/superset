@@ -588,6 +588,26 @@ describe("parsePorcelainStatusV2", () => {
 			},
 		]);
 	});
+
+	test("marks all porcelain v2 unmerged records as conflicted", () => {
+		const status = parsePorcelainStatusV2(
+			[
+				"# branch.oid abcdef1234567890",
+				"# branch.head main",
+				"u AA N... 100644 100644 100644 100644 43dd47ea691c90a5fa7827892c70241913351963 43dd47ea691c90a5fa7827892c70241913351963 43dd47ea691c90a5fa7827892c70241913351963 both-added.txt",
+			].join("\0"),
+		);
+
+		expect(status.conflicted).toEqual(["both-added.txt"]);
+		expect(status.files).toEqual([
+			{
+				path: "both-added.txt",
+				from: "both-added.txt",
+				index: "A",
+				working_dir: "A",
+			},
+		]);
+	});
 });
 
 describe("branchExistsOnRemote", () => {

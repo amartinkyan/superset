@@ -89,10 +89,7 @@ describe("mergePullRequest", () => {
 
 		expect(getRepoContextMock).toHaveBeenCalledWith("/tmp/detached-worktree");
 		expect(getCurrentBranchMock).toHaveBeenCalledWith("/tmp/detached-worktree");
-		expect(execGitWithShellPathMock).toHaveBeenCalledWith(
-			["rev-parse", "HEAD"],
-			{ cwd: "/tmp/detached-worktree" },
-		);
+		expect(execGitWithShellPathMock).not.toHaveBeenCalled();
 		expect(getPRForBranchMock).not.toHaveBeenCalled();
 		expect(execWithShellEnvMock).toHaveBeenCalledWith(
 			"gh",
@@ -104,6 +101,39 @@ describe("mergePullRequest", () => {
 		);
 		expect(result.success).toBe(true);
 		expect(Number.isNaN(Date.parse(result.mergedAt))).toBe(false);
+	});
+
+	test("resolves the PR by branch when HEAD has no commit yet", async () => {
+		getCurrentBranchMock.mockResolvedValue("feature/unborn");
+		execGitWithShellPathMock.mockRejectedValueOnce(
+			new Error("fatal: ambiguous argument 'HEAD'"),
+		);
+		getPRForBranchMock.mockResolvedValue({
+			number: 42,
+			state: "open",
+		});
+
+		const result = await mergePullRequest({
+			worktreePath: "/tmp/unborn-worktree",
+			strategy: "rebase",
+		});
+
+		expect(execWithShellEnvMock).toHaveBeenCalledWith(
+			"gh",
+			["pr", "merge", "42", "--rebase"],
+			{ cwd: "/tmp/unborn-worktree" },
+		);
+		expect(getPRForBranchMock).toHaveBeenCalledWith(
+			"/tmp/unborn-worktree",
+			"feature/unborn",
+			{
+				isFork: false,
+				repoUrl: "https://github.com/superset-sh/superset",
+				upstreamUrl: "https://github.com/superset-sh/superset",
+			},
+			undefined,
+		);
+		expect(result.success).toBe(true);
 	});
 });
 

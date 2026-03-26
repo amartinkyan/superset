@@ -40,6 +40,16 @@ async function getCurrentBranchName(git: Awaited<ReturnType<GitFactory>>) {
 	}
 }
 
+async function getHeadSha(git: Awaited<ReturnType<GitFactory>>) {
+	try {
+		const branch = await git.revparse(["HEAD"]);
+		const trimmed = branch.trim();
+		return trimmed || null;
+	} catch {
+		return null;
+	}
+}
+
 type RepoProvider = "github";
 
 export interface PullRequestStateSnapshot {
@@ -181,14 +191,11 @@ export class PullRequestRuntimeManager {
 		for (const workspace of allWorkspaces) {
 			try {
 				const git = await this.git(workspace.worktreePath);
-				const [branch, rawHeadSha] = await Promise.all([
-					getCurrentBranchName(git),
-					git.revparse(["HEAD"]),
-				]);
+				const branch = await getCurrentBranchName(git);
 				if (!branch) {
 					continue;
 				}
-				const headSha = rawHeadSha.trim();
+				const headSha = await getHeadSha(git);
 
 				if (branch === workspace.branch && headSha === workspace.headSha) {
 					continue;

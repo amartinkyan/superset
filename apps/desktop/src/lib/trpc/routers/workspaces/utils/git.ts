@@ -334,6 +334,7 @@ export function parsePorcelainStatusV2(stdout: string): StatusResult {
 				const xy = match[1] || "..";
 				const path = match[2];
 				if (path) {
+					conflictedSet.add(path);
 					addFile({
 						path,
 						indexStatus: normalizeStatusCode(xy[0] || "."),
