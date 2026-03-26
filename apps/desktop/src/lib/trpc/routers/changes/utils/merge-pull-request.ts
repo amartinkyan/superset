@@ -1,4 +1,4 @@
-import { getCurrentBranch } from "../../workspaces/utils/git";
+import { getCurrentBranch, isUnbornHeadError } from "../../workspaces/utils/git";
 import { execGitWithShellPath } from "../../workspaces/utils/git-client";
 import {
 	getPRForBranch,
@@ -44,7 +44,12 @@ export async function mergePullRequest({
 		const { stdout: headOutput } = await execGitWithShellPath(
 			["rev-parse", "HEAD"],
 			{ cwd: worktreePath },
-		).catch(() => ({ stdout: "", stderr: "" }));
+		).catch((error) => {
+			if (isUnbornHeadError(error)) {
+				return { stdout: "", stderr: "" };
+			}
+			throw error;
+		});
 		const headSha = headOutput.trim() || undefined;
 
 		pr = await getPRForBranch(worktreePath, localBranch, repoContext, headSha);

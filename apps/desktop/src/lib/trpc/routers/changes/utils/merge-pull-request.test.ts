@@ -135,6 +135,26 @@ describe("mergePullRequest", () => {
 		);
 		expect(result.success).toBe(true);
 	});
+
+	test("falls back to legacy merge on unexpected HEAD lookup failures", async () => {
+		getCurrentBranchMock.mockResolvedValue("feature/branch");
+		execGitWithShellPathMock.mockRejectedValueOnce(
+			new Error("fatal: permission denied"),
+		);
+
+		const result = await mergePullRequest({
+			worktreePath: "/tmp/broken-worktree",
+			strategy: "merge",
+		});
+
+		expect(getPRForBranchMock).not.toHaveBeenCalled();
+		expect(execWithShellEnvMock).toHaveBeenCalledWith(
+			"gh",
+			["pr", "merge", "--merge"],
+			{ cwd: "/tmp/broken-worktree" },
+		);
+		expect(result.success).toBe(true);
+	});
 });
 
 afterAll(() => {

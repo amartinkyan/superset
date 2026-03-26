@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { PullRequestRuntimeManager } from "../src/runtime/pull-requests/pull-requests";
 
 describe("PullRequestRuntimeManager branch sync", () => {
@@ -66,5 +66,60 @@ describe("PullRequestRuntimeManager branch sync", () => {
 			headSha: null,
 		});
 		expect(refreshProjectMock).toHaveBeenCalledWith("project-1", true);
+	});
+
+	test("logs and skips unexpected HEAD lookup failures", async () => {
+		const workspace = {
+			id: "ws-2",
+			projectId: "project-2",
+			worktreePath: "/tmp/broken-worktree",
+			branch: "stale-branch",
+			headSha: "stale-sha",
+			pullRequestId: null,
+			createdAt: Date.now(),
+		};
+
+		const runMock = mock(() => undefined);
+		const whereMock = mock(() => ({ run: runMock }));
+		const setMock = mock(() => ({ where: whereMock }));
+		const updateMock = mock(() => ({ set: setMock }));
+		const allMock = mock(() => [workspace]);
+		const db = {
+			select: mock(() => ({
+				from: mock(() => ({
+					all: allMock,
+				})),
+			})),
+			update: updateMock,
+		};
+
+		const git = mock(async () => ({
+			raw: mock(async () => "feature/broken\n"),
+			revparse: mock(async (args: string[]) => {
+				if (args[0] === "HEAD") {
+					throw new Error("fatal: permission denied");
+				}
+				throw new Error(`Unexpected revparse args: ${args.join(" ")}`);
+			}),
+		}));
+
+		const manager = new PullRequestRuntimeManager({
+			db: db as never,
+			git: git as never,
+			github: async () => ({}) as never,
+		});
+		const refreshProjectMock = mock(async () => undefined);
+		(
+			manager as unknown as { refreshProject: typeof refreshProjectMock }
+		).refreshProject = refreshProjectMock;
+		const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+
+		await (
+			manager as unknown as { syncWorkspaceBranches: () => Promise<void> }
+		).syncWorkspaceBranches();
+
+		expect(setMock).not.toHaveBeenCalled();
+		expect(refreshProjectMock).not.toHaveBeenCalled();
+		expect(warnSpy).toHaveBeenCalled();
 	});
 });

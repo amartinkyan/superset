@@ -1,5 +1,9 @@
 import type { GitHubStatus, PullRequestComment } from "@superset/local-db";
-import { branchExistsOnRemote, getCurrentBranch } from "../git";
+import {
+	branchExistsOnRemote,
+	getCurrentBranch,
+	isUnbornHeadError,
+} from "../git";
 import { execGitWithShellPath } from "../git-client";
 import { execWithShellEnv } from "../shell-env";
 import { parseUpstreamRef } from "../upstream-ref";
@@ -50,7 +54,12 @@ async function resolvePullRequestCommentsTarget(
 	}
 	const shaResult = await execGitWithShellPath(["rev-parse", "HEAD"], {
 		cwd: worktreePath,
-	}).catch(() => ({ stdout: "", stderr: "" }));
+	}).catch((error) => {
+		if (isUnbornHeadError(error)) {
+			return { stdout: "", stderr: "" };
+		}
+		throw error;
+	});
 	const headSha = shaResult.stdout.trim() || undefined;
 	const prInfo = await getPRForBranch(
 		worktreePath,
@@ -99,7 +108,12 @@ async function refreshGitHubPRStatus(
 		const [shaResult, upstreamResult] = await Promise.all([
 			execGitWithShellPath(["rev-parse", "HEAD"], {
 				cwd: worktreePath,
-			}).catch(() => ({ stdout: "", stderr: "" })),
+			}).catch((error) => {
+				if (isUnbornHeadError(error)) {
+					return { stdout: "", stderr: "" };
+				}
+				throw error;
+			}),
 			execGitWithShellPath(["rev-parse", "--abbrev-ref", "@{upstream}"], {
 				cwd: worktreePath,
 			}).catch(() => ({ stdout: "", stderr: "" })),

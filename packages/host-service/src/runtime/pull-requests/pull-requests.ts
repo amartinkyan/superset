@@ -23,6 +23,13 @@ import {
 
 const BRANCH_SYNC_INTERVAL_MS = 10_000;
 const PROJECT_REFRESH_INTERVAL_MS = 15_000;
+const UNBORN_HEAD_ERROR_PATTERNS = [
+	"ambiguous argument 'head'",
+	"unknown revision or path not in the working tree",
+	"bad revision 'head'",
+	"not a valid object name head",
+	"needed a single revision",
+];
 
 async function getCurrentBranchName(git: Awaited<ReturnType<GitFactory>>) {
 	try {
@@ -45,8 +52,18 @@ async function getHeadSha(git: Awaited<ReturnType<GitFactory>>) {
 		const branch = await git.revparse(["HEAD"]);
 		const trimmed = branch.trim();
 		return trimmed || null;
-	} catch {
-		return null;
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? error.message.toLowerCase()
+				: String(error).toLowerCase();
+		if (
+			UNBORN_HEAD_ERROR_PATTERNS.some((pattern) => message.includes(pattern))
+		) {
+			return null;
+		}
+
+		throw error;
 	}
 }
 

@@ -25,6 +25,14 @@ export class NotGitRepoError extends Error {
 	}
 }
 
+const UNBORN_HEAD_ERROR_PATTERNS = [
+	"ambiguous argument 'head'",
+	"unknown revision or path not in the working tree",
+	"bad revision 'head'",
+	"not a valid object name head",
+	"needed a single revision",
+];
+
 /**
  * Error thrown by execFile when the command fails.
  * `code` can be a number (exit code) or string (spawn error like "ENOENT").
@@ -42,6 +50,21 @@ function isExecFileException(error: unknown): error is ExecFileException {
 	return (
 		error instanceof Error &&
 		("code" in error || "signal" in error || "killed" in error)
+	);
+}
+
+export function isUnbornHeadError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+
+	const stderr =
+		isExecFileException(error) && typeof error.stderr === "string"
+			? error.stderr
+			: "";
+	const message = `${error.message}\n${stderr}`.toLowerCase();
+	return UNBORN_HEAD_ERROR_PATTERNS.some((pattern) =>
+		message.includes(pattern),
 	);
 }
 

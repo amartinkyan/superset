@@ -15,6 +15,7 @@ import {
 	createWorktree,
 	getCurrentBranch,
 	hasUnpushedCommits,
+	isUnbornHeadError,
 	parsePorcelainStatusV2,
 	parsePrUrl,
 } from "./git";
@@ -607,6 +608,24 @@ describe("parsePorcelainStatusV2", () => {
 				working_dir: "A",
 			},
 		]);
+	});
+});
+
+describe("isUnbornHeadError", () => {
+	test("matches the standard unborn HEAD rev-parse failure", () => {
+		expect(
+			isUnbornHeadError(
+				new Error(
+					"fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.",
+				),
+			),
+		).toBe(true);
+	});
+
+	test("does not hide unrelated git failures", () => {
+		expect(isUnbornHeadError(new Error("fatal: not a git repository"))).toBe(
+			false,
+		);
 	});
 });
 
