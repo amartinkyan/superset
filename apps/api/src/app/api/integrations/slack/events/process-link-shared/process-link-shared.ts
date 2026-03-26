@@ -1,7 +1,8 @@
 import type { EntityMetadata, LinkSharedEvent } from "@slack/types";
 import { db } from "@superset/db/client";
-import { integrationConnections, tasks } from "@superset/db/schema";
+import { tasks } from "@superset/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getSlackConnectionForTeam } from "../../utils/resolve-team-connection";
 import { createSlackClient } from "../utils/slack-client";
 import {
 	createTaskWorkObject,
@@ -25,12 +26,7 @@ export async function processLinkShared({
 		linkCount: event.links.length,
 	});
 
-	const connection = await db.query.integrationConnections.findFirst({
-		where: and(
-			eq(integrationConnections.provider, "slack"),
-			eq(integrationConnections.externalOrgId, teamId),
-		),
-	});
+	const connection = await getSlackConnectionForTeam({ teamId });
 
 	if (!connection) {
 		console.error(

@@ -1,11 +1,8 @@
 import { db } from "@superset/db/client";
-import {
-	integrationConnections,
-	subscriptions,
-	usersSlackUsers,
-} from "@superset/db/schema";
+import { subscriptions, usersSlackUsers } from "@superset/db/schema";
 import { and, eq } from "drizzle-orm";
 import { posthog } from "@/lib/analytics";
+import { getSlackConnectionForTeam } from "../../utils/resolve-team-connection";
 import { generateConnectUrl } from "../utils/generate-connect-url";
 import {
 	formatErrorForSlack,
@@ -59,11 +56,9 @@ export async function processAssistantMessage({
 		user: event.user,
 	});
 
-	const connection = await db.query.integrationConnections.findFirst({
-		where: and(
-			eq(integrationConnections.provider, "slack"),
-			eq(integrationConnections.externalOrgId, teamId),
-		),
+	const connection = await getSlackConnectionForTeam({
+		teamId,
+		slackUserId: event.user,
 	});
 
 	if (!connection) {
@@ -82,6 +77,7 @@ export async function processAssistantMessage({
 					where: and(
 						eq(usersSlackUsers.slackUserId, event.user),
 						eq(usersSlackUsers.teamId, teamId),
+						eq(usersSlackUsers.organizationId, connection.organizationId),
 					),
 					columns: { userId: true, modelPreference: true },
 				})
@@ -147,6 +143,7 @@ export async function processAssistantMessage({
 		const connectUrl = generateConnectUrl({
 			slackUserId: event.user,
 			teamId,
+			organizationId: connection.organizationId,
 		});
 		await slack.chat.postMessage({
 			channel: event.channel,

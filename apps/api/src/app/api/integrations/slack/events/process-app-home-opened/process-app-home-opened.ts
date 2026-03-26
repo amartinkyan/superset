@@ -1,6 +1,7 @@
 import { db } from "@superset/db/client";
-import { integrationConnections, usersSlackUsers } from "@superset/db/schema";
+import { usersSlackUsers } from "@superset/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getSlackConnectionForTeam } from "../../utils/resolve-team-connection";
 import { generateConnectUrl } from "../utils/generate-connect-url";
 import { createSlackClient } from "../utils/slack-client";
 import { buildHomeView } from "./build-home-view";
@@ -15,11 +16,9 @@ export async function processAppHomeOpened({
 	event,
 	teamId,
 }: ProcessAppHomeOpenedParams): Promise<void> {
-	const connection = await db.query.integrationConnections.findFirst({
-		where: and(
-			eq(integrationConnections.provider, "slack"),
-			eq(integrationConnections.externalOrgId, teamId),
-		),
+	const connection = await getSlackConnectionForTeam({
+		teamId,
+		slackUserId: event.user,
 	});
 
 	if (!connection) {
@@ -34,6 +33,7 @@ export async function processAppHomeOpened({
 		where: and(
 			eq(usersSlackUsers.slackUserId, event.user),
 			eq(usersSlackUsers.teamId, teamId),
+			eq(usersSlackUsers.organizationId, connection.organizationId),
 		),
 		with: { user: true },
 	});
@@ -43,7 +43,11 @@ export async function processAppHomeOpened({
 
 	const connectUrl = isUserLinked
 		? undefined
-		: generateConnectUrl({ slackUserId: event.user, teamId });
+		: generateConnectUrl({
+				slackUserId: event.user,
+				teamId,
+				organizationId: connection.organizationId,
+			});
 
 	const slack = createSlackClient(connection.accessToken);
 

@@ -6,6 +6,7 @@ import { findOrgMembership } from "@superset/db/utils";
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { env } from "@/env";
+import { getSlackConnectionForTeam } from "../utils/resolve-team-connection";
 
 export async function GET(request: Request) {
 	const url = new URL(request.url);
@@ -16,7 +17,12 @@ export async function GET(request: Request) {
 		return new Response("Missing token or signature", { status: 400 });
 	}
 
-	let payload: { slackUserId: string; teamId: string; exp: number };
+	let payload: {
+		slackUserId: string;
+		teamId: string;
+		organizationId?: string;
+		exp: number;
+	};
 	try {
 		const decoded = Buffer.from(token, "base64url").toString("utf-8");
 		const expectedSig = createHmac("sha256", env.SLACK_SIGNING_SECRET)
@@ -48,17 +54,25 @@ export async function GET(request: Request) {
 		);
 	}
 
-	const connection = await db.query.integrationConnections.findFirst({
-		where: and(
-			eq(integrationConnections.provider, "slack"),
-			eq(integrationConnections.externalOrgId, payload.teamId),
-		),
-	});
+	const connection = payload.organizationId
+		? await db.query.integrationConnections.findFirst({
+				where: and(
+					eq(integrationConnections.provider, "slack"),
+					eq(integrationConnections.externalOrgId, payload.teamId),
+					eq(integrationConnections.organizationId, payload.organizationId),
+				),
+			})
+		: await getSlackConnectionForTeam({
+				teamId: payload.teamId,
+				slackUserId: payload.slackUserId,
+			});
 
 	if (!connection) {
 		return new Response(
-			"Slack workspace not connected to any Superset organization.",
-			{ status: 404 },
+			payload.organizationId
+				? "Slack workspace connection changed. Please try again from the Slack Home tab."
+				: "Slack workspace not connected to any Superset organization.",
+			{ status: payload.organizationId ? 410 : 404 },
 		);
 	}
 

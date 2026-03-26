@@ -1,7 +1,8 @@
 import type { SlackEvent } from "@slack/types";
 import { db } from "@superset/db/client";
-import { integrationConnections, tasks } from "@superset/db/schema";
+import { tasks } from "@superset/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getSlackConnectionForTeam } from "../../utils/resolve-team-connection";
 import { createSlackClient } from "../utils/slack-client";
 import {
 	createTaskFlexpaneObject,
@@ -32,12 +33,7 @@ export async function processEntityDetails({
 		externalRef: event.external_ref,
 	});
 
-	const connection = await db.query.integrationConnections.findFirst({
-		where: and(
-			eq(integrationConnections.provider, "slack"),
-			eq(integrationConnections.externalOrgId, teamId),
-		),
-	});
+	const connection = await getSlackConnectionForTeam({ teamId });
 
 	if (!connection) {
 		console.error(

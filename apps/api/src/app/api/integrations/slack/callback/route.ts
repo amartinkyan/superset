@@ -1,8 +1,12 @@
 import { WebClient } from "@slack/web-api";
 import { db } from "@superset/db/client";
 import type { SlackConfig } from "@superset/db/schema";
-import { integrationConnections, members } from "@superset/db/schema";
-import { and, eq } from "drizzle-orm";
+import {
+	integrationConnections,
+	members,
+	usersSlackUsers,
+} from "@superset/db/schema";
+import { and, eq, ne } from "drizzle-orm";
 
 import { env } from "@/env";
 import { posthog } from "@/lib/analytics";
@@ -71,9 +75,27 @@ export async function GET(request: Request) {
 			);
 		}
 
+		const teamId = tokenData.team.id;
+		if (!teamId) {
+			console.error("[slack/callback] Slack team ID missing in OAuth response");
+			return Response.redirect(
+				`${env.NEXT_PUBLIC_WEB_URL}/integrations/slack?error=slack_api_error`,
+			);
+		}
+
 		const config: SlackConfig = {
 			provider: "slack",
 		};
+
+		await db
+			.delete(integrationConnections)
+			.where(
+				and(
+					eq(integrationConnections.provider, "slack"),
+					eq(integrationConnections.externalOrgId, teamId),
+					ne(integrationConnections.organizationId, organizationId),
+				),
+			);
 
 		await db
 			.insert(integrationConnections)
@@ -82,7 +104,7 @@ export async function GET(request: Request) {
 				connectedByUserId: userId,
 				provider: "slack",
 				accessToken: tokenData.access_token,
-				externalOrgId: tokenData.team.id,
+				externalOrgId: teamId,
 				externalOrgName: tokenData.team.name,
 				config,
 			})
@@ -93,7 +115,7 @@ export async function GET(request: Request) {
 				],
 				set: {
 					accessToken: tokenData.access_token,
-					externalOrgId: tokenData.team.id,
+					externalOrgId: teamId,
 					externalOrgName: tokenData.team.name,
 					connectedByUserId: userId,
 					config,
@@ -101,16 +123,25 @@ export async function GET(request: Request) {
 				},
 			});
 
+		await db
+			.delete(usersSlackUsers)
+			.where(
+				and(
+					eq(usersSlackUsers.teamId, teamId),
+					ne(usersSlackUsers.organizationId, organizationId),
+				),
+			);
+
 		console.log("[slack/callback] Connected workspace:", {
 			organizationId,
-			teamId: tokenData.team.id,
+			teamId,
 			teamName: tokenData.team.name,
 		});
 
 		posthog.capture({
 			distinctId: userId,
 			event: "slack_connected",
-			properties: { team_id: tokenData.team.id },
+			properties: { team_id: teamId },
 		});
 
 		return Response.redirect(`${env.NEXT_PUBLIC_WEB_URL}/integrations/slack`);
