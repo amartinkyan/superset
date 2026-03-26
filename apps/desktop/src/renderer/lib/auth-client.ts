@@ -12,6 +12,15 @@ import { env } from "renderer/env.renderer";
 let authToken: string | null = null;
 let authTokenExpiresAtMs: number | null = null;
 
+function parseAuthTokenExpiresAtMs(expiresAt: string | null): number | null {
+	if (!expiresAt) {
+		return null;
+	}
+
+	const parsedExpiresAtMs = new Date(expiresAt).getTime();
+	return Number.isFinite(parsedExpiresAtMs) ? parsedExpiresAtMs : 0;
+}
+
 function isAuthTokenExpired(): boolean {
 	return authTokenExpiresAtMs !== null && authTokenExpiresAtMs <= Date.now();
 }
@@ -26,8 +35,13 @@ export function setAuthToken(
 	token: string | null,
 	expiresAt: string | null = null,
 ) {
+	if (!token) {
+		clearAuthState();
+		return;
+	}
+
 	authToken = token;
-	authTokenExpiresAtMs = expiresAt ? new Date(expiresAt).getTime() : null;
+	authTokenExpiresAtMs = parseAuthTokenExpiresAtMs(expiresAt);
 	if (isAuthTokenExpired()) {
 		clearAuthState();
 	}

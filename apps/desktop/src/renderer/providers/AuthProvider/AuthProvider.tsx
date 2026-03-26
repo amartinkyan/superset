@@ -65,6 +65,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		await refetchSessionFor(reason);
 	});
 
+	const clearStoredAuthFor = useEffectEvent(async (reason: string) => {
+		try {
+			await clearStoredAuthMutation.mutateAsync();
+		} catch (err) {
+			console.warn(`[AuthProvider] failed to clear stored auth ${reason}`, err);
+		}
+	});
+
+	const clearExpiredAuth = useEffectEvent(async (reason: string) => {
+		await clearLocalAuth(reason);
+		await clearStoredAuthFor(reason);
+	});
+
 	const applyStoredAuth = useEffectEvent(
 		async (
 			token: string,
@@ -74,9 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			clearAuthState();
 			setAuthToken(token, expiresAt);
 			const expiresAtMs = getAuthTokenExpiresAtMs();
-			if (!expiresAtMs) {
-				setAuthExpiresAtMs(null);
-				await syncHostServiceAuth(null, null, `${reason} (expired)`);
+			if (expiresAtMs === null) {
+				await clearExpiredAuth(`${reason} (invalid or expired token)`);
 				return false;
 			}
 
@@ -127,8 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	});
 
 	const expireAuth = useEffectEvent(async () => {
-		await clearLocalAuth("after token expiry");
-		clearStoredAuthMutation.mutate();
+		await clearExpiredAuth("after token expiry");
 	});
 
 	useEffect(() => {

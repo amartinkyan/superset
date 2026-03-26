@@ -33,15 +33,25 @@ export function useDevicePresence() {
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const unauthorizedRef = useRef(false);
 	const activeOrganizationId = session?.session?.activeOrganizationId;
+	const authCookie = authClient.getCookie() || null;
 	const authScopeRef = useRef<string | null>(null);
+	const authCookieRef = useRef<string | null>(null);
 	const authScope = session?.session.id
 		? `${session.session.id}:${activeOrganizationId ?? ""}`
 		: null;
 
-	if (authScopeRef.current !== authScope) {
+	useEffect(() => {
+		const authChanged =
+			authScopeRef.current !== authScope ||
+			authCookieRef.current !== authCookie;
+
 		authScopeRef.current = authScope;
-		unauthorizedRef.current = false;
-	}
+		authCookieRef.current = authCookie;
+
+		if (authChanged) {
+			unauthorizedRef.current = false;
+		}
+	}, [authScope, authCookie]);
 
 	const stopHeartbeat = useCallback(() => {
 		if (intervalRef.current) {
@@ -58,7 +68,7 @@ export function useDevicePresence() {
 		if (
 			!deviceId ||
 			!activeOrganizationId ||
-			!authClient.getCookie() ||
+			!authCookie ||
 			unauthorizedRef.current
 		) {
 			return;
@@ -78,18 +88,32 @@ export function useDevicePresence() {
 				stopHeartbeat();
 				try {
 					await refetchSession();
-				} catch {
-					// Session recovery failure should not keep spamming heartbeat.
+				} catch (refetchError) {
+					console.warn(
+						"[useDevicePresence] session refetch failed after unauthorized heartbeat",
+						refetchError,
+					);
 				}
 				return;
 			}
 
 			// Heartbeat can fail when offline - ignore
 		}
-	}, [activeOrganizationId, deviceId, refetchSession, stopHeartbeat]);
+	}, [
+		activeOrganizationId,
+		authCookie,
+		deviceId,
+		refetchSession,
+		stopHeartbeat,
+	]);
 
 	useEffect(() => {
-		if (!deviceId || !activeOrganizationId || unauthorizedRef.current) {
+		if (
+			!deviceId ||
+			!activeOrganizationId ||
+			!authCookie ||
+			unauthorizedRef.current
+		) {
 			stopHeartbeat();
 			return;
 		}
@@ -100,10 +124,20 @@ export function useDevicePresence() {
 		}, HEARTBEAT_INTERVAL_MS);
 
 		return stopHeartbeat;
-	}, [activeOrganizationId, deviceId, sendHeartbeat, stopHeartbeat]);
+	}, [
+		activeOrganizationId,
+		authCookie,
+		deviceId,
+		sendHeartbeat,
+		stopHeartbeat,
+	]);
 
 	return {
 		deviceId,
-		isActive: !!deviceId && !!activeOrganizationId && !unauthorizedRef.current,
+		isActive:
+			!!deviceId &&
+			!!activeOrganizationId &&
+			!!authCookie &&
+			!unauthorizedRef.current,
 	};
 }

@@ -18,15 +18,24 @@ export function useDevicePresence() {
 	const unauthorizedRef = useRef(false);
 	const { data: deviceInfo } = electronTrpc.auth.getDeviceInfo.useQuery();
 	const activeOrganizationId = session?.session?.activeOrganizationId;
+	const authToken = getAuthToken();
 	const authScopeRef = useRef<string | null>(null);
+	const authTokenRef = useRef<string | null>(null);
 	const authScope = session?.session.id
 		? `${session.session.id}:${activeOrganizationId ?? ""}`
 		: null;
 
-	if (authScopeRef.current !== authScope) {
+	useEffect(() => {
+		const authChanged =
+			authScopeRef.current !== authScope || authTokenRef.current !== authToken;
+
 		authScopeRef.current = authScope;
-		unauthorizedRef.current = false;
-	}
+		authTokenRef.current = authToken;
+
+		if (authChanged) {
+			unauthorizedRef.current = false;
+		}
+	}, [authScope, authToken]);
 
 	const stopHeartbeat = useCallback(() => {
 		if (intervalRef.current) {
@@ -39,7 +48,7 @@ export function useDevicePresence() {
 		if (
 			!deviceInfo ||
 			!activeOrganizationId ||
-			!getAuthToken() ||
+			!authToken ||
 			unauthorizedRef.current
 		) {
 			return;
@@ -57,18 +66,32 @@ export function useDevicePresence() {
 				stopHeartbeat();
 				try {
 					await refetchSession();
-				} catch {
-					// Session recovery failure should not keep spamming heartbeat.
+				} catch (refetchError) {
+					console.warn(
+						"[useDevicePresence] session refetch failed after unauthorized heartbeat",
+						refetchError,
+					);
 				}
 				return;
 			}
 
 			// Heartbeat can fail when offline - ignore
 		}
-	}, [activeOrganizationId, deviceInfo, refetchSession, stopHeartbeat]);
+	}, [
+		activeOrganizationId,
+		authToken,
+		deviceInfo,
+		refetchSession,
+		stopHeartbeat,
+	]);
 
 	useEffect(() => {
-		if (!deviceInfo || !activeOrganizationId || unauthorizedRef.current) {
+		if (
+			!deviceInfo ||
+			!activeOrganizationId ||
+			!authToken ||
+			unauthorizedRef.current
+		) {
 			stopHeartbeat();
 			return;
 		}
@@ -79,11 +102,20 @@ export function useDevicePresence() {
 		}, HEARTBEAT_INTERVAL_MS);
 
 		return stopHeartbeat;
-	}, [activeOrganizationId, deviceInfo, sendHeartbeat, stopHeartbeat]);
+	}, [
+		activeOrganizationId,
+		authToken,
+		deviceInfo,
+		sendHeartbeat,
+		stopHeartbeat,
+	]);
 
 	return {
 		deviceInfo,
 		isActive:
-			!!deviceInfo && !!activeOrganizationId && !unauthorizedRef.current,
+			!!deviceInfo &&
+			!!activeOrganizationId &&
+			!!authToken &&
+			!unauthorizedRef.current,
 	};
 }
