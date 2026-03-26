@@ -2,7 +2,6 @@ import { snakeCamelMapper } from "@electric-sql/client";
 import type {
 	SelectAgentCommand,
 	SelectChatSession,
-	SelectDevicePresence,
 	SelectGithubPullRequest,
 	SelectGithubRepository,
 	SelectIntegrationConnection,
@@ -79,7 +78,6 @@ export interface OrgCollections {
 	users: Collection<SelectUser>;
 	invitations: Collection<SelectInvitation>;
 	agentCommands: Collection<SelectAgentCommand>;
-	devicePresence: Collection<SelectDevicePresence>;
 	integrationConnections: Collection<IntegrationConnectionDisplay>;
 	subscriptions: Collection<SelectSubscription>;
 	apiKeys: Collection<ApiKeyDisplay>;
@@ -386,22 +384,6 @@ function createOrgCollections(organizationId: string): OrgCollections {
 		}),
 	);
 
-	const devicePresence = createCollection(
-		electricCollectionOptions<SelectDevicePresence>({
-			id: `device_presence-${organizationId}`,
-			shapeOptions: {
-				url: electricUrl,
-				params: {
-					table: "device_presence",
-					organizationId,
-				},
-				headers: electricHeaders,
-				columnMapper,
-			},
-			getKey: (item) => item.id,
-		}),
-	);
-
 	const integrationConnections = createCollection(
 		electricCollectionOptions<IntegrationConnectionDisplay>({
 			id: `integration_connections-${organizationId}`,
@@ -555,7 +537,6 @@ function createOrgCollections(organizationId: string): OrgCollections {
 		users,
 		invitations,
 		agentCommands,
-		devicePresence,
 		integrationConnections,
 		subscriptions,
 		apiKeys,

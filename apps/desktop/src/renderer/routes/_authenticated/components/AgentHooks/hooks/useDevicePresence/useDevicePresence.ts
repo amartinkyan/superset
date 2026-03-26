@@ -1,42 +1,33 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { apiTrpcClient } from "renderer/lib/api-trpc-client";
 import { authClient } from "renderer/lib/auth-client";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
-const HEARTBEAT_INTERVAL_MS = 30_000;
-
+/**
+ * Registers this device once on startup so MCP can verify ownership.
+ * No polling — just a single upsert into device_presence.
+ */
 export function useDevicePresence() {
 	const { data: session } = authClient.useSession();
-	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const { data: deviceInfo } = electronTrpc.auth.getDeviceInfo.useQuery();
-
-	const sendHeartbeat = useCallback(async () => {
-		if (!deviceInfo || !session?.session?.activeOrganizationId) return;
-
-		try {
-			await apiTrpcClient.device.heartbeat.mutate({
-				deviceId: deviceInfo.deviceId,
-				deviceName: deviceInfo.deviceName,
-				deviceType: "desktop",
-			});
-		} catch {
-			// Heartbeat can fail when offline - ignore
-		}
-	}, [deviceInfo, session?.session?.activeOrganizationId]);
+	const registeredRef = useRef(false);
 
 	useEffect(() => {
 		if (!deviceInfo || !session?.session?.activeOrganizationId) return;
+		if (registeredRef.current) return;
+		registeredRef.current = true;
 
-		sendHeartbeat();
-		intervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-
-		return () => {
-			if (intervalRef.current) {
-				clearInterval(intervalRef.current);
-				intervalRef.current = null;
-			}
-		};
-	}, [deviceInfo, session?.session?.activeOrganizationId, sendHeartbeat]);
+		apiTrpcClient.device.registerDevice
+			.mutate({
+				deviceId: deviceInfo.deviceId,
+				deviceName: deviceInfo.deviceName,
+				deviceType: "desktop",
+			})
+			.catch(() => {
+				// Registration can fail when offline — will retry on next app launch
+				registeredRef.current = false;
+			});
+	}, [deviceInfo, session?.session?.activeOrganizationId]);
 
 	return {
 		deviceInfo,

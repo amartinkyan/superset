@@ -6,7 +6,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { db } from "@superset/db/client";
 import { agentCommands, devicePresence } from "@superset/db/schema";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { McpContext } from "../../auth";
 
 // --- Auth context ---
@@ -27,7 +27,6 @@ export function getMcpContext(
 
 // --- Device execution ---
 
-export const DEVICE_ONLINE_THRESHOLD_MS = 60_000;
 const POLL_INTERVAL_MS = 500;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -44,8 +43,7 @@ export async function executeOnDevice({
 	params: Record<string, unknown>;
 	timeout?: number;
 }) {
-	const threshold = new Date(Date.now() - DEVICE_ONLINE_THRESHOLD_MS);
-
+	// Verify device exists and belongs to this user
 	const [device] = await db
 		.select()
 		.from(devicePresence)
@@ -53,7 +51,6 @@ export async function executeOnDevice({
 			and(
 				eq(devicePresence.deviceId, deviceId),
 				eq(devicePresence.organizationId, ctx.organizationId),
-				gt(devicePresence.lastSeenAt, threshold),
 			),
 		)
 		.limit(1);
@@ -63,7 +60,7 @@ export async function executeOnDevice({
 			content: [
 				{
 					type: "text" as const,
-					text: `Error: Device ${deviceId} is not online`,
+					text: `Error: Device ${deviceId} not found in this organization.`,
 				},
 			],
 			isError: true,
