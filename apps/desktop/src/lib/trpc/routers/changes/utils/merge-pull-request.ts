@@ -1,4 +1,7 @@
-import { getCurrentBranch, isUnbornHeadError } from "../../workspaces/utils/git";
+import {
+	getCurrentBranch,
+	isUnbornHeadError,
+} from "../../workspaces/utils/git";
 import { execGitWithShellPath } from "../../workspaces/utils/git-client";
 import {
 	getPRForBranch,
