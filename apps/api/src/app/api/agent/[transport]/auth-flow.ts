@@ -225,10 +225,7 @@ export async function verifyToken(
 					},
 				})) as Record<string, unknown>;
 
-				const authInfo = buildOAuthAuthInfo(bearerToken, payload);
-				if (authInfo) {
-					return authInfo;
-				}
+				return buildOAuthAuthInfo(bearerToken, payload);
 			} catch (error) {
 				oauthVerificationError = error;
 			}

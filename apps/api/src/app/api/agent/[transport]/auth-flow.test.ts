@@ -228,6 +228,32 @@ describe("MCP auth flow", () => {
 		expect(deps.oauthSpy).toHaveBeenCalledTimes(1);
 	});
 
+	it("does not fall back to session auth after a verified JWT is missing required claims", async () => {
+		const sessionSpy = mock(async () => ({
+			user: { id: "user-3" },
+			session: { activeOrganizationId: "org-3" },
+		}));
+		const verifyAccessToken = mock(async () => ({
+			sub: "user-2",
+		})) as McpRequestDeps["verifyAccessToken"];
+		const deps = createDeps({
+			authApi: {
+				getSession: sessionSpy,
+				verifyApiKey: mock(async () => ({ valid: false, key: null })),
+			},
+			verifyAccessToken,
+		});
+
+		const authInfo = await verifyToken(
+			createRequest({ authorization: "Bearer verified.jwt.token" }),
+			deps,
+		);
+
+		expect(authInfo).toBeUndefined();
+		expect(verifyAccessToken).toHaveBeenCalledTimes(1);
+		expect(sessionSpy).toHaveBeenCalledTimes(0);
+	});
+
 	it("returns a path-specific unauthorized challenge", () => {
 		const response = unauthorizedResponse(createRequest());
 
