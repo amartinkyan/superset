@@ -133,6 +133,7 @@ interface FileViewerContentProps {
 	diffSearch: TextSearchState;
 	markdownContainerRef: RefObject<HTMLDivElement | null>;
 	markdownSearch: TextSearchState;
+	onTopLineChange?: (line: number) => void;
 }
 
 export function FileViewerContent({
@@ -168,6 +169,7 @@ export function FileViewerContent({
 	diffSearch,
 	markdownContainerRef,
 	markdownSearch,
+	onTopLineChange,
 }: FileViewerContentProps) {
 	const isImage = isImageFile(filePath);
 
@@ -489,6 +491,7 @@ export function FileViewerContent({
 					value={renderedContent}
 					onChange={onContentChange}
 					onSave={onSaveFile}
+					onTopLineChange={onTopLineChange}
 					editorRef={editorRef}
 					fillHeight
 				/>

@@ -40,6 +40,7 @@ interface CodeEditorProps {
 	editorRef?: MutableRefObject<CodeEditorAdapter | null>;
 	onChange?: (value: string) => void;
 	onSave?: () => void;
+	onTopLineChange?: (line: number) => void;
 }
 
 function createCodeMirrorAdapter(view: EditorView): CodeEditorAdapter {
@@ -169,6 +170,7 @@ export function CodeEditor({
 	editorRef,
 	onChange,
 	onSave,
+	onTopLineChange,
 }: CodeEditorProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const viewRef = useRef<EditorView | null>(null);
@@ -189,17 +191,29 @@ export function CodeEditor({
 	const editorFontSize = fontSettings?.editorFontSize ?? undefined;
 	const activeTheme = useResolvedTheme();
 
+	const onTopLineChangeRef = useRef(onTopLineChange);
 	onChangeRef.current = onChange;
 	onSaveRef.current = onSave;
+	onTopLineChangeRef.current = onTopLineChange;
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: Editor instance is created once and reconfigured via dedicated effects below
 	useEffect(() => {
 		if (!containerRef.current) return;
 
 		const updateListener = EditorView.updateListener.of((update) => {
-			if (!update.docChanged) return;
-			if (isExternalUpdateRef.current) return;
-			onChangeRef.current?.(update.state.doc.toString());
+			if (update.docChanged && !isExternalUpdateRef.current) {
+				onChangeRef.current?.(update.state.doc.toString());
+			}
+			if (update.viewportChanged) {
+				try {
+					const topLine = update.view.state.doc.lineAt(
+						update.view.viewport.from,
+					).number;
+					onTopLineChangeRef.current?.(topLine);
+				} catch {
+					// View may be in an intermediate state during teardown
+				}
+			}
 		});
 
 		const saveKeymap = keymap.of([

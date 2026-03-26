@@ -146,6 +146,7 @@ export function FileViewerPane({
 	const diffContainerRef = useRef<HTMLDivElement>(null);
 	const pendingRenamePathRef = useRef<string | null>(null);
 	const preserveDocumentStateRef = useRef(false);
+	const lastTopLineRef = useRef<number | null>(null);
 	const [isResolvingIntent, setIsResolvingIntent] = useState(false);
 
 	const filePath = fileViewer?.filePath ?? "";
@@ -398,6 +399,35 @@ export function FileViewerPane({
 		},
 		[documentKey, isPinned, paneId, pinPane],
 	);
+
+	const handleTopLineChange = useCallback((line: number) => {
+		lastTopLineRef.current = line;
+	}, []);
+
+	// Persist scroll position on unmount so it can be restored when returning to this workspace
+	useEffect(() => {
+		return () => {
+			const topLine = lastTopLineRef.current;
+			if (topLine == null) return;
+
+			const panes = useTabsStore.getState().panes;
+			const currentPane = panes[paneId];
+			if (!currentPane?.fileViewer) return;
+
+			useTabsStore.setState({
+				panes: {
+					...panes,
+					[paneId]: {
+						...currentPane,
+						fileViewer: {
+							...currentPane.fileViewer,
+							initialLine: topLine,
+						},
+					},
+				},
+			});
+		};
+	}, [paneId]);
 
 	useEffect(() => {
 		if (!isDirty) {
@@ -714,6 +744,7 @@ export function FileViewerPane({
 							diffSearch={diffSearch}
 							markdownContainerRef={markdownContainerRef}
 							markdownSearch={markdownSearch}
+							onTopLineChange={handleTopLineChange}
 						/>
 					</div>
 				</div>
