@@ -105,7 +105,7 @@ export function PromptGroup({
 
 	const branchSlug = branchNameEdited
 		? sanitizeBranchNameWithMaxLength(branchName, undefined, {
-				preserveFirstSegmentCase: true,
+				preserveCase: true,
 			})
 		: sanitizeBranchNameWithMaxLength(trimmedPrompt);
 
@@ -113,7 +113,13 @@ export function PromptGroup({
 
 	const branchPreview =
 		branchSlug && applyPrefix && resolvedPrefix
-			? sanitizeBranchNameWithMaxLength(`${resolvedPrefix}/${branchSlug}`)
+			? sanitizeBranchNameWithMaxLength(
+					`${resolvedPrefix}/${branchSlug}`,
+					undefined,
+					{
+						preserveCase: true,
+					},
+				)
 			: branchSlug;
 
 	const previousProjectIdRef = useRef(localProjectId);

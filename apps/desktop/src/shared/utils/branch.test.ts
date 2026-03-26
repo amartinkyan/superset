@@ -184,6 +184,30 @@ describe("sanitizeBranchNameWithMaxLength", () => {
 			}),
 		).toBe("Fix_Bug");
 	});
+
+	test("preserves case in all segments with preserveCase", () => {
+		expect(
+			sanitizeBranchNameWithMaxLength("feat/AAA-1_dummy", 100, {
+				preserveCase: true,
+			}),
+		).toBe("feat/AAA-1_dummy");
+	});
+
+	test("preserves case when branch has mixed-case segments", () => {
+		expect(
+			sanitizeBranchNameWithMaxLength("Feature/BUG-Fix_Test", 100, {
+				preserveCase: true,
+			}),
+		).toBe("Feature/BUG-Fix_Test");
+	});
+
+	test("preserves case when combined with prefix", () => {
+		expect(
+			sanitizeBranchNameWithMaxLength("Kitenite/AAA-1_dummy", 100, {
+				preserveCase: true,
+			}),
+		).toBe("Kitenite/AAA-1_dummy");
+	});
 });
 
 describe("deduplicateBranchName", () => {

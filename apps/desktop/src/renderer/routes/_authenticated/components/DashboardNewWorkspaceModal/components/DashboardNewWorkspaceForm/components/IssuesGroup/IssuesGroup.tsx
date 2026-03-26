@@ -84,7 +84,7 @@ export function IssuesGroup({ projectId, hostTarget }: IssuesGroupProps) {
 	const workspaceByBranch = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const w of v2WorkspacesData ?? []) {
-			map.set(w.branch, w.id);
+			map.set(w.branch.toLowerCase(), w.id);
 		}
 		return map;
 	}, [v2WorkspacesData]);
@@ -157,7 +157,7 @@ export function IssuesGroup({ projectId, hostTarget }: IssuesGroupProps) {
 							createWorkspace({
 								projectId,
 								name: task.title,
-								branch: task.slug.toLowerCase(),
+								branch: task.slug,
 								hostTarget,
 							}),
 							{

@@ -7,7 +7,7 @@ export function deriveBranchName({
 	slug: string;
 	title: string;
 }): string {
-	const prefix = slug.toLowerCase();
+	const prefix = slug;
 	const titleSegment = sanitizeSegment(title, 40);
 	return titleSegment ? `${prefix}-${titleSegment}` : prefix;
 }
