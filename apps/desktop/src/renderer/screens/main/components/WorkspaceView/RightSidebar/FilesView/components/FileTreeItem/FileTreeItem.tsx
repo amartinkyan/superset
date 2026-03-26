@@ -78,14 +78,15 @@ export function FileTreeItem({
 			} else {
 				item.expand();
 			}
+		} else if (e.metaKey || e.ctrlKey) {
+			onOpenInEditor(entry);
 		} else {
-			onActivate(entry, e.metaKey || e.ctrlKey ? true : undefined);
+			onActivate(entry);
 		}
 	};
 
 	const handleDoubleClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
-		onOpenInEditor(entry);
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {

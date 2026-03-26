@@ -85,12 +85,16 @@ export function FileSearchResultItem({
 
 	const handleClick = (e: React.MouseEvent) => {
 		if (!entry.isDirectory) {
-			onActivate(entry, e.metaKey || e.ctrlKey ? true : undefined);
+			if (e.metaKey || e.ctrlKey) {
+				onOpenInEditor(entry);
+			} else {
+				onActivate(entry);
+			}
 		}
 	};
 
 	const handleDoubleClick = () => {
-		onOpenInEditor(entry);
+		// Reserved for future pinning behavior
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {
