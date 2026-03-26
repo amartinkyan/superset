@@ -13,6 +13,7 @@ import {
 	getHostServiceClient,
 	type HostServiceClient,
 } from "renderer/lib/host-service-client";
+import { setHostServiceSecret } from "renderer/lib/host-service-auth";
 import { MOCK_ORG_ID } from "shared/constants";
 import { useCollections } from "../CollectionsProvider";
 
@@ -73,10 +74,14 @@ export function HostServiceProvider({ children }: { children: ReactNode }) {
 	const services = useMemo(() => {
 		const map = new Map<string, OrgService>();
 
-		const addOrg = (orgId: string, port: number) => {
+		const addOrg = (orgId: string, port: number, secret: string | null) => {
+			const url = `http://127.0.0.1:${port}`;
+			if (secret) {
+				setHostServiceSecret(url, secret);
+			}
 			map.set(orgId, {
 				port,
-				url: `http://127.0.0.1:${port}`,
+				url,
 				client: getHostServiceClient(port),
 			});
 		};
@@ -86,7 +91,7 @@ export function HostServiceProvider({ children }: { children: ReactNode }) {
 				organizationId: orgId,
 			});
 			if (cached?.port) {
-				addOrg(orgId, cached.port);
+				addOrg(orgId, cached.port, cached.secret ?? null);
 			}
 		}
 
@@ -96,7 +101,11 @@ export function HostServiceProvider({ children }: { children: ReactNode }) {
 			activePortData?.port &&
 			!map.has(activeOrganizationId)
 		) {
-			addOrg(activeOrganizationId, activePortData.port);
+			addOrg(
+				activeOrganizationId,
+				activePortData.port,
+				activePortData.secret ?? null,
+			);
 		}
 
 		return map;
