@@ -154,7 +154,7 @@ cloudflared tunnel route dns superset-api-kietho api-kietho.dev.superset.sh
 Example config:
 
 ```yaml
-# ~/.cloudflared/config.yml
+# .cloudflared/config.yml
 tunnel: superset-api-kietho
 credentials-file: /Users/<you>/.cloudflared/<tunnel-uuid>.json
 
@@ -164,10 +164,12 @@ ingress:
   - service: http_status:404
 ```
 
+Start from the checked-in template at `.cloudflared/config.example.yml` and copy it to `.cloudflared/config.yml`.
+
 Run the tunnel:
 
 ```bash
-cloudflared tunnel run superset-api-kietho
+bun run dev:tunnel
 ```
 
 Then set env locally:
@@ -176,6 +178,13 @@ Then set env locally:
 NEXT_PUBLIC_WEB_URL=http://localhost:3000
 NEXT_PUBLIC_API_URL=http://localhost:3001
 EXTERNAL_API_URL=https://api-kietho.dev.superset.sh
+CLOUDFLARED_TUNNEL_NAME=superset-api-kietho
+```
+
+For a one-command local stack focused on the web + API Linear flow:
+
+```bash
+bun run dev:linear
 ```
 
 ## Why Stable Tunnel
