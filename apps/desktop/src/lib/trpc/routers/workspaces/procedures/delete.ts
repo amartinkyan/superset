@@ -1,7 +1,10 @@
 import { existsSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type { SelectWorktree } from "@superset/local-db";
+import { worktrees } from "@superset/local-db";
+import { eq } from "drizzle-orm";
 import { track } from "main/lib/analytics";
+import { localDb } from "main/lib/local-db";
 import { workspaceInitManager } from "main/lib/workspace-init-manager";
 import { getWorkspaceRuntimeRegistry } from "main/lib/workspace-runtime";
 import { z } from "zod";
@@ -271,13 +274,28 @@ export const createDeleteProcedures = () => {
 						// External worktrees should only have their DB records removed
 						if (worktree.createdBySuperset) {
 							// Safety: Double-check it's not actually external (catches race conditions)
-							const externalWorktrees = await listExternalWorktrees(
+							// Get all git worktrees
+							const allGitWorktrees = await listExternalWorktrees(
 								project.mainRepoPath,
 							);
+
+							// Get all tracked worktree paths from database for this project
+							const trackedWorktrees = localDb
+								.select({ path: worktrees.path })
+								.from(worktrees)
+								.where(eq(worktrees.projectId, project.id))
+								.all();
+							const trackedPaths = new Set(
+								trackedWorktrees.map((wt) => normalizePath(wt.path)),
+							);
+
+							// Check if this worktree exists in git but is NOT tracked in our DB
 							const worktreePathNorm = normalizePath(worktree.path);
-							const isActuallyExternal = externalWorktrees.some(
+							const existsInGit = allGitWorktrees.some(
 								(wt) => normalizePath(wt.path) === worktreePathNorm,
 							);
+							const isActuallyExternal =
+								existsInGit && !trackedPaths.has(worktreePathNorm);
 
 							if (isActuallyExternal) {
 								console.warn(
@@ -489,12 +507,28 @@ export const createDeleteProcedures = () => {
 					// Only delete from disk if this worktree was created by Superset
 					if (worktree.createdBySuperset) {
 						// Safety: Double-check it's not actually external (catches race conditions)
-						const externalWorktrees = await listExternalWorktrees(
+						// Get all git worktrees
+						const allGitWorktrees = await listExternalWorktrees(
 							project.mainRepoPath,
 						);
-						const isActuallyExternal = externalWorktrees.some(
-							(wt) => wt.path === worktree.path,
+
+						// Get all tracked worktree paths from database for this project
+						const trackedWorktrees = localDb
+							.select({ path: worktrees.path })
+							.from(worktrees)
+							.where(eq(worktrees.projectId, project.id))
+							.all();
+						const trackedPaths = new Set(
+							trackedWorktrees.map((wt) => normalizePath(wt.path)),
 						);
+
+						// Check if this worktree exists in git but is NOT tracked in our DB
+						const worktreePathNorm = normalizePath(worktree.path);
+						const existsInGit = allGitWorktrees.some(
+							(wt) => normalizePath(wt.path) === worktreePathNorm,
+						);
+						const isActuallyExternal =
+							existsInGit && !trackedPaths.has(worktreePathNorm);
 
 						if (isActuallyExternal) {
 							console.warn(
