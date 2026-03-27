@@ -37,6 +37,7 @@ import {
 	resolveSessionOrganizationState,
 	type SessionOrganizationContext,
 } from "./lib/resolve-session-organization-state";
+import { selectGitHubPrimaryEmail } from "./lib/select-github-primary-email";
 import { stripeClient } from "./stripe";
 import { formatPrice, getOrganizationOwners } from "./utils";
 
@@ -97,6 +98,37 @@ export const auth = betterAuth({
 		github: {
 			clientId: env.GH_CLIENT_ID,
 			clientSecret: env.GH_CLIENT_SECRET,
+			getUserInfo: async (token) => {
+				const userRes = await fetch("https://api.github.com/user", {
+					headers: {
+						Authorization: `Bearer ${token.accessToken}`,
+						"User-Agent": "better-auth",
+					},
+				});
+				if (!userRes.ok) return null;
+				const profile = await userRes.json();
+
+				const emailsRes = await fetch("https://api.github.com/user/emails", {
+					headers: {
+						Authorization: `Bearer ${token.accessToken}`,
+						"User-Agent": "better-auth",
+					},
+				});
+				const emails = emailsRes.ok ? await emailsRes.json() : null;
+
+				const selected = selectGitHubPrimaryEmail(emails, profile.email);
+
+				return {
+					user: {
+						id: String(profile.id),
+						name: profile.name || profile.login,
+						email: selected?.email ?? profile.email,
+						image: profile.avatar_url,
+						emailVerified: selected?.emailVerified ?? false,
+					},
+					data: profile,
+				};
+			},
 		},
 		google: {
 			clientId: env.GOOGLE_CLIENT_ID,
