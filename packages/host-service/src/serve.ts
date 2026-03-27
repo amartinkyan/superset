@@ -12,6 +12,5 @@ const { app, injectWebSocket } = createApp({
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
 	console.log(`[host-service] listening on http://localhost:${info.port}`);
-	console.log(`[host-service] secret: ${env.HOST_SERVICE_SECRET}`);
 });
 injectWebSocket(server);
