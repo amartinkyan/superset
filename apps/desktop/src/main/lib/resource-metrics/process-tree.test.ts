@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+	enrichWithLinuxFootprint,
 	getSubtreePids,
 	getSubtreeResources,
 	type ProcessInfo,
@@ -112,5 +113,29 @@ describe("getSubtreeResources", () => {
 		expect(resources.cpu).toBe(15.5);
 		expect(resources.memory).toBe(2048);
 		expect(resources.pids).toEqual([42]);
+	});
+});
+
+describe("enrichWithLinuxFootprint", () => {
+	it("does not throw for empty pids", () => {
+		const snapshot = buildSnapshot([]);
+		expect(() => enrichWithLinuxFootprint(snapshot, [])).not.toThrow();
+	});
+
+	it("does not throw for non-existent PIDs", () => {
+		const snapshot = buildSnapshot([
+			{ pid: 100, ppid: 1, cpu: 5, memory: 1024 },
+		]);
+		// PID 999999 won't exist — should silently skip
+		expect(() => enrichWithLinuxFootprint(snapshot, [999999])).not.toThrow();
+	});
+
+	it("preserves memory when PSS is unavailable for a PID", () => {
+		const snapshot = buildSnapshot([
+			{ pid: 100, ppid: 1, cpu: 5, memory: 1024 },
+		]);
+		// PID 999999 won't have smaps_rollup; PID 100's memory should stay
+		enrichWithLinuxFootprint(snapshot, [999999]);
+		expect(snapshot.byPid.get(100)?.memory).toBe(1024);
 	});
 });

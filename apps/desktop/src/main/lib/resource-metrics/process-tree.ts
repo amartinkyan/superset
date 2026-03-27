@@ -2,6 +2,8 @@ import { exec } from "node:child_process";
 import os from "node:os";
 import { promisify } from "node:util";
 
+import { getPhysFootprints as getLinuxPhysFootprints } from "@superset/linux-process-metrics";
+
 let nativeMetrics: typeof import("@superset/macos-process-metrics") | null =
 	null;
 try {
@@ -136,6 +138,32 @@ export function enrichWithPhysFootprint(
 	if (!nativeMetrics || pids.length === 0) return;
 	try {
 		const footprints = nativeMetrics.getPhysFootprints(pids);
+		for (const pid of pids) {
+			const footprint = footprints[pid];
+			const info = snapshot.byPid.get(pid);
+			if (info && typeof footprint === "number" && footprint > 0) {
+				info.memory = footprint;
+			}
+		}
+	} catch {
+		// Fall back to RSS already in the snapshot.
+	}
+}
+
+/**
+ * Replace RSS values with Linux PSS (Proportional Set Size) for the given PIDs.
+ *
+ * PSS is read from `/proc/<pid>/smaps_rollup` and accounts for shared memory
+ * proportionally — semantically equivalent to macOS `phys_footprint`.
+ * On non-Linux platforms this is a no-op.
+ */
+export function enrichWithLinuxFootprint(
+	snapshot: ProcessSnapshot,
+	pids: number[],
+): void {
+	if (pids.length === 0) return;
+	try {
+		const footprints = getLinuxPhysFootprints(pids);
 		for (const pid of pids) {
 			const footprint = footprints[pid];
 			const info = snapshot.byPid.get(pid);

@@ -7,6 +7,7 @@ import { getWorkspaceRuntimeRegistry } from "main/lib/workspace-runtime/registry
 import pidusage from "pidusage";
 import {
 	captureProcessSnapshot,
+	enrichWithLinuxFootprint,
 	enrichWithPhysFootprint,
 	getSubtreePids,
 	getSubtreeResources,
@@ -288,6 +289,10 @@ async function collectResourceMetricsNow(): Promise<ResourceMetricsSnapshot> {
 	// On macOS, replace RSS with phys_footprint (compressed memory) to
 	// match what Activity Monitor reports as "Memory".
 	enrichWithPhysFootprint(processSnapshot, allSubtreePids);
+
+	// On Linux, replace RSS with PSS (Proportional Set Size) from
+	// /proc/<pid>/smaps_rollup for accurate shared-memory accounting.
+	enrichWithLinuxFootprint(processSnapshot, allSubtreePids);
 
 	const electronMetrics = app.getAppMetrics();
 	const main: ProcessMetrics = { cpu: 0, memory: 0 };

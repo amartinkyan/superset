@@ -160,6 +160,7 @@
         "@superset/db": "workspace:*",
         "@superset/desktop-mcp": "workspace:*",
         "@superset/host-service": "workspace:*",
+        "@superset/linux-process-metrics": "workspace:*",
         "@superset/local-db": "workspace:*",
         "@superset/macos-process-metrics": "workspace:*",
         "@superset/pane-layout": "workspace:*",
@@ -719,6 +720,10 @@
         "drizzle-kit": "0.31.8",
         "typescript": "^5.9.3",
       },
+    },
+    "packages/linux-process-metrics": {
+      "name": "@superset/linux-process-metrics",
+      "version": "0.0.1",
     },
     "packages/local-db": {
       "name": "@superset/local-db",
@@ -2325,6 +2330,8 @@
     "@superset/email": ["@superset/email@workspace:packages/email"],
 
     "@superset/host-service": ["@superset/host-service@workspace:packages/host-service"],
+
+    "@superset/linux-process-metrics": ["@superset/linux-process-metrics@workspace:packages/linux-process-metrics"],
 
     "@superset/local-db": ["@superset/local-db@workspace:packages/local-db"],
 
