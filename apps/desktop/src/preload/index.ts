@@ -57,6 +57,26 @@ const automationAPI = {
 				height: number;
 			};
 		} | null>,
+	navigate: (path: string) =>
+		invokeDesktopTestAutomation({
+			type: "navigate",
+			path,
+		}) as Promise<{
+			ok: boolean;
+			path: string;
+			window: {
+				title: string;
+				url: string;
+				isFocused: boolean;
+				isVisible: boolean;
+				bounds: {
+					x: number;
+					y: number;
+					width: number;
+					height: number;
+				};
+			} | null;
+		}>,
 	getAuthState: () =>
 		invokeDesktopTestAutomation({
 			type: "getAuthState",

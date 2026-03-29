@@ -5,6 +5,10 @@ export type DesktopTestAutomationCommand =
 	| { type: "ping" }
 	| { type: "getEnvironment" }
 	| { type: "getWindowInfo" }
+	| {
+			type: "navigate";
+			path: string;
+	  }
 	| { type: "getAuthState" }
 	| { type: "getStoredAuthToken" }
 	| {

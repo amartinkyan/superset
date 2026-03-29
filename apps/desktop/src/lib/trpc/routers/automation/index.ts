@@ -36,6 +36,14 @@ function getWindowInfo(window: BrowserWindow | null) {
 	};
 }
 
+function normalizePath(path: string): string {
+	if (!path.startsWith("/")) {
+		return `/${path}`;
+	}
+
+	return path;
+}
+
 export const createAutomationRouter = (
 	getWindow: () => BrowserWindow | null,
 ) => {
@@ -66,6 +74,32 @@ export const createAutomationRouter = (
 			assertDesktopTestMode();
 			return getWindowInfo(getWindow());
 		}),
+
+		navigate: publicProcedure
+			.input(
+				z.object({
+					path: z.string().min(1),
+				}),
+			)
+			.mutation(({ input }) => {
+				assertDesktopTestMode();
+				const window = getWindow();
+				if (!window) {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message: "No BrowserWindow is available for navigation.",
+					});
+				}
+
+				const path = normalizePath(input.path);
+				window.webContents.send("deep-link-navigate", path);
+
+				return {
+					ok: true,
+					path,
+					window: getWindowInfo(window),
+				};
+			}),
 
 		getAuthState: publicProcedure.query(async () => {
 			assertDesktopTestMode();

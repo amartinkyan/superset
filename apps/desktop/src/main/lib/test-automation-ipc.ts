@@ -36,6 +36,14 @@ function getWindowInfo(window: BrowserWindow | null) {
 	};
 }
 
+function normalizePath(path: string): string {
+	if (!path.startsWith("/")) {
+		return `/${path}`;
+	}
+
+	return path;
+}
+
 export function registerDesktopTestAutomationIpc(
 	getWindow: () => BrowserWindow | null,
 ): void {
@@ -62,6 +70,23 @@ export function registerDesktopTestAutomationIpc(
 					};
 				case "getWindowInfo":
 					return getWindowInfo(getWindow());
+				case "navigate": {
+					const window = getWindow();
+					if (!window) {
+						throw new Error("No BrowserWindow is available for navigation.");
+					}
+
+					window.webContents.send(
+						"deep-link-navigate",
+						normalizePath(command.path),
+					);
+
+					return {
+						ok: true,
+						path: normalizePath(command.path),
+						window: getWindowInfo(window),
+					};
+				}
 				case "getAuthState":
 					return getDesktopTestAuthState();
 				case "getStoredAuthToken":
