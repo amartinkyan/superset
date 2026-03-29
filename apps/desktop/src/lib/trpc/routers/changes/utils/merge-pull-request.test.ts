@@ -1,4 +1,13 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	mock,
+	spyOn,
+	test,
+} from "bun:test";
 
 const getCurrentBranchMock = mock(
 	(async () => null) as (...args: unknown[]) => Promise<string | null>,
@@ -26,36 +35,74 @@ const execWithShellEnvMock = mock(
 );
 const isNoPullRequestFoundMessageMock = mock(() => false);
 const clearWorktreeStatusCachesMock = mock(() => undefined);
-
-mock.module("../../workspaces/utils/git", () => ({
-	getCurrentBranch: getCurrentBranchMock,
-}));
-
-mock.module("../../workspaces/utils/git-client", () => ({
-	execGitWithShellPath: execGitWithShellPathMock,
-}));
-
-mock.module("../../workspaces/utils/github", () => ({
-	getPRForBranch: getPRForBranchMock,
-	getPullRequestRepoArgs: getPullRequestRepoArgsMock,
-	getRepoContext: getRepoContextMock,
-}));
-
-mock.module("../../workspaces/utils/shell-env", () => ({
-	execWithShellEnv: execWithShellEnvMock,
-}));
-
-mock.module("../git-utils", () => ({
-	isNoPullRequestFoundMessage: isNoPullRequestFoundMessageMock,
-}));
-
-mock.module("./worktree-status-caches", () => ({
-	clearWorktreeStatusCaches: clearWorktreeStatusCachesMock,
-}));
-
-const { mergePullRequest } = await import("./merge-pull-request");
+let mergePullRequest: typeof import("./merge-pull-request").mergePullRequest;
 
 describe("mergePullRequest", () => {
+	beforeAll(async () => {
+		const gitModule = await import("../../workspaces/utils/git");
+		const gitClientModule = await import("../../workspaces/utils/git-client");
+		const githubModule = await import("../../workspaces/utils/github");
+		const shellEnvModule = await import("../../workspaces/utils/shell-env");
+		const gitUtilsModule = await import("../git-utils");
+		const worktreeStatusCachesModule = await import("./worktree-status-caches");
+
+		spyOn(gitModule, "getCurrentBranch").mockImplementation(((
+			...args: Parameters<typeof gitModule.getCurrentBranch>
+		) => getCurrentBranchMock(...args)) as typeof gitModule.getCurrentBranch);
+		spyOn(gitModule, "isUnbornHeadError").mockImplementation(
+			((error: unknown) =>
+				error instanceof Error &&
+				error.message.includes(
+					"ambiguous argument 'HEAD'",
+				)) as typeof gitModule.isUnbornHeadError,
+		);
+		spyOn(gitClientModule, "execGitWithShellPath").mockImplementation(((
+			...args: Parameters<typeof gitClientModule.execGitWithShellPath>
+		) =>
+			execGitWithShellPathMock(
+				...args,
+			)) as typeof gitClientModule.execGitWithShellPath);
+		spyOn(githubModule, "getPRForBranch").mockImplementation(((
+			...args: Parameters<typeof githubModule.getPRForBranch>
+		) => getPRForBranchMock(...args)) as typeof githubModule.getPRForBranch);
+		spyOn(githubModule, "getPullRequestRepoArgs").mockImplementation(((
+			...args: Parameters<typeof githubModule.getPullRequestRepoArgs>
+		) =>
+			getPullRequestRepoArgsMock(
+				...args,
+			)) as typeof githubModule.getPullRequestRepoArgs);
+		spyOn(githubModule, "getRepoContext").mockImplementation(((
+			...args: Parameters<typeof githubModule.getRepoContext>
+		) => getRepoContextMock(...args)) as typeof githubModule.getRepoContext);
+		spyOn(shellEnvModule, "execWithShellEnv").mockImplementation(((
+			...args: Parameters<typeof shellEnvModule.execWithShellEnv>
+		) =>
+			execWithShellEnvMock(...args)) as typeof shellEnvModule.execWithShellEnv);
+		spyOn(gitUtilsModule, "isNoPullRequestFoundMessage").mockImplementation(((
+			...args: Parameters<typeof gitUtilsModule.isNoPullRequestFoundMessage>
+		) =>
+			isNoPullRequestFoundMessageMock(
+				...args,
+			)) as typeof gitUtilsModule.isNoPullRequestFoundMessage);
+		spyOn(
+			worktreeStatusCachesModule,
+			"clearWorktreeStatusCaches",
+		).mockImplementation(((
+			...args: Parameters<
+				typeof worktreeStatusCachesModule.clearWorktreeStatusCaches
+			>
+		) =>
+			clearWorktreeStatusCachesMock(
+				...args,
+			)) as typeof worktreeStatusCachesModule.clearWorktreeStatusCaches);
+
+		({ mergePullRequest } = await import("./merge-pull-request"));
+	});
+
+	afterAll(() => {
+		mock.restore();
+	});
+
 	beforeEach(() => {
 		getCurrentBranchMock.mockReset();
 		getCurrentBranchMock.mockResolvedValue(null);
@@ -155,8 +202,4 @@ describe("mergePullRequest", () => {
 		);
 		expect(result.success).toBe(true);
 	});
-});
-
-afterAll(() => {
-	mock.restore();
 });
