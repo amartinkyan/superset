@@ -53,8 +53,8 @@ function readConfigFile(configPath: string): SetupConfig | null {
 			throw new Error("'run' field must be an array of strings");
 		}
 
-		if (parsed.filesToKeep && !Array.isArray(parsed.filesToKeep)) {
-			throw new Error("'filesToKeep' field must be an array of strings");
+		if (parsed.copyFiles && !Array.isArray(parsed.copyFiles)) {
+			throw new Error("'copyFiles' field must be an array of strings");
 		}
 
 		return parsed;
@@ -81,7 +81,7 @@ function readLocalConfigFile(filePath: string): LocalSetupConfig | null {
 		const content = readFileSync(filePath, "utf-8");
 		const parsed = JSON.parse(content) as LocalSetupConfig;
 
-		for (const key of ["setup", "teardown", "run", "filesToKeep"] as const) {
+		for (const key of ["setup", "teardown", "run", "copyFiles"] as const) {
 			const value = parsed[key];
 			if (value === undefined) continue;
 
@@ -128,7 +128,7 @@ function mergeBaseConfigs(
 		setup: override.setup ?? base.setup,
 		teardown: override.teardown ?? base.teardown,
 		run: override.run ?? base.run,
-		filesToKeep: override.filesToKeep ?? base.filesToKeep,
+		copyFiles: override.copyFiles ?? base.copyFiles,
 	};
 }
 
@@ -146,7 +146,7 @@ export function mergeConfigs(
 ): SetupConfig {
 	const result: SetupConfig = { ...base };
 
-	for (const key of ["setup", "teardown", "run", "filesToKeep"] as const) {
+	for (const key of ["setup", "teardown", "run", "copyFiles"] as const) {
 		const localValue = local[key];
 		if (localValue === undefined) continue;
 
@@ -180,21 +180,21 @@ function isPathOutsideRoot(relativePath: string): boolean {
 export function copyConfiguredFilesToWorktree({
 	mainRepoPath,
 	worktreePath,
-	filesToKeep,
+	copyFiles,
 }: {
 	mainRepoPath: string;
 	worktreePath: string;
-	filesToKeep?: string[];
+	copyFiles?: string[];
 }): void {
-	if (!filesToKeep?.length) return;
+	if (!copyFiles?.length) return;
 
-	for (const entry of filesToKeep) {
+	for (const entry of copyFiles) {
 		const candidate = entry.trim();
 		if (!candidate) continue;
 
 		if (candidate.includes("\0") || isAbsolute(candidate)) {
 			console.warn(
-				`[setup] Skipping invalid filesToKeep entry: ${entry} (must be a relative path)`,
+				`[setup] Skipping invalid copyFiles entry: ${entry} (must be a relative path)`,
 			);
 			continue;
 		}
@@ -203,7 +203,7 @@ export function copyConfiguredFilesToWorktree({
 		const sourceRelativePath = relative(mainRepoPath, sourcePath);
 		if (isPathOutsideRoot(sourceRelativePath)) {
 			console.warn(
-				`[setup] Skipping filesToKeep entry outside repository root: ${entry}`,
+				`[setup] Skipping copyFiles entry outside repository root: ${entry}`,
 			);
 			continue;
 		}
@@ -214,14 +214,14 @@ export function copyConfiguredFilesToWorktree({
 			normalizedRelativePath.startsWith(".git/")
 		) {
 			console.warn(
-				`[setup] Skipping filesToKeep entry under .git directory: ${entry}`,
+				`[setup] Skipping copyFiles entry under .git directory: ${entry}`,
 			);
 			continue;
 		}
 
 		if (!existsSync(sourcePath)) {
 			console.warn(
-				`[setup] Skipping missing filesToKeep source: ${entry}`,
+				`[setup] Skipping missing copyFiles source: ${entry}`,
 			);
 			continue;
 		}
@@ -240,7 +240,7 @@ export function copyConfiguredFilesToWorktree({
 			});
 		} catch (error) {
 			console.warn(
-				`[setup] Failed to copy filesToKeep entry ${entry}: ${error instanceof Error ? error.message : String(error)}`,
+				`[setup] Failed to copy copyFiles entry ${entry}: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 	}
@@ -266,14 +266,14 @@ export function copyBootstrapFilesToWorktree({
 	copyConfiguredFilesToWorktree({
 		mainRepoPath,
 		worktreePath,
-		filesToKeep: setupConfig?.filesToKeep,
+		copyFiles: setupConfig?.copyFiles,
 	});
 
 	return setupConfig;
 }
 
 /**
- * Resolves setup/teardown/run/filesToKeep config with a three-tier priority:
+ * Resolves setup/teardown/run/copyFiles config with a three-tier priority:
  *   1. User override:  ~/.superset/projects/<projectId>/config.json
  *   2. Worktree:       <worktreePath>/.superset/config.json
  *   3. Main repo:      <mainRepoPath>/.superset/config.json

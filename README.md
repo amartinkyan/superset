@@ -175,7 +175,7 @@ Configure workspace setup and teardown in `.superset/config.json`. See [full doc
 {
   "setup": ["./.superset/setup.sh"],
   "teardown": ["./.superset/teardown.sh"],
-  "filesToKeep": [".env", ".vscode/settings.json"]
+  "copyFiles": [".env", ".vscode/settings.json"]
 }
 ```
 
@@ -184,7 +184,7 @@ Configure workspace setup and teardown in `.superset/config.json`. See [full doc
 | `setup` | `string[]` | Commands to run when creating a workspace |
 | `teardown` | `string[]` | Commands to run when deleting a workspace |
 | `run` | `string[]` | Commands available in the Run scripts menu |
-| `filesToKeep` | `string[]` | Relative files or folders to copy from main repo into new worktrees (for example `.env`) |
+| `copyFiles` | `string[]` | Relative files or folders to copy from main repo into new worktrees (for example `.env`) |
 
 ### Example setup script
 

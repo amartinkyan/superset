@@ -174,7 +174,7 @@ describe("loadSetupConfig", () => {
 			join(MAIN_REPO, ".superset", "config.json"),
 			JSON.stringify({
 				setup: ["npm install"],
-				filesToKeep: [".env"],
+				copyFiles: [".env"],
 				run: ["bun dev"],
 			}),
 		);
@@ -193,21 +193,21 @@ describe("loadSetupConfig", () => {
 		});
 		expect(config).toEqual({
 			setup: ["custom-setup.sh"],
-			filesToKeep: [".env"],
+			copyFiles: [".env"],
 			run: ["bun dev"],
 		});
 	});
 
-	test("loads filesToKeep from config", () => {
+	test("loads copyFiles from config", () => {
 		writeFileSync(
 			join(MAIN_REPO, ".superset", "config.json"),
 			JSON.stringify({
-				filesToKeep: [".env", ".vscode/settings.json"],
+				copyFiles: [".env", ".vscode/settings.json"],
 			}),
 		);
 
 		const config = loadSetupConfig({ mainRepoPath: MAIN_REPO });
-		expect(config?.filesToKeep).toEqual([".env", ".vscode/settings.json"]);
+		expect(config?.copyFiles).toEqual([".env", ".vscode/settings.json"]);
 	});
 
 	test("user override takes priority over worktree config", () => {
@@ -634,22 +634,22 @@ describe("mergeConfigs", () => {
 		expect(result).toEqual({ setup: ["custom-install"], run: ["dev"] });
 	});
 
-	test("filesToKeep key merge with before/after", () => {
+	test("copyFiles key merge with before/after", () => {
 		const result = mergeConfigs(
-			{ filesToKeep: [".env"] },
-			{ filesToKeep: { before: [".env.local"], after: [".tool-versions"] } },
+			{ copyFiles: [".env"] },
+			{ copyFiles: { before: [".env.local"], after: [".tool-versions"] } },
 		);
 		expect(result).toEqual({
-			filesToKeep: [".env.local", ".env", ".tool-versions"],
+			copyFiles: [".env.local", ".env", ".tool-versions"],
 		});
 	});
 
-	test("filesToKeep key override with array", () => {
+	test("copyFiles key override with array", () => {
 		const result = mergeConfigs(
-			{ filesToKeep: [".env"] },
-			{ filesToKeep: [".env.production"] },
+			{ copyFiles: [".env"] },
+			{ copyFiles: [".env.production"] },
 		);
-		expect(result).toEqual({ filesToKeep: [".env.production"] });
+		expect(result).toEqual({ copyFiles: [".env.production"] });
 	});
 });
 
@@ -697,10 +697,10 @@ describe("run config", () => {
 		expect(config).toBeNull();
 	});
 
-	test("validates filesToKeep field must be an array", () => {
+	test("validates copyFiles field must be an array", () => {
 		writeFileSync(
 			join(MAIN_REPO, ".superset", "config.json"),
-			JSON.stringify({ filesToKeep: "not-an-array" }),
+			JSON.stringify({ copyFiles: "not-an-array" }),
 		);
 
 		const config = loadSetupConfig({ mainRepoPath: MAIN_REPO });
@@ -735,18 +735,18 @@ describe("run config", () => {
 		expect(config?.run).toEqual(["export DEBUG=1", "npm run dev"]);
 	});
 
-	test("local config can merge filesToKeep with before/after", () => {
+	test("local config can merge copyFiles with before/after", () => {
 		writeFileSync(
 			join(MAIN_REPO, ".superset", "config.json"),
-			JSON.stringify({ filesToKeep: [".env"] }),
+			JSON.stringify({ copyFiles: [".env"] }),
 		);
 		writeFileSync(
 			join(MAIN_REPO, ".superset", "config.local.json"),
-			JSON.stringify({ filesToKeep: { before: [".env.local"] } }),
+			JSON.stringify({ copyFiles: { before: [".env.local"] } }),
 		);
 
 		const config = loadSetupConfig({ mainRepoPath: MAIN_REPO });
-		expect(config?.filesToKeep).toEqual([".env.local", ".env"]);
+		expect(config?.copyFiles).toEqual([".env.local", ".env"]);
 	});
 });
 
@@ -768,7 +768,7 @@ describe("copyConfiguredFilesToWorktree", () => {
 		copyConfiguredFilesToWorktree({
 			mainRepoPath: MAIN_REPO,
 			worktreePath: WORKTREE,
-			filesToKeep: [".env"],
+			copyFiles: [".env"],
 		});
 
 		expect(readFileSync(join(WORKTREE, ".env"), "utf-8")).toBe(
@@ -783,7 +783,7 @@ describe("copyConfiguredFilesToWorktree", () => {
 		copyConfiguredFilesToWorktree({
 			mainRepoPath: MAIN_REPO,
 			worktreePath: WORKTREE,
-			filesToKeep: [".env"],
+			copyFiles: [".env"],
 		});
 
 		expect(readFileSync(join(WORKTREE, ".env"), "utf-8")).toBe(
@@ -797,7 +797,7 @@ describe("copyConfiguredFilesToWorktree", () => {
 		copyConfiguredFilesToWorktree({
 			mainRepoPath: MAIN_REPO,
 			worktreePath: WORKTREE,
-			filesToKeep: ["/tmp/secret", "../outside", ".env"],
+			copyFiles: ["/tmp/secret", "../outside", ".env"],
 		});
 
 		expect(existsSync(join(WORKTREE, "tmp", "secret"))).toBeFalse();
@@ -816,7 +816,7 @@ describe("copyConfiguredFilesToWorktree", () => {
 		copyConfiguredFilesToWorktree({
 			mainRepoPath: MAIN_REPO,
 			worktreePath: WORKTREE,
-			filesToKeep: [".vscode"],
+			copyFiles: [".vscode"],
 		});
 
 		expect(

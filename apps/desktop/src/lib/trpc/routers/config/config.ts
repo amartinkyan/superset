@@ -38,7 +38,7 @@ const CONFIG_TEMPLATE = `{
   "setup": [],
   "teardown": [],
 	"run": [],
-	"filesToKeep": []
+	"copyFiles": []
 }
 `;
 

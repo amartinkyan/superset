@@ -13,7 +13,7 @@ Create `.superset/config.json` in your project:
 {
   "setup": ["bun install", "cp \"$SUPERSET_ROOT_PATH/.env\" .env"],
   "teardown": ["docker-compose down"],
-  "filesToKeep": [".env", ".vscode/settings.json"]
+  "copyFiles": [".env", ".vscode/settings.json"]
 }
 ```
 
@@ -24,7 +24,7 @@ Create `.superset/config.json` in your project:
 
 Commands run sequentially in the workspace directory.
 
-`filesToKeep` runs during workspace bootstrap and copies matching relative paths from the main repository into the new worktree.
+`copyFiles` runs during workspace bootstrap and copies matching relative paths from the main repository into the new worktree.
 
 Copy behavior:
 - Only explicit relative paths are supported
@@ -66,7 +66,7 @@ Where `<project-id>` is your project's unique ID in Superset (visible in the app
 
 ### Priority Order
 
-Config is resolved with this priority order for each key (`setup`, `teardown`, `run`, `filesToKeep`):
+Config is resolved with this priority order for each key (`setup`, `teardown`, `run`, `copyFiles`):
 1. `~/.superset/projects/<project-id>/config.json` — user override
 2. `<worktree>/.superset/config.json` — worktree-specific
 3. `<repo>/.superset/config.json` — project default
@@ -92,7 +92,7 @@ Higher-priority configs override only the keys they define. Missing keys inherit
 
 Extend or override your team's committed scripts without modifying the repo. Create `.superset/config.local.json` alongside `config.json` — it's gitignored automatically.
 
-The same merge behavior applies to `filesToKeep`.
+The same merge behavior applies to `copyFiles`.
 
 ### Prepend and/or append
 
@@ -104,7 +104,7 @@ Add steps before or after the team's scripts:
     "before": ["echo 'running pre-setup'"],
     "after": ["./.superset/my-post-setup.sh"]
   },
-  "filesToKeep": {
+  "copyFiles": {
     "after": [".env.local"]
   },
   "teardown": {

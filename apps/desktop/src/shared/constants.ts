@@ -26,7 +26,7 @@ export const CONFIG_TEMPLATE = `{
   "setup": [],
   "teardown": [],
 	"run": [],
-	"filesToKeep": []
+	"copyFiles": []
 }`;
 
 export const NOTIFICATION_EVENTS = {
