@@ -7,22 +7,25 @@ import { type RefObject, useEffect, useRef } from "react";
 const scrollCache = new Map<string, number>();
 
 /**
- * Try to restore scrollTop on a container. If the container doesn't have
- * enough content yet (e.g. TipTap with immediatelyRender: false), retry
- * on subsequent animation frames up to a limit.
+ * Restore scrollTop on a container. If the container doesn't have enough
+ * content height yet (e.g. TipTap with deferred rendering), observe resize
+ * events until the content is tall enough to scroll, then disconnect.
  */
-function restoreScrollTop(
-	container: HTMLElement,
-	target: number,
-	retriesLeft = 10,
-) {
+function restoreScrollTop(container: HTMLElement, target: number) {
 	container.scrollTop = target;
-	if (container.scrollTop >= target || retriesLeft <= 0) return;
+	if (container.scrollTop >= target) return;
 
-	// Content not tall enough yet — retry next frame
-	requestAnimationFrame(() =>
-		restoreScrollTop(container, target, retriesLeft - 1),
-	);
+	// Content not tall enough yet — wait for it via ResizeObserver
+	const observer = new ResizeObserver(() => {
+		container.scrollTop = target;
+		if (container.scrollTop >= target) {
+			observer.disconnect();
+		}
+	});
+	observer.observe(container);
+
+	// Safety: disconnect after 5s to avoid leaking observers
+	setTimeout(() => observer.disconnect(), 5_000);
 }
 
 /**
@@ -52,10 +55,10 @@ export function useScrollPreservation(
 		const container = containerRef.current;
 		if (!container) return;
 
-		// Restore saved scroll position, retrying if content isn't ready yet
+		// Restore saved scroll position, waiting for content if needed
 		const saved = scrollCache.get(cacheKey);
 		if (saved != null) {
-			requestAnimationFrame(() => restoreScrollTop(container, saved));
+			restoreScrollTop(container, saved);
 		}
 
 		const onScroll = () => {
