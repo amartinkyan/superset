@@ -80,6 +80,43 @@ describe("readFile", () => {
 		expect(result.exceededLimit).toEqual(true);
 	});
 
+	it("throws for paths outside workspace root", async () => {
+		const rootPath = await createTempRoot();
+		const outsidePath = path.join(os.tmpdir(), `outside-${Date.now()}.txt`);
+		await fs.writeFile(outsidePath, "outside content");
+		try {
+			await expect(
+				readFile({
+					rootPath,
+					absolutePath: outsidePath,
+					encoding: "utf-8",
+				}),
+			).rejects.toThrow("Path is outside workspace root");
+		} finally {
+			await fs.unlink(outsidePath).catch(() => {});
+		}
+	});
+
+	it("reads files outside workspace root when allowOutsideRoot is set", async () => {
+		const rootPath = await createTempRoot();
+		const outsideRoot = await createTempRoot();
+		const outsidePath = path.join(outsideRoot, "external.txt");
+		await fs.writeFile(outsidePath, "external content");
+
+		const result = await readFile({
+			rootPath,
+			absolutePath: outsidePath,
+			encoding: "utf-8",
+			allowOutsideRoot: true,
+		});
+
+		expect(result.kind).toEqual("text");
+		if (result.kind === "text") {
+			expect(result.content).toEqual("external content");
+		}
+		expect(result.exceededLimit).toEqual(false);
+	});
+
 	it("reads from offset", async () => {
 		const rootPath = await createTempRoot();
 		const absolutePath = path.join(rootPath, "offset.txt");

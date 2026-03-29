@@ -52,6 +52,7 @@ export const createFilesystemRouter = () => {
 					offset: z.number().optional(),
 					maxBytes: z.number().optional(),
 					encoding: z.string().optional(),
+					allowOutsideRoot: z.boolean().optional(),
 				}),
 			)
 			.query(async ({ input }) => {
@@ -61,6 +62,7 @@ export const createFilesystemRouter = () => {
 					offset: input.offset,
 					maxBytes: input.maxBytes,
 					encoding: input.encoding,
+					allowOutsideRoot: input.allowOutsideRoot,
 				});
 
 				if (result.kind === "bytes") {

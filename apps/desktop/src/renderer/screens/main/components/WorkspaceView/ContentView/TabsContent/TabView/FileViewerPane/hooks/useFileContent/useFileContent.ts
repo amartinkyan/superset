@@ -64,6 +64,7 @@ export function useFileContent({
 			absolutePath: filePath,
 			encoding: "utf-8",
 			maxBytes: MAX_FILE_SIZE,
+			allowOutsideRoot: true,
 		},
 		{
 			enabled: rawReadEnabled,
@@ -110,6 +111,7 @@ export function useFileContent({
 			workspaceId: workspaceId ?? "",
 			absolutePath: filePath,
 			maxBytes: MAX_IMAGE_SIZE,
+			allowOutsideRoot: true,
 		},
 		{ enabled: imageReadEnabled, retry: false },
 	);

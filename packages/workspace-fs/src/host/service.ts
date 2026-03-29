@@ -151,6 +151,7 @@ export function createFsHostService(
 				offset: input.offset,
 				maxBytes: input.maxBytes,
 				encoding: input.encoding,
+				allowOutsideRoot: input.allowOutsideRoot,
 			});
 		},
 

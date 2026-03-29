@@ -415,15 +415,22 @@ export async function readFile({
 	offset,
 	maxBytes,
 	encoding,
+	allowOutsideRoot,
 }: {
 	rootPath: string;
 	absolutePath: string;
 	offset?: number;
 	maxBytes?: number;
 	encoding?: string;
+	allowOutsideRoot?: boolean;
 }): Promise<FsReadResult> {
-	const targetPath = ensureWithinRoot({ rootPath, absolutePath });
-	await assertRealpathWithinRoot(rootPath, targetPath);
+	let targetPath: string;
+	if (allowOutsideRoot) {
+		targetPath = normalizeAbsolutePath(absolutePath);
+	} else {
+		targetPath = ensureWithinRoot({ rootPath, absolutePath });
+		await assertRealpathWithinRoot(rootPath, targetPath);
+	}
 
 	const fileHandle = await fs.open(targetPath, "r");
 	try {

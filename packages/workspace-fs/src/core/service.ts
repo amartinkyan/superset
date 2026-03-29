@@ -18,6 +18,7 @@ export interface FsService {
 		offset?: number;
 		maxBytes?: number;
 		encoding?: string;
+		allowOutsideRoot?: boolean;
 	}): Promise<FsReadResult>;
 
 	getMetadata(input: { absolutePath: string }): Promise<FsMetadata | null>;
@@ -83,6 +84,7 @@ export interface FsRequestMap {
 			offset?: number;
 			maxBytes?: number;
 			encoding?: string;
+			allowOutsideRoot?: boolean;
 		};
 		output: FsReadResult;
 	};

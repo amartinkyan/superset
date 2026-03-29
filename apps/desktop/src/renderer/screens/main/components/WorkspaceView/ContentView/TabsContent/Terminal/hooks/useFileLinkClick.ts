@@ -53,15 +53,12 @@ export function useFileLinkClick({
 				return;
 			}
 
-			if (!workspaceCwd) {
-				openInExternalEditor();
-				return;
-			}
+			const cwd = workspaceCwd ?? undefined;
 
 			trpcClient.external.resolvePath
-				.query({ path, cwd: workspaceCwd })
+				.query({ path, cwd })
 				.then((filePath) => {
-					if (filePath === workspaceCwd) {
+					if (cwd && filePath === cwd) {
 						return;
 					}
 
@@ -73,7 +70,9 @@ export function useFileLinkClick({
 				})
 				.catch((error) => {
 					console.error("[Terminal] Failed to resolve path:", path, error);
-					openInExternalEditor();
+					toast.error("Failed to open file", {
+						description: error instanceof Error ? error.message : String(error),
+					});
 				});
 		},
 		[terminalLinkBehavior, workspaceId, workspaceCwd, addFileViewerPane],
