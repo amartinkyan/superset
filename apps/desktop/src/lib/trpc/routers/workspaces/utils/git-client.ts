@@ -16,6 +16,20 @@ export async function getSimpleGitWithShellPath(
 	return git;
 }
 
+export class GitNotFoundError extends Error {
+	constructor(cause?: unknown) {
+		super(
+			"Git is not installed or could not be found on your PATH. " +
+				"Please install Git and ensure it is available in your system PATH.\n" +
+				"  - macOS: Install via Xcode Command Line Tools (xcode-select --install) or Homebrew (brew install git)\n" +
+				"  - Windows: Download from https://git-scm.com/download/win\n" +
+				"  - Linux: Install via your package manager (e.g. apt install git)",
+		);
+		this.name = "GitNotFoundError";
+		this.cause = cause;
+	}
+}
+
 export async function execGitWithShellPath(
 	args: string[],
 	options?: Omit<ExecFileOptionsWithStringEncoding, "encoding">,
@@ -24,9 +38,16 @@ export async function execGitWithShellPath(
 		options?.env ? { ...process.env, ...options.env } : process.env,
 	);
 
-	return execFileAsync("git", args, {
-		...options,
-		encoding: "utf8",
-		env,
-	});
+	try {
+		return await execFileAsync("git", args, {
+			...options,
+			encoding: "utf8",
+			env,
+		});
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+			throw new GitNotFoundError(error);
+		}
+		throw error;
+	}
 }

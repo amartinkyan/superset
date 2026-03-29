@@ -85,6 +85,7 @@ export async function getShellEnvironment(
 			}
 		}
 		augmentPathForMacOS(fallback);
+		augmentPathForWindows(fallback);
 		cachedEnv = fallback;
 		cacheTime = now;
 		isFallbackCache = true;
@@ -100,6 +101,12 @@ const COMMON_MACOS_PATHS = [
 	"/opt/homebrew/sbin",
 	"/usr/local/bin",
 	"/usr/local/sbin",
+];
+
+const COMMON_WINDOWS_PATHS = [
+	"C:\\Program Files\\Git\\cmd",
+	"C:\\Program Files (x86)\\Git\\cmd",
+	"C:\\Program Files\\Git\\bin",
 ];
 
 /**
@@ -119,6 +126,32 @@ export function augmentPathForMacOS(
 		(path) => !pathEntries.has(path),
 	);
 	env.PATH = [...missingPaths, currentPath].filter(Boolean).join(":");
+}
+
+/**
+ * On Windows, Electron GUI apps may not inherit the full system PATH.
+ * Augment with well-known Git installation directories so git can be found.
+ */
+export function augmentPathForWindows(
+	env: Record<string, string>,
+	platform: NodeJS.Platform = process.platform,
+): void {
+	if (platform !== "win32") return;
+	const pathKey = "Path" in env ? "Path" : "PATH";
+	const currentPath = env[pathKey] ?? "";
+	const currentEntries = currentPath.split(";").filter(Boolean);
+	const pathEntries = new Set(currentEntries.map((p) => p.toLowerCase()));
+	const missingPaths = COMMON_WINDOWS_PATHS.filter(
+		(path) => !pathEntries.has(path.toLowerCase()),
+	);
+	const newPath = [...missingPaths, currentPath].filter(Boolean).join(";");
+	env[pathKey] = newPath;
+	// Keep both keys in sync on Windows
+	if (pathKey === "Path") {
+		env.PATH = newPath;
+	} else {
+		env.Path = newPath;
+	}
 }
 
 /**
@@ -219,10 +252,9 @@ export async function execWithShellEnv(
 			env: await getProcessEnvWithShellEnv(baseEnv),
 		});
 	} catch (error) {
-		// Only retry on ENOENT (command not found), only on macOS
+		// Only retry on ENOENT (command not found)
 		// Skip if we've already successfully fixed PATH, or if a fix attempt is in progress
 		if (
-			process.platform !== "darwin" ||
 			pathFixSucceeded ||
 			pathFixAttempted ||
 			!(error instanceof Error) ||
