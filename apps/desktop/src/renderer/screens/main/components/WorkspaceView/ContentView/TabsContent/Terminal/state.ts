@@ -17,11 +17,11 @@ export const pendingDetaches = new Map<string, NodeJS.Timeout>();
 export const coldRestoreState = new Map<string, ColdRestoreState>();
 
 /**
- * Saved viewport scroll offset (lines from bottom) so scroll position can be
- * restored after workspace switch. Stored as lines-from-bottom so the value
- * remains valid even if the terminal is resized between save and restore.
+ * Saved viewport line so scroll position can be restored after workspace switch.
+ * Stored as absolute viewportY so it points at the same content even when new
+ * output is appended at the bottom while the user is on another workspace.
  */
 export const savedViewportOffset = new Map<
 	string,
-	{ linesFromBottom: number }
+	{ viewportY: number }
 >();

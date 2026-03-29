@@ -126,17 +126,7 @@ export function useTerminalRestore({
 					if (xtermRef.current !== xterm) return;
 					if (restoreSequenceRef.current !== restoreSequence) return;
 					fitAddon.fit();
-
-					// Restore saved scroll position if the user wasn't at the bottom
-					const saved = savedViewportOffset.get(paneId);
-					savedViewportOffset.delete(paneId);
-					if (saved && saved.linesFromBottom > 0) {
-						const targetLine =
-							xterm.buffer.active.baseY - saved.linesFromBottom;
-						xterm.scrollToLine(Math.max(0, targetLine));
-					} else {
-						scrollToBottom(xterm);
-					}
+					scrollToBottom(xterm);
 				});
 			};
 
@@ -238,6 +228,31 @@ export function useTerminalRestore({
 				updateCwdRef.current(result.snapshot.cwd);
 			} else {
 				updateCwdRef.current(initialAnsi);
+			}
+
+			// Restore saved viewport position. Deferred so it runs after
+			// all writes (initial content + flushed events + SIGWINCH prompt
+			// redraw) have been processed and rendered by xterm.
+			const saved = savedViewportOffset.get(paneId);
+			savedViewportOffset.delete(paneId);
+			if (saved) {
+				const applyScroll = () => {
+					if (xtermRef.current !== xterm) return;
+					if (restoreSequenceRef.current !== restoreSequence) return;
+					const target = Math.min(
+						saved.viewportY,
+						xterm.buffer.active.baseY,
+					);
+					console.log("[Terminal] restore scroll:", { target, baseY: xterm.buffer.active.baseY });
+					xterm.scrollToLine(target);
+				};
+				// Wait for xterm write queue to drain, then one more frame
+				// for rendering + SIGWINCH response, then restore
+				xterm.write("", () => {
+					requestAnimationFrame(() => {
+						requestAnimationFrame(applyScroll);
+					});
+				});
 			}
 		} catch (error) {
 			console.error("[Terminal] Restoration failed:", error);

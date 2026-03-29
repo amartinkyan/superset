@@ -922,8 +922,11 @@ export function useTerminalLifecycle({
 			// remains valid even if the terminal is resized between save and restore.
 			if (!paneDestroyed) {
 				const buf = xterm.buffer.active;
-				const linesFromBottom = buf.baseY - buf.viewportY;
-				savedViewportOffset.set(paneId, { linesFromBottom });
+				const isAtBottom = buf.viewportY >= buf.baseY;
+				if (!isAtBottom) {
+					console.log("[Terminal] save scroll:", { paneId, viewportY: buf.viewportY, baseY: buf.baseY });
+					savedViewportOffset.set(paneId, { viewportY: buf.viewportY });
+				}
 			} else {
 				savedViewportOffset.delete(paneId);
 			}
