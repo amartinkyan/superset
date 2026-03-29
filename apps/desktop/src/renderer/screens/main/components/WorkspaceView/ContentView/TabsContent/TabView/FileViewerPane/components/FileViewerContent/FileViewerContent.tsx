@@ -456,7 +456,10 @@ export function FileViewerContent({
 					onFindPrevious={markdownSearch.findPrevious}
 					onClose={markdownSearch.closeSearch}
 				/>
-				<div ref={markdownContainerRef} className="h-full overflow-auto p-4">
+				<div
+					ref={markdownContainerRef}
+					className="h-full overflow-auto p-4 [&>.markdown-renderer]:h-auto [&>.markdown-renderer]:!overflow-y-visible"
+				>
 					<TipTapMarkdownRenderer
 						value={renderedContent}
 						editable
