@@ -1,6 +1,9 @@
 import type { AgentDefinition } from "@superset/shared/agent-catalog";
 import { TRPCError } from "@trpc/server";
-import type { AgentPresetPatch } from "shared/utils/agent-settings";
+import type {
+	AgentPresetPatch,
+	CustomAgentDefinitionPatch,
+} from "shared/utils/agent-settings";
 import { validateTaskPromptTemplate } from "shared/utils/agent-settings";
 import { z } from "zod";
 
@@ -17,6 +20,25 @@ export const updateAgentPresetInputSchema = z.object({
 			taskPromptTemplate: z.string().optional(),
 			model: z.string().nullable().optional(),
 		})
+		.refine((patch) => Object.keys(patch).length > 0, {
+			message: "Patch must include at least one field",
+		}),
+});
+
+export const createCustomAgentInputSchema = z.object({
+	label: z.string(),
+	description: z.string().nullable().optional(),
+	command: z.string(),
+	promptCommand: z.string(),
+	promptCommandSuffix: z.string().nullable().optional(),
+	taskPromptTemplate: z.string(),
+	enabled: z.boolean().optional(),
+});
+
+export const updateCustomAgentInputSchema = z.object({
+	id: z.string().regex(/^custom:/),
+	patch: createCustomAgentInputSchema
+		.partial()
 		.refine((patch) => Object.keys(patch).length > 0, {
 			message: "Patch must include at least one field",
 		}),
@@ -84,6 +106,96 @@ export function normalizeAgentPresetPatch({
 	} else if (patch.model !== undefined) {
 		const model = patch.model?.trim() ?? "";
 		normalized.model = model || null;
+	}
+
+	if (Object.keys(normalized).length === 0) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: "Patch must include at least one supported field",
+		});
+	}
+
+	return normalized;
+}
+
+function normalizeOptionalText(
+	value: string | null | undefined,
+): string | null {
+	const normalized = value?.trim() ?? "";
+	return normalized ? normalized : null;
+}
+
+export function normalizeCreateCustomAgentInput(
+	input: z.infer<typeof createCustomAgentInputSchema>,
+) {
+	const taskPromptTemplate = toTrimmedRequiredValue(
+		"Task prompt template",
+		input.taskPromptTemplate,
+	);
+	const validation = validateTaskPromptTemplate(taskPromptTemplate);
+	if (!validation.valid) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: `Unknown task prompt variables: ${validation.unknownVariables.join(", ")}`,
+		});
+	}
+
+	return {
+		label: toTrimmedRequiredValue("Label", input.label),
+		description: normalizeOptionalText(input.description) ?? undefined,
+		command: toTrimmedRequiredValue("Command", input.command),
+		promptCommand: toTrimmedRequiredValue(
+			"Prompt command",
+			input.promptCommand,
+		),
+		promptCommandSuffix:
+			normalizeOptionalText(input.promptCommandSuffix) ?? undefined,
+		taskPromptTemplate,
+		enabled: input.enabled,
+	} as const;
+}
+
+export function normalizeCustomAgentPatch(
+	patch: z.infer<typeof updateCustomAgentInputSchema>["patch"],
+): CustomAgentDefinitionPatch {
+	const normalized: CustomAgentDefinitionPatch = {};
+
+	if (patch.enabled !== undefined) {
+		normalized.enabled = patch.enabled;
+	}
+	if (patch.label !== undefined) {
+		normalized.label = toTrimmedRequiredValue("Label", patch.label);
+	}
+	if (patch.description !== undefined) {
+		normalized.description = normalizeOptionalText(patch.description);
+	}
+	if (patch.command !== undefined) {
+		normalized.command = toTrimmedRequiredValue("Command", patch.command);
+	}
+	if (patch.promptCommand !== undefined) {
+		normalized.promptCommand = toTrimmedRequiredValue(
+			"Prompt command",
+			patch.promptCommand,
+		);
+	}
+	if (patch.promptCommandSuffix !== undefined) {
+		normalized.promptCommandSuffix = normalizeOptionalText(
+			patch.promptCommandSuffix,
+		);
+	}
+	if (patch.taskPromptTemplate !== undefined) {
+		const taskPromptTemplate = toTrimmedRequiredValue(
+			"Task prompt template",
+			patch.taskPromptTemplate,
+		);
+		const validation = validateTaskPromptTemplate(taskPromptTemplate);
+		if (!validation.valid) {
+			throw new TRPCError({
+				code: "BAD_REQUEST",
+				message: `Unknown task prompt variables: ${validation.unknownVariables.join(", ")}`,
+			});
+		}
+		normalized.taskPromptTemplate = taskPromptTemplate;
 	}
 
 	if (Object.keys(normalized).length === 0) {

@@ -86,6 +86,16 @@ export type AgentPresetPatch = Partial<{
 	model: string | null;
 }>;
 
+export type CustomAgentDefinitionPatch = Partial<{
+	enabled: boolean;
+	label: string;
+	description: string | null;
+	command: string;
+	promptCommand: string;
+	promptCommandSuffix: string | null;
+	taskPromptTemplate: string;
+}>;
+
 function toCustomAgentDefinition(
 	customDefinition: AgentCustomDefinition,
 ): TerminalAgentDefinition {
@@ -103,7 +113,7 @@ function toCustomAgentDefinition(
 	};
 }
 
-function readCustomDefinitions(
+export function readAgentCustomDefinitions(
 	customDefinitions: AgentCustomDefinition[] | null | undefined,
 ): AgentCustomDefinition[] {
 	return (customDefinitions ?? []).flatMap((definition) => {
@@ -126,10 +136,97 @@ export function getAgentDefinitions(
 ): AgentDefinition[] {
 	return [
 		...BUILTIN_AGENT_DEFINITIONS,
-		...readCustomDefinitions(customDefinitions).map((definition) =>
+		...readAgentCustomDefinitions(customDefinitions).map((definition) =>
 			toCustomAgentDefinition(definition),
 		),
 	];
+}
+
+export function getCustomAgentDefinitionById({
+	customDefinitions,
+	id,
+}: {
+	customDefinitions?: AgentCustomDefinition[] | null;
+	id: `custom:${string}`;
+}): AgentCustomDefinition | null {
+	return (
+		readAgentCustomDefinitions(customDefinitions).find(
+			(definition) => definition.id === id,
+		) ?? null
+	);
+}
+
+export function upsertCustomAgentDefinition({
+	currentDefinitions,
+	definition,
+}: {
+	currentDefinitions?: AgentCustomDefinition[] | null;
+	definition: AgentCustomDefinition;
+}): AgentCustomDefinition[] {
+	const definitions = readAgentCustomDefinitions(currentDefinitions);
+	const nextDefinition = agentCustomDefinitionSchema.parse(definition);
+	const index = definitions.findIndex(
+		(candidate) => candidate.id === nextDefinition.id,
+	);
+	if (index === -1) {
+		return [...definitions, nextDefinition];
+	}
+
+	return definitions.map((candidate, candidateIndex) =>
+		candidateIndex === index ? nextDefinition : candidate,
+	);
+}
+
+export function applyCustomAgentDefinitionPatch({
+	definition,
+	patch,
+}: {
+	definition: AgentCustomDefinition;
+	patch: CustomAgentDefinitionPatch;
+}): AgentCustomDefinition {
+	const nextDefinition: AgentCustomDefinition = { ...definition };
+
+	if (Object.hasOwn(patch, "enabled")) {
+		nextDefinition.enabled = patch.enabled;
+	}
+	if (Object.hasOwn(patch, "label") && patch.label !== undefined) {
+		nextDefinition.label = patch.label;
+	}
+	if (Object.hasOwn(patch, "description")) {
+		nextDefinition.description = patch.description ?? undefined;
+	}
+	if (Object.hasOwn(patch, "command") && patch.command !== undefined) {
+		nextDefinition.command = patch.command;
+	}
+	if (
+		Object.hasOwn(patch, "promptCommand") &&
+		patch.promptCommand !== undefined
+	) {
+		nextDefinition.promptCommand = patch.promptCommand;
+	}
+	if (Object.hasOwn(patch, "promptCommandSuffix")) {
+		nextDefinition.promptCommandSuffix = patch.promptCommandSuffix ?? undefined;
+	}
+	if (
+		Object.hasOwn(patch, "taskPromptTemplate") &&
+		patch.taskPromptTemplate !== undefined
+	) {
+		nextDefinition.taskPromptTemplate = patch.taskPromptTemplate;
+	}
+
+	return agentCustomDefinitionSchema.parse(nextDefinition);
+}
+
+export function deleteCustomAgentDefinition({
+	currentDefinitions,
+	id,
+}: {
+	currentDefinitions?: AgentCustomDefinition[] | null;
+	id: `custom:${string}`;
+}): AgentCustomDefinition[] {
+	return readAgentCustomDefinitions(currentDefinitions).filter(
+		(definition) => definition.id !== id,
+	);
 }
 
 function getOverriddenFields(

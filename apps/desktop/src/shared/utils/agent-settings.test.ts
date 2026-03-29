@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { getBuiltinAgentDefinition } from "@superset/shared/agent-catalog";
 import {
+	applyCustomAgentDefinitionPatch,
 	createOverrideEnvelopeWithPatch,
+	deleteCustomAgentDefinition,
 	resolveAgentConfigs,
+	upsertCustomAgentDefinition,
 } from "./agent-settings";
 
 describe("resolveAgentConfigs", () => {
@@ -58,6 +61,34 @@ describe("resolveAgentConfigs", () => {
 			command: "pi",
 			promptCommand: "pi",
 			enabled: true,
+		});
+	});
+
+	test("includes custom terminal configs from stored definitions", () => {
+		const custom = resolveAgentConfigs({
+			customDefinitions: [
+				{
+					id: "custom:amp-team",
+					kind: "terminal",
+					label: "Amp Team",
+					description: "Team Amp wrapper",
+					command: "amp --team",
+					promptCommand: "amp -x --team",
+					taskPromptTemplate: "Task {{slug}}",
+					enabled: false,
+				},
+			],
+		}).find((preset) => preset.id === "custom:amp-team");
+
+		expect(custom).toMatchObject({
+			id: "custom:amp-team",
+			source: "user",
+			kind: "terminal",
+			label: "Amp Team",
+			command: "amp --team",
+			promptCommand: "amp -x --team",
+			taskPromptTemplate: "Task {{slug}}",
+			enabled: false,
 		});
 	});
 });
@@ -120,5 +151,67 @@ describe("createOverrideEnvelopeWithPatch", () => {
 				},
 			],
 		});
+	});
+});
+
+describe("custom agent definition helpers", () => {
+	test("upserts and patches custom definitions", () => {
+		const created = upsertCustomAgentDefinition({
+			currentDefinitions: [],
+			definition: {
+				id: "custom:team-agent",
+				kind: "terminal",
+				label: "Team Agent",
+				command: "team-agent",
+				promptCommand: "team-agent --prompt",
+				taskPromptTemplate: "Task {{slug}}",
+			},
+		});
+
+		const updated = applyCustomAgentDefinitionPatch({
+			definition: created[0]!,
+			patch: {
+				description: "Shared team wrapper",
+				promptCommandSuffix: "--yolo",
+				enabled: false,
+			},
+		});
+
+		expect(updated).toMatchObject({
+			id: "custom:team-agent",
+			description: "Shared team wrapper",
+			promptCommandSuffix: "--yolo",
+			enabled: false,
+		});
+	});
+
+	test("deletes custom definitions by id", () => {
+		const definitions = deleteCustomAgentDefinition({
+			currentDefinitions: [
+				{
+					id: "custom:keep",
+					kind: "terminal",
+					label: "Keep",
+					command: "keep",
+					promptCommand: "keep --prompt",
+					taskPromptTemplate: "Task {{slug}}",
+				},
+				{
+					id: "custom:remove",
+					kind: "terminal",
+					label: "Remove",
+					command: "remove",
+					promptCommand: "remove --prompt",
+					taskPromptTemplate: "Task {{slug}}",
+				},
+			],
+			id: "custom:remove",
+		});
+
+		expect(definitions).toEqual([
+			expect.objectContaining({
+				id: "custom:keep",
+			}),
+		]);
 	});
 });

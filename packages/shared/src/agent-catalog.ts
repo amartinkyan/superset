@@ -1,15 +1,13 @@
 import {
 	AGENT_LABELS,
-	AGENT_PRESET_COMMANDS,
-	AGENT_PRESET_DESCRIPTIONS,
 	AGENT_PROMPT_COMMANDS,
 	AGENT_TYPES,
-	type AgentType,
 } from "./agent-command";
 import {
 	DEFAULT_CHAT_TASK_PROMPT_TEMPLATE,
 	DEFAULT_TERMINAL_TASK_PROMPT_TEMPLATE,
 } from "./agent-prompt-template";
+import { BUILTIN_TERMINAL_AGENTS } from "./builtin-terminal-agents";
 
 export const BUILTIN_AGENT_IDS = [...AGENT_TYPES, "superset-chat"] as const;
 
@@ -49,17 +47,17 @@ export const BUILTIN_AGENT_LABELS: Record<BuiltinAgentId, string> = {
 };
 
 function createBuiltinTerminalAgentDefinition(
-	id: AgentType,
+	agent: (typeof BUILTIN_TERMINAL_AGENTS)[number],
 ): TerminalAgentDefinition {
-	const promptCommand = AGENT_PROMPT_COMMANDS[id];
+	const promptCommand = AGENT_PROMPT_COMMANDS[agent.id];
 
 	return {
-		id,
+		id: agent.id,
 		source: "builtin",
 		kind: "terminal",
-		defaultLabel: AGENT_LABELS[id],
-		defaultDescription: AGENT_PRESET_DESCRIPTIONS[id],
-		defaultCommand: AGENT_PRESET_COMMANDS[id][0] ?? "",
+		defaultLabel: agent.label,
+		defaultDescription: agent.description,
+		defaultCommand: agent.command,
 		defaultPromptCommand: promptCommand.command,
 		defaultPromptCommandSuffix: promptCommand.suffix,
 		defaultTaskPromptTemplate: DEFAULT_TERMINAL_TASK_PROMPT_TEMPLATE,
@@ -68,7 +66,9 @@ function createBuiltinTerminalAgentDefinition(
 }
 
 export const BUILTIN_AGENT_DEFINITIONS: AgentDefinition[] = [
-	...AGENT_TYPES.map((id) => createBuiltinTerminalAgentDefinition(id)),
+	...BUILTIN_TERMINAL_AGENTS.map((agent) =>
+		createBuiltinTerminalAgentDefinition(agent),
+	),
 	{
 		id: "superset-chat",
 		source: "builtin",

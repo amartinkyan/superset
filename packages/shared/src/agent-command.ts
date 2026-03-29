@@ -2,64 +2,32 @@ import {
 	DEFAULT_TERMINAL_TASK_PROMPT_TEMPLATE,
 	renderTaskPromptTemplate,
 } from "./agent-prompt-template";
+import {
+	BUILTIN_TERMINAL_AGENT_COMMANDS,
+	BUILTIN_TERMINAL_AGENT_DESCRIPTIONS,
+	BUILTIN_TERMINAL_AGENT_LABELS,
+	BUILTIN_TERMINAL_AGENT_PROMPT_COMMANDS,
+	BUILTIN_TERMINAL_AGENT_TYPES,
+	type BuiltinTerminalAgentType,
+} from "./builtin-terminal-agents";
 
-export const AGENT_TYPES = [
-	"claude",
-	"amp",
-	"codex",
-	"gemini",
-	"mastracode",
-	"opencode",
-	"pi",
-	"copilot",
-	"cursor-agent",
-] as const;
+export {
+	BUILTIN_TERMINAL_AGENTS,
+	DEFAULT_TERMINAL_PRESET_AGENT_TYPES,
+} from "./builtin-terminal-agents";
 
-export type AgentType = (typeof AGENT_TYPES)[number];
+export const AGENT_TYPES = BUILTIN_TERMINAL_AGENT_TYPES;
 
-export const AGENT_LABELS: Record<AgentType, string> = {
-	claude: "Claude",
-	amp: "Amp",
-	codex: "Codex",
-	gemini: "Gemini",
-	mastracode: "Mastracode",
-	opencode: "OpenCode",
-	pi: "Pi",
-	copilot: "Copilot",
-	"cursor-agent": "Cursor Agent",
-};
+export type AgentType = BuiltinTerminalAgentType;
 
-export const AGENT_PRESET_COMMANDS: Record<AgentType, string[]> = {
-	claude: ["claude --dangerously-skip-permissions"],
-	amp: ["amp"],
-	codex: [
-		'codex -c model_reasoning_effort="high" --dangerously-bypass-approvals-and-sandbox -c model_reasoning_summary="detailed" -c model_supports_reasoning_summaries=true',
-	],
-	gemini: ["gemini --yolo"],
-	mastracode: ["mastracode"],
-	opencode: ["opencode"],
-	pi: ["pi"],
-	copilot: ["copilot --allow-all"],
-	"cursor-agent": ["cursor-agent"],
-};
+export const AGENT_LABELS: Record<AgentType, string> =
+	BUILTIN_TERMINAL_AGENT_LABELS;
 
-export const AGENT_PRESET_DESCRIPTIONS: Record<AgentType, string> = {
-	claude:
-		"Anthropic's coding agent for reading code, editing files, and running terminal workflows.",
-	amp: "Amp's coding agent for terminal-first coding, subagents, and task work.",
-	codex:
-		"OpenAI's coding agent for reading, modifying, and running code across tasks.",
-	gemini:
-		"Google's open-source terminal agent for coding, problem-solving, and task work.",
-	mastracode:
-		"Mastra's coding agent for building, debugging, and shipping code from the terminal.",
-	opencode: "Open-source coding agent for the terminal, IDE, and desktop.",
-	pi: "Minimal terminal coding harness for flexible coding workflows.",
-	copilot:
-		"GitHub's coding agent for planning, editing, and building in your repo.",
-	"cursor-agent":
-		"Cursor's coding agent for editing, running, and debugging code in parallel.",
-};
+export const AGENT_PRESET_COMMANDS: Record<AgentType, string[]> =
+	BUILTIN_TERMINAL_AGENT_COMMANDS;
+
+export const AGENT_PRESET_DESCRIPTIONS: Record<AgentType, string> =
+	BUILTIN_TERMINAL_AGENT_DESCRIPTIONS;
 
 export interface AgentPromptCommandDefaults {
 	command: string;
@@ -69,38 +37,7 @@ export interface AgentPromptCommandDefaults {
 export const AGENT_PROMPT_COMMANDS: Record<
 	AgentType,
 	AgentPromptCommandDefaults
-> = {
-	claude: {
-		command: AGENT_PRESET_COMMANDS.claude[0] ?? "claude",
-	},
-	amp: {
-		command: "amp -x",
-	},
-	codex: {
-		command: `${AGENT_PRESET_COMMANDS.codex[0] ?? "codex"} --`,
-	},
-	gemini: {
-		command: "gemini",
-		suffix: "--yolo",
-	},
-	mastracode: {
-		command: AGENT_PRESET_COMMANDS.mastracode[0] ?? "mastracode",
-	},
-	opencode: {
-		command: "opencode --prompt",
-	},
-	pi: {
-		command: AGENT_PRESET_COMMANDS.pi[0] ?? "pi",
-	},
-	copilot: {
-		command: "copilot -i --allow-all",
-		suffix: "--yolo",
-	},
-	"cursor-agent": {
-		command: AGENT_PRESET_COMMANDS["cursor-agent"][0] ?? "cursor-agent",
-		suffix: "--yolo",
-	},
-};
+> = BUILTIN_TERMINAL_AGENT_PROMPT_COMMANDS;
 
 export interface TaskInput {
 	id: string;
