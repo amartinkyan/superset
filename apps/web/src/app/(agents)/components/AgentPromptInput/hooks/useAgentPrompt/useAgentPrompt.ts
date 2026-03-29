@@ -1,7 +1,6 @@
 "use client";
 
-import type { PromptInputMessage } from "@superset/ui/ai-elements/prompt-input";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import {
 	type MockModel,
 	type MockRepo,
@@ -18,10 +17,6 @@ export function useAgentPrompt() {
 	);
 	const [selectedBranch, setSelectedBranch] = useState("main");
 
-	const handleSubmit = useCallback((_message: PromptInputMessage) => {
-		// TODO: Wire to v2Workspace.create
-	}, []);
-
 	return {
 		selectedModel,
 		setSelectedModel,
@@ -29,6 +24,5 @@ export function useAgentPrompt() {
 		setSelectedRepo,
 		selectedBranch,
 		setSelectedBranch,
-		handleSubmit,
 	};
 }
