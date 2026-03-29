@@ -46,6 +46,7 @@ bun run dev:linear
 That command:
 
 - starts an ngrok tunnel to your local API
+- waits until the requested paid ngrok hostname is actually live before continuing
 - persists the resolved `LINEAR_PUBLIC_API_URL` into the root `.env`
 - exports `LINEAR_PUBLIC_API_URL` for the local dev servers
 - prints the exact callback and webhook URLs in use

@@ -76,8 +76,13 @@ start_ngrok() {
 	NGROK_PID="$!"
 }
 
-discover_ngrok_url() {
+resolve_ngrok_url() {
+	local desired_url=""
 	local attempt=0
+
+	if [ -n "$NGROK_PUBLIC_URL" ]; then
+		desired_url="$(trim_trailing_slash "$NGROK_PUBLIC_URL")"
+	fi
 
 	while [ "$attempt" -lt 30 ]; do
 		if ! kill -0 "$NGROK_PID" >/dev/null 2>&1; then
@@ -89,17 +94,19 @@ discover_ngrok_url() {
 		NGROK_PUBLIC_URL="$(
 			curl -sf "$NGROK_API_URL" 2>/dev/null | bun -e '
 const input = await Bun.stdin.text();
+const desired = process.argv[1];
 if (!input) {
 	process.exit(0);
 }
 const data = JSON.parse(input);
 const tunnel = data.tunnels?.find((candidate) =>
-	candidate.public_url?.startsWith("https://"),
+	candidate.public_url?.startsWith("https://") &&
+		(!desired || candidate.public_url === desired),
 );
 if (tunnel?.public_url) {
 	process.stdout.write(tunnel.public_url);
 }
-' 2>/dev/null || true
+' "$desired_url" 2>/dev/null || true
 		)"
 
 		if [ -n "$NGROK_PUBLIC_URL" ]; then
@@ -116,11 +123,12 @@ if (tunnel?.public_url) {
 	exit 1
 }
 
-start_ngrok
-
-if [ -z "$NGROK_PUBLIC_URL" ]; then
-	discover_ngrok_url
+if [ -n "$NGROK_PUBLIC_URL" ]; then
+	NGROK_PUBLIC_URL="$(trim_trailing_slash "$NGROK_PUBLIC_URL")"
 fi
+
+start_ngrok
+resolve_ngrok_url
 
 export LINEAR_PUBLIC_API_URL="$NGROK_PUBLIC_URL"
 persist_linear_public_api_url
