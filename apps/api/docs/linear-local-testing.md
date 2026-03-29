@@ -14,7 +14,9 @@ If you plan to use the bundled `bun run dev:linear` command, install ngrok and
 make sure the ngrok account on your machine is authenticated and verified.
 
 1. Reserve an ngrok URL if you want a stable webhook endpoint.
-2. Set `LINEAR_PUBLIC_API_URL=https://your-reserved-domain.ngrok.app` in `.env`.
+2. Optionally set `LINEAR_PUBLIC_API_URL=https://your-reserved-domain.ngrok.app` in `.env`.
+   If you leave it blank, `bun run dev:linear` will generate an ngrok URL and
+   write it back into `.env` for you.
 3. In the Linear OAuth application, add your local callback URL:
 
 ```text
@@ -44,6 +46,7 @@ bun run dev:linear
 That command:
 
 - starts an ngrok tunnel to your local API
+- persists the resolved `LINEAR_PUBLIC_API_URL` into the root `.env`
 - exports `LINEAR_PUBLIC_API_URL` for the local dev servers
 - prints the exact callback and webhook URLs in use
 - starts the normal Superset dev stack
@@ -60,6 +63,6 @@ bun run dev:linear:tunnel
 ## Stable vs ephemeral tunnels
 
 - If `LINEAR_PUBLIC_API_URL` is set, `dev:linear` asks ngrok to use that URL.
-- If `LINEAR_PUBLIC_API_URL` is unset, `dev:linear` creates an ephemeral ngrok URL and exports it for that shell session. The webhook URL will change the next time you run it.
+- If `LINEAR_PUBLIC_API_URL` is unset, `dev:linear` creates an ephemeral ngrok URL, writes it into `.env`, and exports it for the current run. The webhook URL will change the next time you run it.
 
 For the smoothest local loop, reserve one ngrok domain and keep it in `.env`.

@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 MODE="${1:-}"
+ENV_FILE="${LINEAR_ENV_FILE:-$ROOT_DIR/.env}"
 API_TARGET="${NEXT_PUBLIC_API_URL:-http://localhost:${API_PORT:-3001}}"
 NGROK_API_URL="${NGROK_API_URL:-http://127.0.0.1:4040/api/tunnels}"
 NGROK_LOG_FILE="$(mktemp -t superset-linear-ngrok.XXXXXX.log)"
@@ -28,6 +29,34 @@ cleanup() {
 }
 
 trap cleanup EXIT INT TERM
+
+persist_linear_public_api_url() {
+	if [ ! -f "$ENV_FILE" ]; then
+		echo "Skipping .env update because $ENV_FILE does not exist."
+		return
+	fi
+
+	local temp_env_file
+	temp_env_file="$(mktemp -t superset-linear-env.XXXXXX)"
+
+	awk -v value="$LINEAR_PUBLIC_API_URL" '
+BEGIN { updated=0 }
+/^LINEAR_PUBLIC_API_URL=/ {
+	print "LINEAR_PUBLIC_API_URL=\"" value "\""
+	updated=1
+	next
+}
+{ print }
+END {
+	if (!updated) {
+		print "LINEAR_PUBLIC_API_URL=\"" value "\""
+	}
+}
+' "$ENV_FILE" >"$temp_env_file"
+
+	mv "$temp_env_file" "$ENV_FILE"
+	echo "Updated $ENV_FILE with LINEAR_PUBLIC_API_URL."
+}
 
 if ! command -v ngrok >/dev/null 2>&1; then
 	echo "ngrok is required for Linear local testing."
@@ -94,6 +123,7 @@ if [ -z "$NGROK_PUBLIC_URL" ]; then
 fi
 
 export LINEAR_PUBLIC_API_URL="$NGROK_PUBLIC_URL"
+persist_linear_public_api_url
 
 CALLBACK_URL="$(trim_trailing_slash "$API_TARGET")/api/integrations/linear/callback"
 WEBHOOK_URL="$LINEAR_PUBLIC_API_URL/api/integrations/linear/webhook"
