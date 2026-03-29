@@ -2,6 +2,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { useCallback, useRef } from "react";
 import { DEBUG_TERMINAL } from "../config";
+import { savedViewportOffset } from "../state";
 import type {
 	CreateOrAttachResult,
 	TerminalExitReason,
@@ -125,7 +126,17 @@ export function useTerminalRestore({
 					if (xtermRef.current !== xterm) return;
 					if (restoreSequenceRef.current !== restoreSequence) return;
 					fitAddon.fit();
-					scrollToBottom(xterm);
+
+					// Restore saved scroll position if the user wasn't at the bottom
+					const saved = savedViewportOffset.get(paneId);
+					savedViewportOffset.delete(paneId);
+					if (saved && saved.linesFromBottom > 0) {
+						const targetLine =
+							xterm.buffer.active.baseY - saved.linesFromBottom;
+						xterm.scrollToLine(Math.max(0, targetLine));
+					} else {
+						scrollToBottom(xterm);
+					}
 				});
 			};
 

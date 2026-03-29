@@ -22,7 +22,11 @@ import {
 	type TerminalRendererRef,
 } from "../helpers";
 import { isPaneDestroyed } from "../pane-guards";
-import { coldRestoreState, pendingDetaches } from "../state";
+import {
+	coldRestoreState,
+	pendingDetaches,
+	savedViewportOffset,
+} from "../state";
 import type {
 	CreateOrAttachMutate,
 	CreateOrAttachResult,
@@ -912,6 +916,17 @@ export function useTerminalLifecycle({
 			pendingInitialStateRef.current = null;
 			resetModes();
 			renderDisposable?.dispose();
+
+			// Save viewport scroll offset before disposal so it can be restored
+			// after workspace switch. Store as lines-from-bottom so the value
+			// remains valid even if the terminal is resized between save and restore.
+			if (!paneDestroyed) {
+				const buf = xterm.buffer.active;
+				const linesFromBottom = buf.baseY - buf.viewportY;
+				savedViewportOffset.set(paneId, { linesFromBottom });
+			} else {
+				savedViewportOffset.delete(paneId);
+			}
 
 			setTimeout(() => xterm.dispose(), 0);
 

@@ -28,6 +28,7 @@ export function useScrollPreservation(
 ) {
 	const lastScrollTopRef = useRef(0);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: containerRef is a stable ref object — we read .current inside the effect, not as a dep
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
@@ -49,8 +50,7 @@ export function useScrollPreservation(
 			container.removeEventListener("scroll", onScroll);
 			scrollCache.set(cacheKey, lastScrollTopRef.current);
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [cacheKey, ...deps, containerRef.current]);
+	}, [cacheKey, ...deps]);
 }
 
 /** Clear a single cached entry (e.g. when a pane is permanently closed). */

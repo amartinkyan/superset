@@ -51,6 +51,9 @@ import { useFileSave } from "./hooks/useFileSave";
 import { useMarkdownSearch } from "./hooks/useMarkdownSearch";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 
+/** Module-level cache for raw mode (CodeMirror) scroll positions keyed by paneId */
+const rawScrollCache = new Map<string, number>();
+
 interface FileViewerPaneProps {
 	paneId: string;
 	path: MosaicBranch[];
@@ -147,7 +150,7 @@ export function FileViewerPane({
 	const diffContainerRef = useRef<HTMLDivElement>(null);
 	const pendingRenamePathRef = useRef<string | null>(null);
 	const preserveDocumentStateRef = useRef(false);
-	const lastTopLineRef = useRef<number | null>(null);
+	const lastScrollTopRef = useRef<number | null>(null);
 	const [isResolvingIntent, setIsResolvingIntent] = useState(false);
 
 	const filePath = fileViewer?.filePath ?? "";
@@ -401,33 +404,33 @@ export function FileViewerPane({
 		[documentKey, isPinned, paneId, pinPane],
 	);
 
-	const handleTopLineChange = useCallback((line: number) => {
-		lastTopLineRef.current = line;
+	const handleScrollTopChange = useCallback((scrollTop: number) => {
+		lastScrollTopRef.current = scrollTop;
 	}, []);
 
-	// Persist raw mode scroll position on unmount so it can be restored when returning to this workspace
+	// Save raw mode scroll position on unmount, restore on remount
 	useEffect(() => {
 		return () => {
-			const topLine = lastTopLineRef.current;
-			if (topLine == null) return;
-
-			const panes = useTabsStore.getState().panes;
-			const currentPane = panes[paneId];
-			if (!currentPane?.fileViewer) return;
-			useTabsStore.setState({
-				panes: {
-					...panes,
-					[paneId]: {
-						...currentPane,
-						fileViewer: {
-							...currentPane.fileViewer,
-							initialLine: topLine,
-						},
-					},
-				},
-			});
+			const scrollTop = lastScrollTopRef.current;
+			if (scrollTop != null && scrollTop > 0) {
+				rawScrollCache.set(paneId, scrollTop);
+			}
 		};
 	}, [paneId]);
+
+	// Restore raw mode scroll position after editor content is ready
+	useEffect(() => {
+		if (viewMode !== "raw" || isLoadingRaw || !rawFileData?.ok) return;
+
+		const saved = rawScrollCache.get(paneId);
+		if (saved == null) return;
+		rawScrollCache.delete(paneId);
+
+		// Wait for CodeMirror to render the content before restoring
+		requestAnimationFrame(() => {
+			editorRef.current?.setScrollTop(saved);
+		});
+	}, [viewMode, paneId, isLoadingRaw, rawFileData]);
 
 	// Preserve scroll position for diff and rendered mode containers across workspace switches
 	useScrollPreservation(
@@ -751,7 +754,7 @@ export function FileViewerPane({
 							diffSearch={diffSearch}
 							markdownContainerRef={markdownContainerRef}
 							markdownSearch={markdownSearch}
-							onTopLineChange={handleTopLineChange}
+							onScrollTopChange={handleScrollTopChange}
 						/>
 					</div>
 				</div>

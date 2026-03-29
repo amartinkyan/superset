@@ -133,7 +133,7 @@ interface FileViewerContentProps {
 	diffSearch: TextSearchState;
 	markdownContainerRef: RefObject<HTMLDivElement | null>;
 	markdownSearch: TextSearchState;
-	onTopLineChange?: (line: number) => void;
+	onScrollTopChange?: (scrollTop: number) => void;
 }
 
 export function FileViewerContent({
@@ -169,7 +169,7 @@ export function FileViewerContent({
 	diffSearch,
 	markdownContainerRef,
 	markdownSearch,
-	onTopLineChange,
+	onScrollTopChange,
 }: FileViewerContentProps) {
 	const isImage = isImageFile(filePath);
 
@@ -491,7 +491,7 @@ export function FileViewerContent({
 					value={renderedContent}
 					onChange={onContentChange}
 					onSave={onSaveFile}
-					onTopLineChange={onTopLineChange}
+					onScrollTopChange={onScrollTopChange}
 					editorRef={editorRef}
 					fillHeight
 				/>

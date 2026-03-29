@@ -40,7 +40,7 @@ interface CodeEditorProps {
 	editorRef?: MutableRefObject<CodeEditorAdapter | null>;
 	onChange?: (value: string) => void;
 	onSave?: () => void;
-	onTopLineChange?: (line: number) => void;
+	onScrollTopChange?: (scrollTop: number) => void;
 }
 
 function createCodeMirrorAdapter(view: EditorView): CodeEditorAdapter {
@@ -153,6 +153,12 @@ function createCodeMirrorAdapter(view: EditorView): CodeEditorAdapter {
 		openFind() {
 			openSearchPanel(view);
 		},
+		getScrollTop() {
+			return view.scrollDOM.scrollTop;
+		},
+		setScrollTop(top: number) {
+			view.scrollDOM.scrollTop = top;
+		},
 		dispose() {
 			if (disposed) return;
 			disposed = true;
@@ -170,7 +176,7 @@ export function CodeEditor({
 	editorRef,
 	onChange,
 	onSave,
-	onTopLineChange,
+	onScrollTopChange,
 }: CodeEditorProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const viewRef = useRef<EditorView | null>(null);
@@ -191,10 +197,10 @@ export function CodeEditor({
 	const editorFontSize = fontSettings?.editorFontSize ?? undefined;
 	const activeTheme = useResolvedTheme();
 
-	const onTopLineChangeRef = useRef(onTopLineChange);
+	const onScrollTopChangeRef = useRef(onScrollTopChange);
 	onChangeRef.current = onChange;
 	onSaveRef.current = onSave;
-	onTopLineChangeRef.current = onTopLineChange;
+	onScrollTopChangeRef.current = onScrollTopChange;
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: Editor instance is created once and reconfigured via dedicated effects below
 	useEffect(() => {
@@ -269,13 +275,7 @@ export function CodeEditor({
 		const adapter = createCodeMirrorAdapter(view);
 
 		const onScroll = () => {
-			try {
-				const topPos = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from;
-				const topLine = view.state.doc.lineAt(topPos).number;
-				onTopLineChangeRef.current?.(topLine);
-			} catch {
-				// View may be in an intermediate state during teardown
-			}
+			onScrollTopChangeRef.current?.(view.scrollDOM.scrollTop);
 		};
 		view.scrollDOM.addEventListener("scroll", onScroll);
 

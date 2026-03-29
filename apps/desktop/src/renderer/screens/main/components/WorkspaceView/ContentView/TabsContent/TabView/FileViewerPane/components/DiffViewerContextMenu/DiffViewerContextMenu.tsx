@@ -104,6 +104,10 @@ export function DiffViewerContextMenu({
 			},
 			paste() {},
 			openFind() {},
+			getScrollTop() {
+				return 0;
+			},
+			setScrollTop(_top: number) {},
 			dispose() {},
 		};
 	}, [containerRef, getSelectionLines, copyToClipboard]);

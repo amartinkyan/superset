@@ -14,5 +14,7 @@ export interface CodeEditorAdapter {
 	copy(): void;
 	paste(): void;
 	openFind(): void;
+	getScrollTop(): number;
+	setScrollTop(top: number): void;
 	dispose(): void;
 }
