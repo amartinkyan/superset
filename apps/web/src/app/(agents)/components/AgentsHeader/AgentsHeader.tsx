@@ -38,6 +38,7 @@ export function AgentsHeader() {
 	const isMobile = useIsMobile();
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const [dropdownOpen, setDropdownOpen] = useState(false);
+	const [actionInFlight, setActionInFlight] = useState(false);
 
 	const { data: organizations } = useQuery(
 		trpc.user.myOrganizations.queryOptions(),
@@ -86,36 +87,76 @@ export function AgentsHeader() {
 	};
 
 	const handleDrawerSignOut = async () => {
-		const signedOut = await handleSignOut();
-		if (!signedOut) {
+		if (actionInFlight) {
 			return;
 		}
 
-		setDrawerOpen(false);
-		router.push("/sign-in");
+		setActionInFlight(true);
+
+		try {
+			const signedOut = await handleSignOut();
+			if (!signedOut) {
+				return;
+			}
+
+			setDrawerOpen(false);
+			router.push("/sign-in");
+		} finally {
+			setActionInFlight(false);
+		}
 	};
 
 	const handleDrawerOrganizationSelect = async (organizationId: string) => {
-		const switched = await handleSwitchOrganization(organizationId);
-		if (switched) {
-			setDrawerOpen(false);
+		if (actionInFlight) {
+			return;
+		}
+
+		setActionInFlight(true);
+
+		try {
+			const switched = await handleSwitchOrganization(organizationId);
+			if (switched) {
+				setDrawerOpen(false);
+			}
+		} finally {
+			setActionInFlight(false);
 		}
 	};
 
 	const handleDropdownSignOut = async () => {
-		const signedOut = await handleSignOut();
-		if (!signedOut) {
+		if (actionInFlight) {
 			return;
 		}
 
-		setDropdownOpen(false);
-		router.push("/sign-in");
+		setActionInFlight(true);
+
+		try {
+			const signedOut = await handleSignOut();
+			if (!signedOut) {
+				return;
+			}
+
+			setDropdownOpen(false);
+			router.push("/sign-in");
+		} finally {
+			setActionInFlight(false);
+		}
 	};
 
 	const handleDropdownOrganizationSelect = async (organizationId: string) => {
-		const switched = await handleSwitchOrganization(organizationId);
-		if (switched) {
-			setDropdownOpen(false);
+		if (actionInFlight) {
+			return;
+		}
+
+		setActionInFlight(true);
+
+		try {
+			const switched = await handleSwitchOrganization(organizationId);
+			if (switched) {
+				setDropdownOpen(false);
+			}
+		} finally {
+			setActionInFlight(false);
 		}
 	};
 
@@ -164,6 +205,7 @@ export function AgentsHeader() {
 										key={org.id}
 										type="button"
 										className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent"
+										disabled={actionInFlight}
 										onClick={() => {
 											void handleDrawerOrganizationSelect(org.id);
 										}}
@@ -191,6 +233,7 @@ export function AgentsHeader() {
 						<button
 							type="button"
 							className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent"
+							disabled={actionInFlight}
 							onClick={() => {
 								void handleDrawerSignOut();
 							}}
@@ -227,6 +270,7 @@ export function AgentsHeader() {
 									<DropdownMenuItem
 										key={org.id}
 										className="cursor-pointer gap-2"
+										disabled={actionInFlight}
 										onSelect={(event) => {
 											event.preventDefault();
 											void handleDropdownOrganizationSelect(org.id);
@@ -254,6 +298,7 @@ export function AgentsHeader() {
 				)}
 				<DropdownMenuItem
 					className="cursor-pointer gap-2"
+					disabled={actionInFlight}
 					onSelect={(event) => {
 						event.preventDefault();
 						void handleDropdownSignOut();
