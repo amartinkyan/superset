@@ -306,6 +306,12 @@ export const createSettingsRouter = () => {
 						message: `Agent preset ${input.id} not found`,
 					});
 				}
+				if (definition.source === "user") {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: `Custom agent ${input.id} must be edited through custom-agent settings`,
+					});
+				}
 
 				const normalizedPatch = normalizeAgentPresetPatch({
 					definition,

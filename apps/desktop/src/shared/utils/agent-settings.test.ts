@@ -85,7 +85,7 @@ describe("resolveAgentConfigs", () => {
 					label: "Team Agent",
 					description: "Team wrapper",
 					command: "team-agent",
-					promptCommand: "team-agent --prompt",
+					promptTransport: "stdin",
 					taskPromptTemplate: "Task {{slug}}",
 					enabled: false,
 				},
@@ -98,7 +98,8 @@ describe("resolveAgentConfigs", () => {
 			kind: "terminal",
 			label: "Team Agent",
 			command: "team-agent",
-			promptCommand: "team-agent --prompt",
+			promptCommand: "team-agent",
+			promptTransport: "stdin",
 			taskPromptTemplate: "Task {{slug}}",
 			enabled: false,
 		});
@@ -116,7 +117,7 @@ describe("createOverrideEnvelopeWithPatch", () => {
 			},
 			id: "claude",
 			patch: {
-				label: definition.defaultLabel,
+				label: definition.label,
 				description: null,
 			},
 		});
@@ -175,7 +176,6 @@ describe("custom agent definition helpers", () => {
 				kind: "terminal",
 				label: "Team Agent",
 				command: "team-agent",
-				promptCommand: "team-agent --prompt",
 				taskPromptTemplate: "Task {{slug}}",
 			},
 		});
@@ -190,6 +190,7 @@ describe("custom agent definition helpers", () => {
 			patch: {
 				description: "Shared team wrapper",
 				promptCommandSuffix: "--yolo",
+				promptTransport: "stdin",
 				enabled: false,
 			},
 		});
@@ -198,6 +199,7 @@ describe("custom agent definition helpers", () => {
 			id: "custom:team-agent",
 			description: "Shared team wrapper",
 			promptCommandSuffix: "--yolo",
+			promptTransport: "stdin",
 			enabled: false,
 		});
 	});
@@ -210,7 +212,6 @@ describe("custom agent definition helpers", () => {
 					kind: "terminal",
 					label: "Keep",
 					command: "keep",
-					promptCommand: "keep --prompt",
 					taskPromptTemplate: "Task {{slug}}",
 				},
 				{
@@ -218,7 +219,6 @@ describe("custom agent definition helpers", () => {
 					kind: "terminal",
 					label: "Remove",
 					command: "remove",
-					promptCommand: "remove --prompt",
 					taskPromptTemplate: "Task {{slug}}",
 				},
 			],

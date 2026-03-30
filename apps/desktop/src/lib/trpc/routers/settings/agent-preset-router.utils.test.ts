@@ -95,7 +95,6 @@ describe("custom agent schemas", () => {
 		const result = createCustomAgentInputSchema.safeParse({
 			label: " Team Agent ",
 			command: " team-agent ",
-			promptCommand: " team-agent --prompt ",
 			taskPromptTemplate: " Task {{slug}} ",
 		});
 
@@ -109,8 +108,9 @@ describe("custom agent normalization", () => {
 			label: "  Team Agent  ",
 			description: "   ",
 			command: "  team-agent  ",
-			promptCommand: "  team-agent --prompt  ",
+			promptCommand: "  team-agent  ",
 			promptCommandSuffix: "   ",
+			promptTransport: "argv",
 			taskPromptTemplate: "  Task {{slug}}  ",
 			enabled: false,
 		});
@@ -119,8 +119,9 @@ describe("custom agent normalization", () => {
 			label: "Team Agent",
 			description: undefined,
 			command: "team-agent",
-			promptCommand: "team-agent --prompt",
+			promptCommand: undefined,
 			promptCommandSuffix: undefined,
+			promptTransport: undefined,
 			taskPromptTemplate: "Task {{slug}}",
 			enabled: false,
 		});
@@ -128,14 +129,18 @@ describe("custom agent normalization", () => {
 
 	test("normalizes custom-agent patches and clears blank optional strings to null", () => {
 		const normalized = normalizeCustomAgentPatch({
+			promptCommand: "   ",
 			description: "   ",
 			promptCommandSuffix: "   ",
+			promptTransport: "argv",
 			command: "  team-agent  ",
 		});
 
 		expect(normalized).toEqual({
+			promptCommand: null,
 			description: null,
 			promptCommandSuffix: null,
+			promptTransport: null,
 			command: "team-agent",
 		});
 	});

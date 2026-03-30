@@ -1,3 +1,4 @@
+import { PROMPT_TRANSPORTS } from "@superset/local-db";
 import type { AgentDefinition } from "@superset/shared/agent-catalog";
 import { TRPCError } from "@trpc/server";
 import type {
@@ -29,16 +30,26 @@ export const createCustomAgentInputSchema = z.object({
 	label: z.string(),
 	description: z.string().nullable().optional(),
 	command: z.string(),
-	promptCommand: z.string(),
+	promptCommand: z.string().optional(),
 	promptCommandSuffix: z.string().nullable().optional(),
+	promptTransport: z.enum(PROMPT_TRANSPORTS).optional(),
 	taskPromptTemplate: z.string(),
 	enabled: z.boolean().optional(),
 });
 
 export const updateCustomAgentInputSchema = z.object({
 	id: z.string().regex(/^custom:/),
-	patch: createCustomAgentInputSchema
-		.partial()
+	patch: z
+		.object({
+			label: z.string().optional(),
+			description: z.string().nullable().optional(),
+			command: z.string().optional(),
+			promptCommand: z.string().nullable().optional(),
+			promptCommandSuffix: z.string().nullable().optional(),
+			promptTransport: z.enum(PROMPT_TRANSPORTS).nullable().optional(),
+			taskPromptTemplate: z.string().optional(),
+			enabled: z.boolean().optional(),
+		})
 		.refine((patch) => Object.keys(patch).length > 0, {
 			message: "Patch must include at least one field",
 		}),
@@ -128,6 +139,7 @@ function normalizeOptionalText(
 export function normalizeCreateCustomAgentInput(
 	input: z.infer<typeof createCustomAgentInputSchema>,
 ) {
+	const command = toTrimmedRequiredValue("Command", input.command);
 	const taskPromptTemplate = toTrimmedRequiredValue(
 		"Task prompt template",
 		input.taskPromptTemplate,
@@ -140,16 +152,19 @@ export function normalizeCreateCustomAgentInput(
 		});
 	}
 
+	const promptCommand = normalizeOptionalText(input.promptCommand) ?? undefined;
+
 	return {
 		label: toTrimmedRequiredValue("Label", input.label),
 		description: normalizeOptionalText(input.description) ?? undefined,
-		command: toTrimmedRequiredValue("Command", input.command),
-		promptCommand: toTrimmedRequiredValue(
-			"Prompt command",
-			input.promptCommand,
-		),
+		command,
+		promptCommand: promptCommand === command ? undefined : promptCommand,
 		promptCommandSuffix:
 			normalizeOptionalText(input.promptCommandSuffix) ?? undefined,
+		promptTransport:
+			input.promptTransport && input.promptTransport !== "argv"
+				? input.promptTransport
+				: undefined,
 		taskPromptTemplate,
 		enabled: input.enabled,
 	} as const;
@@ -173,15 +188,18 @@ export function normalizeCustomAgentPatch(
 		normalized.command = toTrimmedRequiredValue("Command", patch.command);
 	}
 	if (patch.promptCommand !== undefined) {
-		normalized.promptCommand = toTrimmedRequiredValue(
-			"Prompt command",
-			patch.promptCommand,
-		);
+		normalized.promptCommand = normalizeOptionalText(patch.promptCommand);
 	}
 	if (patch.promptCommandSuffix !== undefined) {
 		normalized.promptCommandSuffix = normalizeOptionalText(
 			patch.promptCommandSuffix,
 		);
+	}
+	if (patch.promptTransport !== undefined) {
+		normalized.promptTransport =
+			patch.promptTransport && patch.promptTransport !== "argv"
+				? patch.promptTransport
+				: null;
 	}
 	if (patch.taskPromptTemplate !== undefined) {
 		const taskPromptTemplate = toTrimmedRequiredValue(

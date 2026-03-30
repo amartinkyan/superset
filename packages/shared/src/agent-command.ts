@@ -59,6 +59,16 @@ export function buildAgentTaskPrompt(task: TaskInput): string {
 	return renderTaskPromptTemplate(DEFAULT_TERMINAL_TASK_PROMPT_TEMPLATE, task);
 }
 
+function getAgentPromptCommandDefaults(
+	agent: AgentType,
+): AgentPromptCommandDefaults {
+	const promptCommand = AGENT_PROMPT_COMMANDS[agent];
+	if (!promptCommand) {
+		throw new Error(`Unknown agent prompt command defaults: ${agent}`);
+	}
+	return promptCommand;
+}
+
 export function buildAgentFileCommand({
 	filePath,
 	agent = "claude",
@@ -66,7 +76,7 @@ export function buildAgentFileCommand({
 	filePath: string;
 	agent?: AgentType;
 }): string {
-	const promptCommand = AGENT_PROMPT_COMMANDS[agent];
+	const promptCommand = getAgentPromptCommandDefaults(agent);
 	return buildPromptFileCommandString({
 		filePath,
 		command: promptCommand.command,
@@ -84,7 +94,7 @@ export function buildAgentPromptCommand({
 	randomId: string;
 	agent?: AgentType;
 }): string {
-	const promptCommand = AGENT_PROMPT_COMMANDS[agent];
+	const promptCommand = getAgentPromptCommandDefaults(agent);
 	return buildPromptCommandString({
 		prompt,
 		randomId,
