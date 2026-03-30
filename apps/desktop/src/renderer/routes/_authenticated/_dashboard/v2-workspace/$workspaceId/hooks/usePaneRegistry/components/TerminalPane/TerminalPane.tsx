@@ -24,7 +24,7 @@ type TerminalServerMessage =
 			signal: number;
 	  };
 
-export function WorkspaceTerminal({ workspaceId }: WorkspaceTerminalProps) {
+export function TerminalPane({ workspaceId }: WorkspaceTerminalProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const [connectionState, setConnectionState] = useState<
 		"connecting" | "open" | "closed"

@@ -21,7 +21,7 @@ interface WorkspaceFilesProps {
 	workspaceId: string;
 }
 
-export function WorkspaceFiles({
+export function FilesPane({
 	onSelectFile,
 	selectedFilePath,
 	workspaceId,

@@ -2,7 +2,7 @@ import { SessionSelector } from "./components/SessionSelector";
 import { ChatPaneInterface as WorkspaceChatInterface } from "./components/WorkspaceChatInterface";
 import { useWorkspaceChatController } from "./hooks/useWorkspaceChatController";
 
-export function WorkspaceChat({
+export function ChatPane({
 	onSessionIdChange,
 	sessionId,
 	workspaceId,

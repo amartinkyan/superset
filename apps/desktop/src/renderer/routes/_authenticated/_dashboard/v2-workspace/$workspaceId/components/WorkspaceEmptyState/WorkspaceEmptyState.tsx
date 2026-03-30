@@ -8,14 +8,14 @@ import { EmptyTabActionButton } from "renderer/screens/main/components/Workspace
 import { useHotkeyDisplay } from "renderer/stores/hotkeys";
 import { useTheme } from "renderer/stores/theme";
 
-interface PaneViewerEmptyStateProps {
+interface WorkspaceEmptyStateProps {
 	onOpenBrowser: () => void;
 	onOpenChat: () => void;
 	onOpenQuickOpen: () => void;
 	onOpenTerminal: () => void;
 }
 
-interface PaneViewerEmptyStateAction {
+interface WorkspaceEmptyStateAction {
 	display: string[];
 	icon: IconType;
 	id: string;
@@ -23,19 +23,19 @@ interface PaneViewerEmptyStateAction {
 	onClick: () => void;
 }
 
-export function PaneViewerEmptyState({
+export function WorkspaceEmptyState({
 	onOpenBrowser,
 	onOpenChat,
 	onOpenQuickOpen,
 	onOpenTerminal,
-}: PaneViewerEmptyStateProps) {
+}: WorkspaceEmptyStateProps) {
 	const activeTheme = useTheme();
 	const newGroupDisplay = useHotkeyDisplay("NEW_GROUP");
 	const newChatDisplay = useHotkeyDisplay("NEW_CHAT");
 	const newBrowserDisplay = useHotkeyDisplay("NEW_BROWSER");
 	const quickOpenDisplay = useHotkeyDisplay("QUICK_OPEN");
 
-	const actions = useMemo<Array<PaneViewerEmptyStateAction>>(
+	const actions = useMemo<Array<WorkspaceEmptyStateAction>>(
 		() => [
 			{
 				id: "terminal",

@@ -1,16 +1,16 @@
 import type { PaneRegistry, RendererContext } from "@superset/panes";
 import { FileCode2, Globe, MessageSquare, TerminalSquare } from "lucide-react";
 import { useMemo } from "react";
-import { WorkspaceChat } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/components/WorkspaceChat";
-import { WorkspaceFilePreview } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/components/WorkspaceFiles/components/WorkspaceFilePreview/WorkspaceFilePreview";
-import { WorkspaceTerminal } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/components/WorkspaceTerminal";
+import { ChatPane } from "./components/ChatPane";
+import { WorkspaceFilePreview } from "./components/FilesPane/components/WorkspaceFilePreview/WorkspaceFilePreview";
+import { TerminalPane } from "./components/TerminalPane";
 import type {
 	BrowserPaneData,
 	ChatPaneData,
 	DevtoolsPaneData,
 	FilePaneData,
 	PaneViewerData,
-} from "../../pane-viewer.model";
+} from "../../types";
 
 function getFileTitle(filePath: string): string {
 	return filePath.split("/").pop() ?? filePath;
@@ -41,7 +41,7 @@ export function usePaneRegistry(
 				getIcon: () => <TerminalSquare className="size-4" />,
 				getTitle: () => "Terminal",
 				renderPane: () => (
-					<WorkspaceTerminal workspaceId={workspaceId} />
+					<TerminalPane workspaceId={workspaceId} />
 				),
 			},
 			browser: {
@@ -67,7 +67,7 @@ export function usePaneRegistry(
 				renderPane: (ctx: RendererContext<PaneViewerData>) => {
 					const data = ctx.pane.data as ChatPaneData;
 					return (
-						<WorkspaceChat
+						<ChatPane
 							onSessionIdChange={(sessionId) =>
 								ctx.actions.updateData({
 									sessionId,

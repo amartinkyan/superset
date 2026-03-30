@@ -7,7 +7,7 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
-import type { PaneViewerData } from "../../pane-viewer.model";
+import type { PaneViewerData } from "../../types";
 
 const EMPTY_STATE: WorkspaceState<PaneViewerData> = {
 	version: 1,
