@@ -386,6 +386,16 @@ function buildHeredoc(
 	].join("\n");
 }
 
+function buildStdinHeredoc(
+	prompt: string,
+	delimiter: string,
+	command: string,
+	suffix?: string,
+): string {
+	const fullCommand = suffix ? `${command} ${suffix}` : command;
+	return [`${fullCommand} <<'${delimiter}'`, prompt, delimiter].join("\n");
+}
+
 function buildFileCommand(
 	filePath: string,
 	command: string,
@@ -393,6 +403,19 @@ function buildFileCommand(
 ): string {
 	const escapedPath = filePath.replaceAll("'", "'\\''");
 	return `${command} "$(cat '${escapedPath}')"${suffix ? ` ${suffix}` : ""}`;
+}
+
+function buildStdinFileCommand(
+	filePath: string,
+	command: string,
+	suffix?: string,
+): string {
+	const escapedPath = filePath.replaceAll("'", "'\\''");
+	return `${command}${suffix ? ` ${suffix}` : ""} < '${escapedPath}'`;
+}
+
+function shouldUseStdinPrompt(config: TerminalResolvedAgentConfig): boolean {
+	return config.id === "amp";
 }
 
 export function getCommandFromAgentConfig(
@@ -420,7 +443,9 @@ export function buildPromptCommandFromAgentConfig({
 	}
 
 	const suffix = config.promptCommandSuffix?.trim() || undefined;
-	return buildHeredoc(prompt, delimiter, promptCommand, suffix);
+	return shouldUseStdinPrompt(config)
+		? buildStdinHeredoc(prompt, delimiter, promptCommand, suffix)
+		: buildHeredoc(prompt, delimiter, promptCommand, suffix);
 }
 
 export function buildFileCommandFromAgentConfig({
@@ -434,7 +459,9 @@ export function buildFileCommandFromAgentConfig({
 	if (!promptCommand) return null;
 
 	const suffix = config.promptCommandSuffix?.trim() || undefined;
-	return buildFileCommand(filePath, promptCommand, suffix);
+	return shouldUseStdinPrompt(config)
+		? buildStdinFileCommand(filePath, promptCommand, suffix)
+		: buildFileCommand(filePath, promptCommand, suffix);
 }
 
 export function buildDefaultTerminalTaskPrompt(task: TaskInput): string {

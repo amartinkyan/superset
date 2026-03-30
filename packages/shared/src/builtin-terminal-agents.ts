@@ -45,7 +45,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 		description:
 			"Amp's coding agent for terminal-first coding, subagents, and task work.",
 		command: "amp",
-		promptCommand: "amp -x",
+		promptCommand: "amp",
 		includeInDefaultTerminalPresets: true,
 	},
 	{

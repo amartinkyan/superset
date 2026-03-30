@@ -64,6 +64,18 @@ describe("resolveAgentConfigs", () => {
 		});
 	});
 
+	test("uses amp as the built-in prompt command for Amp", () => {
+		const amp = resolveAgentConfigs({}).find((preset) => preset.id === "amp");
+
+		expect(amp).toMatchObject({
+			id: "amp",
+			kind: "terminal",
+			command: "amp",
+			promptCommand: "amp",
+			enabled: true,
+		});
+	});
+
 	test("includes custom terminal configs from stored definitions", () => {
 		const custom = resolveAgentConfigs({
 			customDefinitions: [

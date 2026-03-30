@@ -68,6 +68,16 @@ function buildHeredoc(
 	].join("\n");
 }
 
+function buildStdinHeredoc(
+	prompt: string,
+	delimiter: string,
+	command: string,
+	suffix?: string,
+): string {
+	const fullCommand = suffix ? `${command} ${suffix}` : command;
+	return [`${fullCommand} <<'${delimiter}'`, prompt, delimiter].join("\n");
+}
+
 function buildFileCommand(
 	filePath: string,
 	command: string,
@@ -75,6 +85,19 @@ function buildFileCommand(
 ): string {
 	const escapedPath = filePath.replaceAll("'", "'\\''");
 	return `${command} "$(cat '${escapedPath}')"${suffix ? ` ${suffix}` : ""}`;
+}
+
+function buildStdinFileCommand(
+	filePath: string,
+	command: string,
+	suffix?: string,
+): string {
+	const escapedPath = filePath.replaceAll("'", "'\\''");
+	return `${command}${suffix ? ` ${suffix}` : ""} < '${escapedPath}'`;
+}
+
+function shouldUseStdinPrompt(agent: AgentType): boolean {
+	return agent === "amp";
 }
 
 export function buildAgentFileCommand({
@@ -85,11 +108,13 @@ export function buildAgentFileCommand({
 	agent?: AgentType;
 }): string {
 	const promptCommand = AGENT_PROMPT_COMMANDS[agent];
-	return buildFileCommand(
-		filePath,
-		promptCommand.command,
-		promptCommand.suffix,
-	);
+	return shouldUseStdinPrompt(agent)
+		? buildStdinFileCommand(
+				filePath,
+				promptCommand.command,
+				promptCommand.suffix,
+			)
+		: buildFileCommand(filePath, promptCommand.command, promptCommand.suffix);
 }
 
 export function buildAgentPromptCommand({
@@ -106,12 +131,19 @@ export function buildAgentPromptCommand({
 		delimiter = `${delimiter}_X`;
 	}
 	const promptCommand = AGENT_PROMPT_COMMANDS[agent];
-	return buildHeredoc(
-		prompt,
-		delimiter,
-		promptCommand.command,
-		promptCommand.suffix,
-	);
+	return shouldUseStdinPrompt(agent)
+		? buildStdinHeredoc(
+				prompt,
+				delimiter,
+				promptCommand.command,
+				promptCommand.suffix,
+			)
+		: buildHeredoc(
+				prompt,
+				delimiter,
+				promptCommand.command,
+				promptCommand.suffix,
+			);
 }
 
 export function buildAgentCommand({
