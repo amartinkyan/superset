@@ -145,7 +145,7 @@ export const WorkspaceRunButton = memo(function WorkspaceRunButton({
 							isRunning
 								? "text-emerald-300 border-emerald-500/25 bg-emerald-500/10 hover:bg-emerald-500/20"
 								: !hasRunCommand &&
-									"text-muted-foreground/80 border-border/40 bg-secondary/40",
+										"text-muted-foreground/80 border-border/40 bg-secondary/40",
 						)}
 					>
 						<HiChevronDown className="size-3.5" />
