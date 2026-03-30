@@ -1,5 +1,5 @@
 {
-	"name": "@superset/pane-layout",
+	"name": "@superset/panes",
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",

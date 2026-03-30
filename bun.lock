@@ -161,7 +161,7 @@
         "@superset/host-service": "workspace:*",
         "@superset/local-db": "workspace:*",
         "@superset/macos-process-metrics": "workspace:*",
-        "@superset/pane-layout": "workspace:*",
+        "@superset/panes": "workspace:*",
         "@superset/shared": "workspace:*",
         "@superset/trpc": "workspace:*",
         "@superset/ui": "workspace:*",
@@ -760,8 +760,8 @@
         "typescript": "^5.9.3",
       },
     },
-    "packages/pane-layout": {
-      "name": "@superset/pane-layout",
+    "packages/panes": {
+      "name": "@superset/panes",
       "version": "0.1.0",
       "dependencies": {
         "@superset/ui": "workspace:*",
@@ -2325,7 +2325,7 @@
 
     "@superset/mobile": ["@superset/mobile@workspace:apps/mobile"],
 
-    "@superset/pane-layout": ["@superset/pane-layout@workspace:packages/pane-layout"],
+    "@superset/panes": ["@superset/panes@workspace:packages/panes"],
 
     "@superset/shared": ["@superset/shared@workspace:packages/shared"],
 
