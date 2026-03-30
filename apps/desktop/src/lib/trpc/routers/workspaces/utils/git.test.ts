@@ -66,6 +66,18 @@ describe("getDefaultBranch", () => {
 			// origin/HEAD not set, continue to fallback
 		}
 
+		// Query the remote for its actual default branch (authoritative)
+		try {
+			const result = await git.raw(["ls-remote", "--symref", "origin", "HEAD"]);
+			const symrefMatch = result.match(/ref:\s+refs\/heads\/(.+?)\tHEAD/);
+			if (symrefMatch) {
+				return symrefMatch[1];
+			}
+		} catch {
+			// ls-remote failed (e.g. fake remote URL), fall through
+		}
+
+		// Fallback: check remote tracking branches for common default branch names
 		try {
 			const branches = await git.branch(["-r"]);
 			const remoteBranches = branches.all.map((b: string) =>
@@ -237,6 +249,85 @@ describe("getDefaultBranch", () => {
 			cleanup();
 		}
 	});
+
+	test("returns develop when it is the remote default, even if main branch also exists (#3031)", async () => {
+		// Reproduce: repo where 'develop' is the actual remote default branch
+		// but 'main' also exists. Without the fix, the hardcoded candidate list
+		// returns 'main' because it appears before 'develop'.
+		const testDir = join(
+			realpathSync(tmpdir()),
+			`superset-test-develop-default-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		mkdirSync(testDir, { recursive: true });
+
+		const bareRemote = join(testDir, "remote.git");
+		const localRepo = join(testDir, "local");
+
+		try {
+			// Create a bare remote with 'develop' as the default branch
+			execSync(`git init --bare "${bareRemote}"`, { stdio: "ignore" });
+
+			// Clone and seed a commit on 'develop'
+			execSync(`git clone "${bareRemote}" "${localRepo}"`, { stdio: "ignore" });
+			execSync("git config user.email 'test@test.com'", {
+				cwd: localRepo,
+				stdio: "ignore",
+			});
+			execSync("git config user.name 'Test'", {
+				cwd: localRepo,
+				stdio: "ignore",
+			});
+			// Create and push the 'develop' branch
+			execSync("git checkout -b develop", {
+				cwd: localRepo,
+				stdio: "ignore",
+			});
+			writeFileSync(join(localRepo, "test.txt"), "test");
+			execSync("git add . && git commit -m 'init'", {
+				cwd: localRepo,
+				stdio: "ignore",
+			});
+			execSync("git push -u origin develop", {
+				cwd: localRepo,
+				stdio: "ignore",
+			});
+
+			// Also create a 'main' branch on the remote
+			execSync("git checkout -b main && git push -u origin main", {
+				cwd: localRepo,
+				stdio: "ignore",
+			});
+
+			// Set the remote's HEAD to 'develop' (the actual default branch)
+			execSync("git symbolic-ref HEAD refs/heads/develop", {
+				cwd: bareRemote,
+				stdio: "ignore",
+			});
+
+			// Go back to develop locally
+			execSync("git checkout develop", {
+				cwd: localRepo,
+				stdio: "ignore",
+			});
+
+			// Remove origin/HEAD so we exercise the ls-remote fallback path
+			try {
+				execSync("git remote set-head origin --delete", {
+					cwd: localRepo,
+					stdio: "ignore",
+				});
+			} catch {
+				// ok if it wasn't set
+			}
+
+			const result = await getDefaultBranchForTest(localRepo);
+			expect(result).toBe("develop");
+		} finally {
+			if (existsSync(testDir)) {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		}
+	}, 15_000);
 });
 
 describe("Shell Environment", () => {

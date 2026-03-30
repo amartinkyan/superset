@@ -933,7 +933,16 @@ export async function getDefaultBranch(mainRepoPath: string): Promise<string> {
 			if (match) return match[1];
 		} catch {}
 
-		// Check remote branches for common default branch names
+		// Query the remote for its actual default branch (authoritative)
+		try {
+			const result = await git.raw(["ls-remote", "--symref", "origin", "HEAD"]);
+			const symrefMatch = result.match(/ref:\s+refs\/heads\/(.+?)\tHEAD/);
+			if (symrefMatch) {
+				return symrefMatch[1];
+			}
+		} catch {}
+
+		// Fallback: check remote tracking branches for common default branch names
 		try {
 			const branches = await git.branch(["-r"]);
 			const remoteBranches = branches.all.map((b) => b.replace("origin/", ""));
@@ -942,15 +951,6 @@ export async function getDefaultBranch(mainRepoPath: string): Promise<string> {
 				if (remoteBranches.includes(candidate)) {
 					return candidate;
 				}
-			}
-		} catch {}
-
-		// Try ls-remote as last resort for remote repos
-		try {
-			const result = await git.raw(["ls-remote", "--symref", "origin", "HEAD"]);
-			const symrefMatch = result.match(/ref:\s+refs\/heads\/(.+?)\tHEAD/);
-			if (symrefMatch) {
-				return symrefMatch[1];
 			}
 		} catch {}
 	} else {
