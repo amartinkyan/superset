@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-	type SupersetManagedBinary,
 	SUPERSET_MANAGED_BINARIES,
+	type SupersetManagedBinary,
 } from "./desktop-agent-capabilities";
 import { BASH_DIR, BIN_DIR, ZSH_DIR } from "./paths";
 
