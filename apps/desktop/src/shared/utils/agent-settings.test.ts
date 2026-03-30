@@ -167,9 +167,14 @@ describe("custom agent definition helpers", () => {
 				taskPromptTemplate: "Task {{slug}}",
 			},
 		});
+		const createdDefinition = created[0];
+
+		if (!createdDefinition) {
+			throw new Error("Expected custom agent definition to be created");
+		}
 
 		const updated = applyCustomAgentDefinitionPatch({
-			definition: created[0]!,
+			definition: createdDefinition,
 			patch: {
 				description: "Shared team wrapper",
 				promptCommandSuffix: "--yolo",
