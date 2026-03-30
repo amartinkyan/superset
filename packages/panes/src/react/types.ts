@@ -40,8 +40,9 @@ export interface WorkspaceProps<TData> {
 	renderTabAccessory?: (tab: Tab<TData>) => ReactNode;
 	renderEmptyState?: () => ReactNode;
 	renderAddTabMenu?: () => ReactNode;
-	onBeforeClose?: (
+	onBeforeClosePane?: (
 		pane: Pane<TData>,
 		tab: Tab<TData>,
 	) => boolean | Promise<boolean>;
+	onBeforeCloseTab?: (tab: Tab<TData>) => boolean | Promise<boolean>;
 }

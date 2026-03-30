@@ -530,6 +530,53 @@ describe("collapsing", () => {
 	});
 });
 
+describe("openPane", () => {
+	it("creates a new tab when no tabs exist", () => {
+		const store = makeStore();
+
+		store.getState().openPane({
+			pane: tp("p1", "opened"),
+			tabTitle: "My Tab",
+		});
+
+		expect(store.getState().tabs).toHaveLength(1);
+		expect(store.getState().tabs[0]?.titleOverride).toBe("My Tab");
+		expect(store.getState().getActivePane()?.pane.data.label).toBe("opened");
+	});
+
+	it("replaces an unpinned pane of the same kind", () => {
+		const store = makeStore();
+		store.getState().addTab({
+			id: "t1",
+			panes: [{ ...tp("p1", "old"), pinned: false }],
+		});
+
+		store.getState().openPane({ pane: tp("p2", "new") });
+
+		const tab = store.getState().tabs[0];
+		expect(tab?.panes.p1).toBeUndefined();
+		expect(
+			Object.values(tab?.panes ?? {}).some((p) => p.data.label === "new"),
+		).toBe(true);
+	});
+
+	it("splits the active pane right when no unpinned match", () => {
+		const store = makeStore();
+		store.getState().addTab({
+			id: "t1",
+			panes: [{ ...tp("p1", "pinned"), pinned: true }],
+		});
+
+		store.getState().openPane({ pane: tp("p2", "split") });
+
+		const layout = store.getState().tabs[0]?.layout;
+		expect(layout?.type).toBe("split");
+		if (layout?.type === "split") {
+			expect(layout.children).toHaveLength(2);
+		}
+	});
+});
+
 describe("edge cases", () => {
 	it("invalid IDs are no-ops", () => {
 		const store = makeStore();

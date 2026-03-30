@@ -1,8 +1,7 @@
 import {
-	createPaneWorkspaceState,
-	createPaneWorkspaceStore,
-	type PaneWorkspaceState,
-} from "@superset/pane-layout";
+	createWorkspaceStore,
+	type WorkspaceState,
+} from "@superset/panes";
 import { eq } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -10,13 +9,13 @@ import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/u
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import type { PaneViewerData } from "../../pane-viewer.model";
 
-const EMPTY_PANE_LAYOUT = createPaneWorkspaceState<PaneViewerData>({
-	roots: [],
-});
+const EMPTY_STATE: WorkspaceState<PaneViewerData> = {
+	version: 1,
+	tabs: [],
+	activeTabId: null,
+};
 
-function getPaneLayoutSnapshot(
-	state: PaneWorkspaceState<PaneViewerData>,
-): string {
+function getSnapshot(state: WorkspaceState<PaneViewerData>): string {
 	return JSON.stringify(state);
 }
 
@@ -32,13 +31,11 @@ export function useV2WorkspacePaneLayout({
 	const collections = useCollections();
 	const { ensureWorkspaceInSidebar } = useDashboardSidebarState();
 	const [store] = useState(() =>
-		createPaneWorkspaceStore<PaneViewerData>({
-			initialState: EMPTY_PANE_LAYOUT,
+		createWorkspaceStore<PaneViewerData>({
+			initialState: EMPTY_STATE,
 		}),
 	);
-	const lastSyncedSnapshotRef = useRef(
-		getPaneLayoutSnapshot(EMPTY_PANE_LAYOUT),
-	);
+	const lastSyncedSnapshotRef = useRef(getSnapshot(EMPTY_STATE));
 
 	const { data: localWorkspaceRows = [] } = useLiveQuery(
 		(query) =>
@@ -53,8 +50,8 @@ export function useV2WorkspacePaneLayout({
 	const persistedPaneLayout = useMemo(
 		() =>
 			(localWorkspaceState?.paneLayout as
-				| PaneWorkspaceState<PaneViewerData>
-				| undefined) ?? EMPTY_PANE_LAYOUT,
+				| WorkspaceState<PaneViewerData>
+				| undefined) ?? EMPTY_STATE,
 		[localWorkspaceState],
 	);
 
@@ -63,7 +60,7 @@ export function useV2WorkspacePaneLayout({
 	}, [ensureWorkspaceInSidebar, projectId, workspaceId]);
 
 	useEffect(() => {
-		const nextSnapshot = getPaneLayoutSnapshot(persistedPaneLayout);
+		const nextSnapshot = getSnapshot(persistedPaneLayout);
 		if (nextSnapshot === lastSyncedSnapshotRef.current) {
 			return;
 		}
@@ -74,7 +71,11 @@ export function useV2WorkspacePaneLayout({
 
 	useEffect(() => {
 		const unsubscribe = store.subscribe((nextStore) => {
-			const nextSnapshot = getPaneLayoutSnapshot(nextStore.state);
+			const nextSnapshot = getSnapshot({
+				version: nextStore.version,
+				tabs: nextStore.tabs,
+				activeTabId: nextStore.activeTabId,
+			});
 			if (nextSnapshot === lastSyncedSnapshotRef.current) {
 				return;
 			}
@@ -85,7 +86,11 @@ export function useV2WorkspacePaneLayout({
 			}
 
 			collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
-				draft.paneLayout = nextStore.state;
+				draft.paneLayout = {
+					version: nextStore.version,
+					tabs: nextStore.tabs,
+					activeTabId: nextStore.activeTabId,
+				};
 			});
 			lastSyncedSnapshotRef.current = nextSnapshot;
 		});

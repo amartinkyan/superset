@@ -116,6 +116,8 @@ export interface WorkspaceStore<TData> extends WorkspaceState<TData> {
 		newPane: CreatePaneInput<TData>;
 	}) => void;
 
+	openPane: (args: { pane: CreatePaneInput<TData>; tabTitle?: string }) => void;
+
 	splitPane: (args: {
 		tabId: string;
 		paneId: string;
@@ -373,6 +375,56 @@ export function createWorkspaceStore<TData>(
 							: t,
 					),
 				};
+			});
+		},
+
+		openPane: (args) => {
+			const s = get();
+			const activeTabId = s.activeTabId;
+			const tab = activeTabId ? s.tabs.find((t) => t.id === activeTabId) : null;
+
+			// No tab → create one
+			if (!tab || !activeTabId) {
+				get().addTab({
+					titleOverride: args.tabTitle,
+					panes: [args.pane],
+				});
+				return;
+			}
+
+			// Find unpinned pane of same kind → replace
+			const unpinned = Object.values(tab.panes).find(
+				(p) => p.kind === args.pane.kind && !p.pinned,
+			);
+			if (unpinned) {
+				get().replacePane({
+					tabId: activeTabId,
+					paneId: unpinned.id,
+					newPane: args.pane,
+				});
+				return;
+			}
+
+			// Split the active pane right
+			const activePane = tab.activePaneId;
+			if (
+				activePane &&
+				tab.layout &&
+				findPaneInLayout(tab.layout, activePane)
+			) {
+				get().splitPane({
+					tabId: activeTabId,
+					paneId: activePane,
+					position: "right",
+					newPane: args.pane,
+				});
+				return;
+			}
+
+			// Fallback: add to tab
+			get().addPane({
+				tabId: activeTabId,
+				pane: args.pane,
 			});
 		},
 

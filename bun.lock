@@ -532,6 +532,7 @@
         "@sentry/nextjs": "^10.36.0",
         "@superset/auth": "workspace:*",
         "@superset/db": "workspace:*",
+        "@superset/panes": "workspace:*",
         "@superset/shared": "workspace:*",
         "@superset/trpc": "workspace:*",
         "@superset/ui": "workspace:*",

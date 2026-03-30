@@ -11,6 +11,7 @@ export type {
 	RendererContext,
 	WorkspaceProps,
 } from "./react";
+export { Workspace } from "./react";
 export type {
 	LayoutNode,
 	Pane,
