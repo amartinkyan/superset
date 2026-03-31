@@ -484,6 +484,13 @@ export class Session {
 		while (this.subprocessStdinQueue.length > 0) {
 			const buf = this.subprocessStdinQueue[0];
 			const canWrite = this.subprocess.stdin.write(buf);
+
+			// Always dequeue: Node.js Writable.write() accepts the data even when
+			// it returns false.  Leaving the item in the queue would re-send it on
+			// drain, corrupting the IPC framing protocol with the PTY subprocess.
+			this.subprocessStdinQueue.shift();
+			this.subprocessStdinQueuedBytes -= buf.length;
+
 			if (!canWrite) {
 				if (!this.subprocessStdinDrainArmed) {
 					this.subprocessStdinDrainArmed = true;
@@ -494,9 +501,6 @@ export class Session {
 				}
 				return;
 			}
-
-			this.subprocessStdinQueue.shift();
-			this.subprocessStdinQueuedBytes -= buf.length;
 		}
 	}
 
