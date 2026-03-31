@@ -742,6 +742,72 @@ describe("createPaneWorkspaceStore", () => {
 		});
 	});
 
+	it("preserves all roots and panes in state when switching active root (#3040)", () => {
+		// Regression: switching active root/pane should not remove inactive
+		// entries from state. The renderer must keep all panes mounted (hidden)
+		// so that stateful content like iframes and terminals is preserved.
+		const store = createPaneWorkspaceStore<TestPaneData>({
+			initialState: createPaneWorkspaceState({
+				roots: [
+					createPaneRoot({
+						id: "root-browser",
+						groupId: "group-browser",
+						panes: [
+							{
+								id: "pane-browser",
+								kind: "browser",
+								data: { label: "Browser" },
+							},
+							{
+								id: "pane-terminal",
+								kind: "terminal",
+								data: { label: "Terminal" },
+							},
+						],
+						activePaneId: "pane-browser",
+					}),
+					createPaneRoot({
+						id: "root-chat",
+						groupId: "group-chat",
+						panes: [{ id: "pane-chat", kind: "chat", data: { label: "Chat" } }],
+					}),
+				],
+				activeRootId: "root-browser",
+			}),
+		});
+
+		// Switch active root to chat
+		store.getState().setActiveRoot("root-chat");
+		expect(store.getState().state.activeRootId).toBe("root-chat");
+		// All roots still present
+		expect(store.getState().state.roots).toHaveLength(2);
+		expect(store.getState().state.roots.map((r) => r.id)).toEqual([
+			"root-browser",
+			"root-chat",
+		]);
+
+		// Switch back and change active pane within the browser root
+		store.getState().setActiveRoot("root-browser");
+		store.getState().setActivePane({
+			rootId: "root-browser",
+			groupId: "group-browser",
+			paneId: "pane-terminal",
+		});
+
+		// The previously active browser pane must still be in the group
+		const browserRoot = store
+			.getState()
+			.state.roots.find((r) => r.id === "root-browser");
+		expect(browserRoot).toBeDefined();
+		if (browserRoot?.root.type !== "group") throw new Error("Expected group");
+		expect(browserRoot.root.panes).toHaveLength(2);
+		expect(browserRoot.root.panes.map((p) => p.id)).toEqual([
+			"pane-browser",
+			"pane-terminal",
+		]);
+		expect(browserRoot.root.activePaneId).toBe("pane-terminal");
+	});
+
 	it("supports direct state replacement", () => {
 		const store = createPaneWorkspaceStore<TestPaneData>({
 			initialState: createPaneWorkspaceState({

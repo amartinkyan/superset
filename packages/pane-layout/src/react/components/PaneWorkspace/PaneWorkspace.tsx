@@ -20,8 +20,7 @@ export function PaneWorkspace<TPaneData>({
 		store,
 		(state) => state.state.activeRootId,
 	);
-	const activeRoot =
-		roots.find((root) => root.id === activeRootId) ?? roots[0] ?? null;
+	const effectiveActiveRootId = activeRootId ?? roots[0]?.id ?? null;
 
 	return (
 		<div
@@ -39,14 +38,39 @@ export function PaneWorkspace<TPaneData>({
 				roots={roots}
 				store={store}
 			/>
-			<PaneRootView
-				registry={registry}
-				onAddPane={onAddPane}
-				renderEmptyState={renderEmptyState}
-				renderUnknownPane={renderUnknownPane}
-				root={activeRoot}
-				store={store}
-			/>
+			{roots.length === 0 ? (
+				<PaneRootView
+					registry={registry}
+					onAddPane={onAddPane}
+					renderEmptyState={renderEmptyState}
+					renderUnknownPane={renderUnknownPane}
+					root={null}
+					store={store}
+				/>
+			) : (
+				roots.map((root) => {
+					const isActive = root.id === effectiveActiveRootId;
+					return (
+						<div
+							className={
+								isActive
+									? "flex min-h-0 min-w-0 flex-1 overflow-hidden"
+									: "invisible absolute size-0 overflow-hidden"
+							}
+							key={root.id}
+						>
+							<PaneRootView
+								registry={registry}
+								onAddPane={onAddPane}
+								renderEmptyState={renderEmptyState}
+								renderUnknownPane={renderUnknownPane}
+								root={root}
+								store={store}
+							/>
+						</div>
+					);
+				})
+			)}
 		</div>
 	);
 }

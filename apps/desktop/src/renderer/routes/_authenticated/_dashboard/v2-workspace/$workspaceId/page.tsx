@@ -53,7 +53,6 @@ function V2WorkspacePageContent({
 }) {
 	return (
 		<PaneViewer
-			key={workspaceId}
 			projectId={projectId}
 			workspaceId={workspaceId}
 			workspaceName={workspaceName}

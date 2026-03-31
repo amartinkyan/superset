@@ -255,20 +255,34 @@ export function PaneGroup<TPaneData>({
 					</div>
 				) : null}
 			</div>
-			<div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
-				{activePane ? (
-					<PaneContent
-						group={group}
-						pane={activePane}
-						registry={registry}
-						renderUnknownPane={renderUnknownPane}
-						root={root}
-						store={store}
-					/>
-				) : (
+			<div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
+				{group.panes.length === 0 ? (
 					<div className="flex min-h-0 min-w-0 flex-1 items-center justify-center text-sm text-muted-foreground">
 						No panes in this group
 					</div>
+				) : (
+					group.panes.map((pane) => {
+						const isActive = pane.id === activePane?.id;
+						return (
+							<div
+								className={
+									isActive
+										? "flex absolute inset-0 overflow-hidden"
+										: "invisible absolute inset-0 size-0 overflow-hidden"
+								}
+								key={pane.id}
+							>
+								<PaneContent
+									group={group}
+									pane={pane}
+									registry={registry}
+									renderUnknownPane={renderUnknownPane}
+									root={root}
+									store={store}
+								/>
+							</div>
+						);
+					})
 				)}
 			</div>
 		</div>
