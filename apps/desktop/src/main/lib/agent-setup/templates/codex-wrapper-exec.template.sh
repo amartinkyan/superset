@@ -1,6 +1,8 @@
 # Codex exposes completion notifications via notify.
 # For per-prompt Start notifications and permission requests, watch the TUI
 # session log for task_started/exec_command_begin and *_approval_request events.
+# Codex CLI ≤0.116 uses "kind":"codex_event" + "msg":{"type":"…"}.
+# Codex CLI ≥0.117 uses "kind":"app_event"   + "variant":"…".
 if [ -n "$SUPERSET_TAB_ID" ] && [ -f "{{NOTIFY_PATH}}" ]; then
   export CODEX_TUI_RECORD_SESSION=1
   if [ -z "$CODEX_TUI_SESSION_LOG_PATH" ]; then
@@ -34,7 +36,8 @@ if [ -n "$SUPERSET_TAB_ID" ] && [ -f "{{NOTIFY_PATH}}" ]; then
 
     tail -n 0 -F "$_superset_log" 2>/dev/null | while IFS= read -r _superset_line; do
       case "$_superset_line" in
-        *'"dir":"to_tui"'*'"kind":"codex_event"'*'"msg":{"type":"task_started"'*)
+        *'"dir":"to_tui"'*'"kind":"codex_event"'*'"msg":{"type":"task_started"'*|\
+        *'"dir":"to_tui"'*'"kind":"app_event"'*'"variant":"task_started"'*)
           _superset_turn_id=$(printf '%s\n' "$_superset_line" | awk -F'"turn_id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')
           [ -n "$_superset_turn_id" ] || _superset_turn_id="task_started"
           if [ "$_superset_turn_id" != "$_superset_last_turn_id" ]; then
@@ -42,7 +45,8 @@ if [ -n "$SUPERSET_TAB_ID" ] && [ -f "{{NOTIFY_PATH}}" ]; then
             _superset_emit_event "Start"
           fi
           ;;
-        *'"dir":"to_tui"'*'"kind":"codex_event"'*'"msg":{"type":"'*'_approval_request"'*)
+        *'"dir":"to_tui"'*'"kind":"codex_event"'*'"msg":{"type":"'*'_approval_request"'*|\
+        *'"dir":"to_tui"'*'"kind":"app_event"'*'"variant":"'*'_approval_request"'*)
           _superset_approval_id=$(printf '%s\n' "$_superset_line" | awk -F'"id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')
           [ -n "$_superset_approval_id" ] || _superset_approval_id=$(printf '%s\n' "$_superset_line" | awk -F'"approval_id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')
           [ -n "$_superset_approval_id" ] || _superset_approval_id=$(printf '%s\n' "$_superset_line" | awk -F'"call_id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')
@@ -55,7 +59,8 @@ if [ -n "$SUPERSET_TAB_ID" ] && [ -f "{{NOTIFY_PATH}}" ]; then
             _superset_emit_event "PermissionRequest"
           fi
           ;;
-        *'"dir":"to_tui"'*'"kind":"codex_event"'*'"msg":{"type":"exec_command_begin"'*)
+        *'"dir":"to_tui"'*'"kind":"codex_event"'*'"msg":{"type":"exec_command_begin"'*|\
+        *'"dir":"to_tui"'*'"kind":"app_event"'*'"variant":"exec_command_begin"'*)
           _superset_exec_call_id=$(printf '%s\n' "$_superset_line" | awk -F'"call_id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')
           if [ -n "$_superset_exec_call_id" ]; then
             if [ "$_superset_exec_call_id" != "$_superset_last_exec_call_id" ]; then

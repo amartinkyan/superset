@@ -196,6 +196,12 @@ describe("agent-wrappers copilot", () => {
 		expect(wrapper).toContain('awk -F\'"approval_id":"\'');
 		expect(wrapper).toContain('_superset_emit_event "Start"');
 		expect(wrapper).toContain('_superset_emit_event "PermissionRequest"');
+
+		// Codex 0.117.0+ app_event format patterns
+		expect(wrapper).toContain('"kind":"app_event"');
+		expect(wrapper).toContain('"variant":"task_started"');
+		expect(wrapper).toContain('"variant":"exec_command_begin"');
+		expect(wrapper).toContain('_approval_request"');
 		expect(wrapper).toContain(
 			`"$REAL_BIN" --enable codex_hooks -c 'notify=["bash","${path.join(TEST_HOOKS_DIR, "notify.sh")}"]' "$@"`,
 		);
