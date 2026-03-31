@@ -6,11 +6,7 @@ import {
 	selectAll,
 } from "@codemirror/commands";
 import { bracketMatching, indentOnInput } from "@codemirror/language";
-import {
-	highlightSelectionMatches,
-	openSearchPanel,
-	searchKeymap,
-} from "@codemirror/search";
+import { openSearchPanel, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
 import {
 	drawSelection,
@@ -235,7 +231,8 @@ export function CodeEditor({
 				indentOnInput(),
 				bracketMatching(),
 				highlightActiveLine(),
-				highlightSelectionMatches(),
+				// @codemirror/search resolves a separate state/view pair under Bun, which
+				// breaks CodeMirror's extension instanceof checks for highlightSelectionMatches().
 				EditorView.lineWrapping,
 				editableCompartment.of([
 					EditorState.readOnly.of(readOnly),
