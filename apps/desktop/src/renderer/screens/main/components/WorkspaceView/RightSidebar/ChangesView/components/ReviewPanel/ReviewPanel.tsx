@@ -132,7 +132,7 @@ export function ReviewPanel({
 					const message =
 						error instanceof Error ? error.message : "Unknown error";
 					toast.error(
-						`Failed to ${comment.isResolved ? "unresolve" : "resolve"} thread: ${message}`,
+						`Failed to ${comment.isResolved ? "undo" : "mark as done"}: ${message}`,
 					);
 				},
 				onSettled: () => {
@@ -218,7 +218,7 @@ export function ReviewPanel({
 			onCommentsChange?.();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Unknown error";
-			toast.error(`Failed to resolve all threads: ${message}`);
+			toast.error(`Failed to mark all as done: ${message}`);
 		} finally {
 			setResolvingThreadIds(new Set());
 		}
@@ -292,7 +292,7 @@ export function ReviewPanel({
 								}}
 								disabled={resolvingThreadIds.has(comment.threadId)}
 								aria-label={
-									comment.isResolved ? "Unresolve thread" : "Resolve thread"
+									comment.isResolved ? "Undo done" : "Mark as done"
 								}
 							>
 								{resolvingThreadIds.has(comment.threadId) ? (
@@ -511,7 +511,7 @@ export function ReviewPanel({
 									) : (
 										<LuCheckCheck className="size-3" />
 									)}
-									<span>Resolve all</span>
+									<span>Mark all done</span>
 								</button>
 							)}
 							<button
