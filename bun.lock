@@ -110,7 +110,7 @@
     },
     "apps/desktop": {
       "name": "@superset/desktop",
-      "version": "1.4.5",
+      "version": "1.4.6",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.43",
         "@ai-sdk/openai": "3.0.36",
@@ -929,6 +929,9 @@
       "name": "@superset/typescript",
       "version": "0.1.0",
     },
+  },
+  "overrides": {
+    "axios": "1.14.0",
   },
   "packages": {
     "7zip-bin": ["7zip-bin@5.2.0", "", {}, "sha512-ukTPVhqG4jNzMro2qA9HSCSSVJN3aN7tlb+hfqYCt3ER0yWroeA2VR38MNrOHLQ/cVj+DaIMad0kFCtWWowh/A=="],
