@@ -246,10 +246,15 @@ describe("Terminal Host Session shell args", () => {
 
 		firstController.abort();
 		await expect(firstAttach).rejects.toThrow(TERMINAL_ATTACH_CANCELED_MESSAGE);
-		expect(session.clientCount).toBe(1);
+		// Client is only registered after snapshot completes, so during the
+		// attach window the count is 0. (Fix for #3080: deferred registration
+		// prevents data duplication.)
+		expect(session.clientCount).toBe(0);
 
 		resolveBoundary(true);
 		await expect(secondAttach).resolves.toBeDefined();
+		// After attach completes, client is registered
+		expect(session.clientCount).toBe(1);
 
 		(
 			session as unknown as {
@@ -487,5 +492,102 @@ describe("Terminal Host Session emulator backlog backpressure", () => {
 		internals.broadcastEvent("data", { type: "data", data: "hello" });
 
 		expect(fakeChildProcess.stdout.resumeCalls).toBe(1);
+	});
+});
+
+/**
+ * Reproduction test for issue #3080:
+ * "TUI rendering broken: content duplication, text cutoff, and wasted horizontal space"
+ *
+ * Root cause of content duplication: session.attach() adds the client socket
+ * to `attachedClients` BEFORE the snapshot is taken. During the async snapshot
+ * window (flush + serialize), any new PTY data is both:
+ *   1. Broadcast to the newly attached client via broadcastEvent
+ *   2. Written to the emulator and included in the snapshot
+ *
+ * The frontend then writes the snapshot AND flushes the queued stream events,
+ * causing the overlapping data to appear twice.
+ *
+ * Fix: defer adding the socket to `attachedClients` until after the snapshot
+ * is taken, so data arriving during the snapshot window is only captured in
+ * the snapshot, not also broadcast as a stream event.
+ */
+describe("attach snapshot vs stream data duplication — issue #3080", () => {
+	it("does not broadcast data to a client while its attach snapshot is being taken", async () => {
+		const session = new Session({
+			sessionId: "session-dup-test",
+			workspaceId: "workspace-1",
+			paneId: "pane-dup",
+			tabId: "tab-1",
+			cols: 80,
+			rows: 24,
+			cwd: "/tmp",
+			shell: "/bin/bash",
+			spawnProcess: (_command: string, _args: readonly string[], _options) => {
+				return fakeChildProcess as unknown as ChildProcess;
+			},
+		});
+
+		spawnAndReadySession(session);
+
+		// Write some initial content so the session has data
+		sendFrame(
+			fakeChildProcess,
+			PtySubprocessIpcType.Data,
+			Buffer.from("initial output\r\n"),
+		);
+
+		// Allow the emulator write queue to process
+		await new Promise((r) => setTimeout(r, 50));
+
+		// Set up a socket that records all messages sent to it
+		const writes: string[] = [];
+		const socket = {
+			write(message: string) {
+				writes.push(message);
+				return true;
+			},
+		} as unknown as import("node:net").Socket;
+
+		// Start the attach — this should take a snapshot
+		const attachPromise = session.attach(socket);
+
+		// Simulate PTY data arriving DURING the attach snapshot window.
+		// This data should be in the snapshot OR in the stream, but NOT both.
+		sendFrame(
+			fakeChildProcess,
+			PtySubprocessIpcType.Data,
+			Buffer.from("data-during-attach\r\n"),
+		);
+
+		// Let the attach complete
+		const snapshot = await attachPromise;
+
+		// Count how many "data-during-attach" messages were sent to the socket
+		// as stream events BEFORE the snapshot was returned.
+		const streamDataEvents = writes
+			.map((w) => {
+				try {
+					return JSON.parse(w);
+				} catch {
+					return null;
+				}
+			})
+			.filter(
+				(e) =>
+					e?.payload?.type === "data" &&
+					e.payload.data.includes("data-during-attach"),
+			);
+
+		const snapshotContainsData =
+			snapshot.snapshotAnsi.includes("data-during-attach");
+
+		// The key invariant: data must not appear in BOTH the snapshot AND
+		// stream events. If it's in the snapshot, it must not be broadcast.
+		// If it's broadcast, it must not be in the snapshot.
+		// Content duplication happens when both are true.
+		const isDuplicated = snapshotContainsData && streamDataEvents.length > 0;
+
+		expect(isDuplicated).toBe(false);
 	});
 });

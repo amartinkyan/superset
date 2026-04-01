@@ -812,17 +812,17 @@ export class Session {
 		}
 		throwIfAborted(signal);
 
-		const attachedClient: AttachedClient = {
-			socket,
-			attachedAt: Date.now(),
-			attachToken: Symbol("attach"),
-		};
-		this.attachedClients.set(socket, attachedClient);
 		this.lastAttachedAt = new Date();
 
 		// Use snapshot boundary flush for consistent state with continuous output.
 		// This ensures we capture all data received BEFORE attach was called,
 		// even if new data continues to arrive during the flush.
+		//
+		// IMPORTANT: The socket is added to attachedClients AFTER the snapshot
+		// is taken. If we added it before, data arriving during the async
+		// snapshot window would be both broadcast to the client as a stream
+		// event AND included in the snapshot, causing content duplication
+		// on the frontend. (See issue #3080.)
 		try {
 			const reachedBoundary = await raceWithAbort(
 				this.flushToSnapshotBoundary(ATTACH_FLUSH_TIMEOUT_MS),
@@ -837,10 +837,21 @@ export class Session {
 
 			await raceWithAbort(this.emulator.flush(), signal);
 			throwIfAborted(signal);
-			return this.emulator.getSnapshot();
+			const snapshot = this.emulator.getSnapshot();
+
+			// Register the client only after the snapshot is captured so that
+			// subsequent broadcastEvent calls don't duplicate snapshot content.
+			const attachedClient: AttachedClient = {
+				socket,
+				attachedAt: Date.now(),
+				attachToken: Symbol("attach"),
+			};
+			this.attachedClients.set(socket, attachedClient);
+
+			return snapshot;
 		} catch (error) {
 			if (isTerminalAttachCanceledError(error)) {
-				this.detachAttachedClient(socket, attachedClient);
+				// Client was never added (snapshot failed), nothing to detach.
 				throw error;
 			}
 			throw error;
