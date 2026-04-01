@@ -71,7 +71,8 @@ export function playNotificationSound(): void {
 	let volume = 100;
 	try {
 		const settingsRow = localDb.select().from(settings).get();
-		volume = settingsRow?.notificationVolume ?? 100;
+		const raw = settingsRow?.notificationVolume;
+		volume = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 100;
 	} catch (err) {
 		console.warn(
 			"[notification-sound] Failed to read notification volume setting",
