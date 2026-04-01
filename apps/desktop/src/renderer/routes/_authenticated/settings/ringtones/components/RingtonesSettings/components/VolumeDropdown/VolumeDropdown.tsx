@@ -6,19 +6,18 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@superset/ui/select";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { HiInformationCircle, HiSpeakerWave } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 
 const isWindows = process.platform === "win32";
 
 const VOLUME_LEVELS = [
-	{ value: 0, label: "Muted", description: "No sound" },
-	{ value: 20, label: "Quiet", description: "Very soft" },
-	{ value: 40, label: "Low", description: "Soft" },
-	{ value: 60, label: "Medium", description: "Moderate" },
-	{ value: 80, label: "High", description: "Loud" },
-	{ value: 100, label: "Maximum", description: "Full volume" },
+	{ value: 20, label: "Quiet" },
+	{ value: 40, label: "Low" },
+	{ value: 60, label: "Medium" },
+	{ value: 80, label: "High" },
+	{ value: 100, label: "Maximum" },
 ] as const;
 
 function getVolumeLabel(volume: number): string {
@@ -27,12 +26,10 @@ function getVolumeLabel(volume: number): string {
 }
 
 export function VolumeDropdown() {
-	const [localVolume, setLocalVolume] = useState<number | null>(null);
-
 	const utils = electronTrpc.useUtils();
 	const { data: volumeData, isLoading: volumeLoading } =
 		electronTrpc.settings.getNotificationVolume.useQuery();
-	const volume = localVolume ?? volumeData ?? 100;
+	const volume = volumeData ?? 100;
 
 	const setVolume = electronTrpc.settings.setNotificationVolume.useMutation({
 		onMutate: async ({ volume }) => {
@@ -48,24 +45,15 @@ export function VolumeDropdown() {
 					context.previous,
 				);
 			}
-			setLocalVolume(null);
 		},
 		onSettled: async () => {
 			await utils.settings.getNotificationVolume.invalidate();
-			setLocalVolume(null);
 		},
 	});
-
-	useEffect(() => {
-		if (volumeData !== undefined && localVolume === null) {
-			setLocalVolume(volumeData);
-		}
-	}, [volumeData, localVolume]);
 
 	const handleVolumeChange = useCallback(
 		(value: string) => {
 			const newVolume = Number.parseInt(value, 10);
-			setLocalVolume(newVolume);
 			setVolume.mutate({ volume: newVolume });
 		},
 		[setVolume],
@@ -111,8 +99,8 @@ export function VolumeDropdown() {
 				<div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded">
 					<HiInformationCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
 					<p>
-						Volume control is not supported on Windows due to system
-						limitations. Notifications will play at system volume.
+						Fine volume control is not available on Windows. All levels play at
+						system volume. Use the toggle above to mute notifications.
 					</p>
 				</div>
 			)}
