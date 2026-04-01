@@ -7,10 +7,8 @@ import {
 	SelectValue,
 } from "@superset/ui/select";
 import { useCallback } from "react";
-import { HiInformationCircle, HiSpeakerWave } from "react-icons/hi2";
+import { HiSpeakerWave } from "react-icons/hi2";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-
-const isWindows = process.platform === "win32";
 
 const VOLUME_LEVELS = [
 	{ value: 20, label: "Quiet" },
@@ -95,15 +93,6 @@ export function VolumeDropdown() {
 					</SelectContent>
 				</Select>
 			</div>
-			{isWindows && (
-				<div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded">
-					<HiInformationCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-					<p>
-						Fine volume control is not available on Windows. All levels play at
-						system volume. Use the toggle above to mute notifications.
-					</p>
-				</div>
-			)}
 		</div>
 	);
 }

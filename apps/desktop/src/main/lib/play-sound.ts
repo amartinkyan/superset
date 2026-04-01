@@ -14,7 +14,6 @@ interface PlaySoundCallbacks {
  *
  * On macOS, volume is controlled via afplay -v (0.0-1.0).
  * On Linux, volume is controlled via paplay --volume (0-65536), with aplay fallback.
- * On Windows, volume control is not available; volume=0 skips playback entirely.
  */
 export function playSoundFile(
 	soundPath: string,
@@ -31,15 +30,6 @@ export function playSoundFile(
 	if (process.platform === "darwin") {
 		return execFile("afplay", ["-v", volumeDecimal.toString(), soundPath], () =>
 			callbacks?.onComplete?.(),
-		);
-	}
-
-	if (process.platform === "win32") {
-		if (volume === 0) return null;
-		return execFile(
-			"powershell",
-			["-c", `(New-Object Media.SoundPlayer '${soundPath}').PlaySync()`],
-			() => callbacks?.onComplete?.(),
 		);
 	}
 
