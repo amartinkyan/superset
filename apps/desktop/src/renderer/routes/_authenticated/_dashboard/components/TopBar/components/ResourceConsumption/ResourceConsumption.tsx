@@ -198,6 +198,17 @@ export function ResourceConsumption() {
 				)}
 			</Tooltip>
 
+			{/* Transparent backdrop so clicks outside the popover (including on
+			   Electron drag regions that swallow pointer events) dismiss the panel */}
+			{open && (
+				// biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss target, not an interactive control
+				// biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss target
+				<div
+					className="no-drag fixed inset-0 z-40"
+					onClick={() => setOpen(false)}
+					data-testid="resource-consumption-backdrop"
+				/>
+			)}
 			<PopoverContent align="start" className="w-[26rem] p-0">
 				<div className="p-3 border-b border-border">
 					<div className="flex items-center justify-between">
