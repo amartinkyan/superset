@@ -7,7 +7,6 @@ export type MarkdownViewMode = "rendered" | "raw";
 
 interface MarkdownRendererProps {
 	content: string;
-	filePath: string;
 	hasExternalChange: boolean;
 	onDirtyChange: (dirty: boolean) => void;
 	onReload: () => Promise<void>;
@@ -16,7 +15,6 @@ interface MarkdownRendererProps {
 
 export function MarkdownRenderer({
 	content,
-	filePath,
 	hasExternalChange,
 	onDirtyChange,
 	onReload,
