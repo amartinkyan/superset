@@ -76,7 +76,7 @@ export function RightSidebar({
 					const el = scrollContainerRef.current?.querySelector(
 						`[data-filepath="${CSS.escape(selectedFilePath)}"]`,
 					);
-					el?.scrollIntoView({ block: "nearest" });
+					el?.scrollIntoView({ block: "center" });
 				});
 			});
 		}
