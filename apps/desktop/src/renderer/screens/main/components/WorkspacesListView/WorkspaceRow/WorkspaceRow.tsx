@@ -60,8 +60,7 @@ export function WorkspaceRow({
 			hasHovered && workspace.type === "worktree" && !!workspace.workspaceId,
 	});
 
-	// Lazy-load GitHub status on hover to avoid N+1 queries
-	const { data: githubStatus } =
+	const { data: githubStatus, isStale: isGithubStatusStale, refetch: refetchGithubStatus } =
 		electronTrpc.workspaces.getGitHubStatus.useQuery(
 			{ workspaceId: workspace.workspaceId ?? "" },
 			githubStatusQueryPolicy,
@@ -87,7 +86,13 @@ export function WorkspaceRow({
 			type="button"
 			onClick={handleClick}
 			disabled={isOpening}
-			onMouseEnter={() => !hasHovered && setHasHovered(true)}
+			onMouseEnter={() => {
+				if (!hasHovered) {
+					setHasHovered(true);
+				} else if (isGithubStatusStale) {
+					void refetchGithubStatus();
+				}
+			}}
 			className={cn(
 				"flex items-center gap-3 w-full px-4 py-2 group text-left",
 				"hover:bg-background/50 transition-colors",

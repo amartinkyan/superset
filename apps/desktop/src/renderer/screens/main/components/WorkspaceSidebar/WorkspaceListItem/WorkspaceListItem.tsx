@@ -155,7 +155,7 @@ export function WorkspaceListItem({
 		},
 	);
 
-	const { data: githubStatus } =
+	const { data: githubStatus, isStale: isGithubStatusStale, refetch: refetchGithubStatus } =
 		electronTrpc.workspaces.getGitHubStatus.useQuery(
 			{ workspaceId: id },
 			githubStatusQueryPolicy,
@@ -173,7 +173,6 @@ export function WorkspaceListItem({
 			{
 				enabled: isBranchWorkspace,
 				staleTime: GITHUB_STATUS_STALE_TIME,
-				refetchInterval: hasHovered ? GITHUB_STATUS_STALE_TIME : false,
 			},
 		);
 
@@ -231,7 +230,11 @@ export function WorkspaceListItem({
 	};
 
 	const handleMouseEnter = () => {
-		if (!hasHovered) setHasHovered(true);
+		if (!hasHovered) {
+			setHasHovered(true);
+		} else if (isGithubStatusStale) {
+			void refetchGithubStatus();
+		}
 		if (isBranchWorkspace) void refetchAheadBehind();
 	};
 

@@ -5,14 +5,8 @@ import {
 } from "./githubQueryPolicy";
 
 describe("getGitHubStatusQueryPolicy", () => {
-	test("polls every 10s uniformly across all surfaces", () => {
-		for (const surface of [
-			"changes-sidebar",
-			"workspace-page",
-			"workspace-list-item",
-			"workspace-hover-card",
-			"workspace-row",
-		] as const) {
+	test("active surfaces poll every 10s", () => {
+		for (const surface of ["changes-sidebar", "workspace-page"] as const) {
 			expect(
 				getGitHubStatusQueryPolicy(surface, {
 					hasWorkspaceId: true,
@@ -22,6 +16,26 @@ describe("getGitHubStatusQueryPolicy", () => {
 				enabled: true,
 				refetchInterval: 10_000,
 				refetchOnWindowFocus: true,
+				staleTime: 10_000,
+			});
+		}
+	});
+
+	test("hover surfaces rely on staleTime debounce, no polling", () => {
+		for (const surface of [
+			"workspace-list-item",
+			"workspace-row",
+			"workspace-hover-card",
+		] as const) {
+			expect(
+				getGitHubStatusQueryPolicy(surface, {
+					hasWorkspaceId: true,
+					isActive: true,
+				}),
+			).toEqual({
+				enabled: true,
+				refetchInterval: false,
+				refetchOnWindowFocus: false,
 				staleTime: 10_000,
 			});
 		}

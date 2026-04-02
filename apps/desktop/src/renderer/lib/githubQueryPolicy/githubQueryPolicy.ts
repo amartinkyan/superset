@@ -28,19 +28,28 @@ interface GitHubPRCommentsQueryPolicyOptions {
 	isActive?: boolean;
 }
 
+const HOVER_SURFACES: ReadonlySet<GitHubStatusQuerySurface> = new Set([
+	"workspace-list-item",
+	"workspace-row",
+	"workspace-hover-card",
+]);
+
 /**
- * Centralizes GitHub query behavior — all surfaces poll at 10s when active.
+ * Active surfaces (changes-sidebar, workspace-page) poll every 10s.
+ * Hover surfaces don't poll — callers trigger refetch on hover, debounced by staleTime.
  */
 export function getGitHubStatusQueryPolicy(
 	surface: GitHubStatusQuerySurface,
 	{ hasWorkspaceId, isActive = true }: GitHubStatusQueryPolicyOptions,
 ): GitHubQueryPolicy {
 	const isEnabled = hasWorkspaceId && isActive;
+	const isHover = HOVER_SURFACES.has(surface);
 
 	return {
 		enabled: isEnabled,
-		refetchInterval: isEnabled ? GITHUB_STATUS_REFETCH_INTERVAL_MS : false,
-		refetchOnWindowFocus: isEnabled,
+		refetchInterval:
+			isEnabled && !isHover ? GITHUB_STATUS_REFETCH_INTERVAL_MS : false,
+		refetchOnWindowFocus: isEnabled && !isHover,
 		staleTime: GITHUB_STATUS_STALE_TIME_MS,
 	};
 }
