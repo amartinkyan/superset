@@ -150,3 +150,86 @@ describe("CLOSE_WORKSPACE hotkey", () => {
 		}
 	});
 });
+
+describe("Option+number on macOS (issue #3142)", () => {
+	describe("hotkeyFromKeyboardEvent", () => {
+		it("records alt+1 when Option+1 is pressed on Mac (event.key is ¡)", () => {
+			// On macOS, Option+1 produces the special character ¡ as event.key
+			const result = hotkeyFromKeyboardEvent(
+				{
+					key: "¡",
+					code: "Digit1",
+					metaKey: false,
+					ctrlKey: false,
+					altKey: true,
+					shiftKey: false,
+				},
+				"darwin",
+			);
+			expect(result).toBe("alt+1");
+		});
+
+		it("records alt+2 when Option+2 is pressed on Mac (event.key is ™)", () => {
+			const result = hotkeyFromKeyboardEvent(
+				{
+					key: "™",
+					code: "Digit2",
+					metaKey: false,
+					ctrlKey: false,
+					altKey: true,
+					shiftKey: false,
+				},
+				"darwin",
+			);
+			expect(result).toBe("alt+2");
+		});
+
+		it("accepts alt as a valid modifier for shortcuts", () => {
+			const result = hotkeyFromKeyboardEvent(
+				{
+					key: "¡",
+					code: "Digit1",
+					metaKey: false,
+					ctrlKey: false,
+					altKey: true,
+					shiftKey: false,
+				},
+				"darwin",
+			);
+			// alt is a valid modifier — this should NOT be null
+			expect(result).not.toBeNull();
+		});
+	});
+
+	describe("matchesHotkeyEvent", () => {
+		it("matches alt+1 when Option+1 produces special character ¡", () => {
+			const matches = matchesHotkeyEvent(
+				{
+					key: "¡",
+					code: "Digit1",
+					metaKey: false,
+					ctrlKey: false,
+					altKey: true,
+					shiftKey: false,
+				},
+				"alt+1",
+			);
+			expect(matches).toBe(true);
+		});
+
+		it("matches alt+9 when Option+9 produces special character", () => {
+			const matches = matchesHotkeyEvent(
+				{
+					key: "ª",
+					code: "Digit9",
+					metaKey: false,
+					ctrlKey: false,
+					altKey: true,
+					shiftKey: false,
+				},
+				"alt+9",
+			);
+			expect(matches).toBe(true);
+		});
+	});
+});

@@ -291,13 +291,26 @@ export function hotkeyFromKeyboardEvent(
 		return null;
 	}
 
-	// App hotkeys must include ctrl or meta (or be function keys F1-F12)
+	// App hotkeys must include ctrl, meta, or alt (or be function keys F1-F12)
 	// to avoid conflicts with terminal input and ensure they work when the terminal is focused
-	if (!isFunctionKey(normalizedKey) && !event.ctrlKey && !event.metaKey) {
+	if (
+		!isFunctionKey(normalizedKey) &&
+		!event.ctrlKey &&
+		!event.metaKey &&
+		!event.altKey
+	) {
 		return null;
 	}
 
-	const primary = normalizedKey;
+	// On Mac, Option+number produces special characters (e.g., Option+1 = ¡)
+	// Use event.code to recover the original digit key
+	let primary = normalizedKey;
+	if (event.altKey && event.code) {
+		const codeMatch = event.code.match(/^Digit([0-9])$/i);
+		if (codeMatch) {
+			primary = codeMatch[1];
+		}
+	}
 
 	const modifiers = new Set<string>();
 	if (event.metaKey) modifiers.add("meta");
