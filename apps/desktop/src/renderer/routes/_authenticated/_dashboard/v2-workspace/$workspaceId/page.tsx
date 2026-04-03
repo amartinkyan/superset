@@ -320,7 +320,9 @@ function WorkspaceContent({
 						<ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
 							<RightSidebar
 								workspaceId={workspaceId}
+								workspaceName={workspaceName}
 								onSelectFile={openFilePane}
+								onSearch={handleQuickOpen}
 								selectedFilePath={selectedFilePath}
 							/>
 						</ResizablePanel>
