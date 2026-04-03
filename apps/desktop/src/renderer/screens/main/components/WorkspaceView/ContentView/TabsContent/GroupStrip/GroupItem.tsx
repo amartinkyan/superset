@@ -188,7 +188,7 @@ export function GroupItem({
 	const tabStyles = cn(
 		"flex items-center gap-2 transition-all w-full shrink-0 pl-3 pr-8 h-full",
 		isActive
-			? "text-foreground bg-border/30"
+			? "text-foreground bg-background dark:bg-border/30"
 			: "text-muted-foreground/70 hover:text-muted-foreground hover:bg-tertiary/20",
 	);
 
