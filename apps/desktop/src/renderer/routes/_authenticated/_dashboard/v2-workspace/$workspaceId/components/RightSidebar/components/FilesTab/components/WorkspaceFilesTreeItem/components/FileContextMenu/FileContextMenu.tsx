@@ -2,39 +2,59 @@ import {
 	ContextMenuContent,
 	ContextMenuItem,
 	ContextMenuSeparator,
-	ContextMenuShortcut,
 } from "@superset/ui/context-menu";
+import { toast } from "@superset/ui/sonner";
+import { electronTrpcClient } from "renderer/lib/trpc-client";
 
-export function FileContextMenu() {
+interface FileContextMenuProps {
+	absolutePath: string;
+	relativePath?: string;
+	onRename: () => void;
+	onDelete: () => void;
+}
+
+export function FileContextMenu({
+	absolutePath,
+	relativePath,
+	onRename,
+	onDelete,
+}: FileContextMenuProps) {
 	return (
 		<ContextMenuContent className="w-56">
-			<ContextMenuItem>
-				Open to the Side
-				<ContextMenuShortcut>⌥↵</ContextMenuShortcut>
-			</ContextMenuItem>
+			<ContextMenuItem>Open to the Side</ContextMenuItem>
 			<ContextMenuSeparator />
-			<ContextMenuItem>
+			<ContextMenuItem
+				onSelect={() =>
+					electronTrpcClient.external.openInFinder.mutate(absolutePath)
+				}
+			>
 				Reveal in Finder
-				<ContextMenuShortcut>⌥⌘R</ContextMenuShortcut>
 			</ContextMenuItem>
-			<ContextMenuItem>Open in Integrated Terminal</ContextMenuItem>
 			<ContextMenuSeparator />
-			<ContextMenuItem>
+			<ContextMenuItem
+				onSelect={() => {
+					navigator.clipboard.writeText(absolutePath);
+					toast.success("Path copied");
+				}}
+			>
 				Copy Path
-				<ContextMenuShortcut>⌥⌘C</ContextMenuShortcut>
 			</ContextMenuItem>
-			<ContextMenuItem>
-				Copy Relative Path
-				<ContextMenuShortcut>⌥⇧⌘C</ContextMenuShortcut>
-			</ContextMenuItem>
+			{relativePath && (
+				<ContextMenuItem
+					onSelect={() => {
+						navigator.clipboard.writeText(relativePath);
+						toast.success("Relative path copied");
+					}}
+				>
+					Copy Relative Path
+				</ContextMenuItem>
+			)}
 			<ContextMenuSeparator />
-			<ContextMenuItem>
+			<ContextMenuItem onSelect={() => setTimeout(onRename, 0)}>
 				Rename...
-				<ContextMenuShortcut>↵</ContextMenuShortcut>
 			</ContextMenuItem>
-			<ContextMenuItem className="text-destructive focus:text-destructive">
+			<ContextMenuItem variant="destructive" onSelect={onDelete}>
 				Delete
-				<ContextMenuShortcut>⌘⌫</ContextMenuShortcut>
 			</ContextMenuItem>
 		</ContextMenuContent>
 	);

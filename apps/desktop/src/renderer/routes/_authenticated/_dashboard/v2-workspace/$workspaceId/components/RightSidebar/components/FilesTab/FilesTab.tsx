@@ -1,4 +1,6 @@
+import { alert } from "@superset/ui/atoms/Alert";
 import { Button } from "@superset/ui/button";
+import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import {
 	type FileTreeNode,
@@ -7,7 +9,7 @@ import {
 	useWorkspaceFsEvents,
 	workspaceTrpc,
 } from "@superset/workspace-client";
-import { FilePlus, FolderPlus, RefreshCw, Shrink } from "lucide-react";
+import { FilePlus, FolderPlus, FoldVertical, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
 	ROW_HEIGHT,
@@ -16,10 +18,10 @@ import {
 import { NewItemInput } from "./components/NewItemInput";
 import { WorkspaceFilesTreeItem } from "./components/WorkspaceFilesTreeItem";
 
-const STICKY_SHADOW =
-	"0 1px 0 0 color-mix(in srgb, currentColor 8%, transparent)";
-
-type CreatingState = { mode: "file" | "folder"; parentPath: string } | null;
+type InlineEditState =
+	| { kind: "create"; mode: "file" | "folder"; parentPath: string }
+	| { kind: "rename"; absolutePath: string; name: string; isDirectory: boolean }
+	| null;
 
 interface FilesTabProps {
 	onSelectFile: (absolutePath: string) => void;
@@ -35,13 +37,15 @@ function TreeNode({
 	rowHeight,
 	selectedFilePath,
 	hoveredPath,
-	creating,
+	inlineEdit,
 	onSelectFile,
 	onToggleDirectory,
-	onNewItemSubmit,
-	onNewItemCancel,
+	onInlineEditSubmit,
+	onInlineEditCancel,
 	onNewFile,
 	onNewFolder,
+	onRename,
+	onDelete,
 }: {
 	node: FileTreeNode;
 	depth: number;
@@ -49,44 +53,61 @@ function TreeNode({
 	rowHeight: number;
 	selectedFilePath?: string;
 	hoveredPath?: string | null;
-	creating: CreatingState;
+	inlineEdit: InlineEditState;
 	onSelectFile: (absolutePath: string) => void;
 	onToggleDirectory: (absolutePath: string) => void;
-	onNewItemSubmit: (name: string) => void;
-	onNewItemCancel: () => void;
+	onInlineEditSubmit: (name: string) => void;
+	onInlineEditCancel: () => void;
 	onNewFile: (parentPath: string) => void;
 	onNewFolder: (parentPath: string) => void;
+	onRename: (absolutePath: string, name: string, isDirectory: boolean) => void;
+	onDelete: (absolutePath: string, name: string, isDirectory: boolean) => void;
 }) {
-	const isCreatingHere = creating?.parentPath === node.absolutePath;
-	const isCreatingFile = isCreatingHere && creating?.mode === "file";
+	const isCreating = inlineEdit?.kind === "create";
+	const isCreatingHere =
+		isCreating && inlineEdit.parentPath === node.absolutePath;
+	const isCreatingFile = isCreatingHere && inlineEdit.mode === "file";
+	const isRenaming =
+		inlineEdit?.kind === "rename" &&
+		inlineEdit.absolutePath === node.absolutePath;
 	const lastFolderIndex = node.children.findLastIndex(
 		(n) => n.kind === "directory",
 	);
 
 	return (
 		<div>
-			<WorkspaceFilesTreeItem
-				node={node}
-				depth={depth}
-				indent={indent}
-				rowHeight={rowHeight}
-				selectedFilePath={selectedFilePath}
-				isHovered={hoveredPath === node.absolutePath}
-				onSelectFile={onSelectFile}
-				onToggleDirectory={onToggleDirectory}
-				onNewFile={onNewFile}
-				onNewFolder={onNewFolder}
-			/>
+			{isRenaming ? (
+				<NewItemInput
+					mode={node.kind === "directory" ? "folder" : "file"}
+					depth={depth}
+					initialValue={inlineEdit.name}
+					onSubmit={onInlineEditSubmit}
+					onCancel={onInlineEditCancel}
+				/>
+			) : (
+				<WorkspaceFilesTreeItem
+					node={node}
+					depth={depth}
+					indent={indent}
+					rowHeight={rowHeight}
+					selectedFilePath={selectedFilePath}
+					isHovered={hoveredPath === node.absolutePath}
+					onSelectFile={onSelectFile}
+					onToggleDirectory={onToggleDirectory}
+					onNewFile={onNewFile}
+					onNewFolder={onNewFolder}
+					onRename={onRename}
+					onDelete={onDelete}
+				/>
+			)}
 			{node.kind === "directory" && node.isExpanded && (
 				<>
-					{isCreatingHere && creating.mode === "folder" && (
+					{isCreatingHere && inlineEdit.mode === "folder" && (
 						<NewItemInput
 							mode="folder"
 							depth={depth + 1}
-							indent={indent}
-							rowHeight={rowHeight}
-							onSubmit={onNewItemSubmit}
-							onCancel={onNewItemCancel}
+							onSubmit={onInlineEditSubmit}
+							onCancel={onInlineEditCancel}
 						/>
 					)}
 					{node.children.map((child, index) => (
@@ -98,22 +119,22 @@ function TreeNode({
 								rowHeight={rowHeight}
 								selectedFilePath={selectedFilePath}
 								hoveredPath={hoveredPath}
-								creating={creating}
+								inlineEdit={inlineEdit}
 								onSelectFile={onSelectFile}
 								onToggleDirectory={onToggleDirectory}
-								onNewItemSubmit={onNewItemSubmit}
-								onNewItemCancel={onNewItemCancel}
+								onInlineEditSubmit={onInlineEditSubmit}
+								onInlineEditCancel={onInlineEditCancel}
 								onNewFile={onNewFile}
 								onNewFolder={onNewFolder}
+								onRename={onRename}
+								onDelete={onDelete}
 							/>
 							{isCreatingFile && index === lastFolderIndex && (
 								<NewItemInput
 									mode="file"
 									depth={depth + 1}
-									indent={indent}
-									rowHeight={rowHeight}
-									onSubmit={onNewItemSubmit}
-									onCancel={onNewItemCancel}
+									onSubmit={onInlineEditSubmit}
+									onCancel={onInlineEditCancel}
 								/>
 							)}
 						</Fragment>
@@ -122,10 +143,8 @@ function TreeNode({
 						<NewItemInput
 							mode="file"
 							depth={depth + 1}
-							indent={indent}
-							rowHeight={rowHeight}
-							onSubmit={onNewItemSubmit}
-							onCancel={onNewItemCancel}
+							onSubmit={onInlineEditSubmit}
+							onCancel={onInlineEditCancel}
 						/>
 					)}
 				</>
@@ -142,7 +161,7 @@ export function FilesTab({
 }: FilesTabProps) {
 	const [_isRefreshing, setIsRefreshing] = useState(false);
 	const [hoveredPath, setHoveredPath] = useState<string | null>(null);
-	const [creating, setCreating] = useState<CreatingState>(null);
+	const [inlineEdit, setInlineEdit] = useState<InlineEditState>(null);
 	const utils = workspaceTrpc.useUtils();
 	const workspaceQuery = workspaceTrpc.workspace.get.useQuery({
 		id: workspaceId,
@@ -152,6 +171,7 @@ export function FilesTab({
 	const writeFile = workspaceTrpc.filesystem.writeFile.useMutation();
 	const createDirectory =
 		workspaceTrpc.filesystem.createDirectory.useMutation();
+	const movePath = workspaceTrpc.filesystem.movePath.useMutation();
 
 	useWorkspaceFsEventBridge(
 		workspaceId,
@@ -169,44 +189,10 @@ export function FilesTab({
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const lastMousePos = useRef<{ x: number; y: number } | null>(null);
 	const prevSelectedRef = useRef(selectedFilePath);
-	const lastStickyRef = useRef<Element | null>(null);
 
 	const updateHoverFromPoint = useCallback((x: number, y: number) => {
 		const el = document.elementFromPoint(x, y)?.closest("[data-filepath]");
 		setHoveredPath(el?.getAttribute("data-filepath") ?? null);
-	}, []);
-
-	const updateStickyShadow = useCallback(() => {
-		const container = scrollContainerRef.current;
-		if (!container) return;
-		const scrollTop = container.scrollTop;
-		const containerRect = container.getBoundingClientRect();
-		const folders = container.querySelectorAll<HTMLElement>(
-			"[data-sticky-depth]",
-		);
-
-		let deepest: HTMLElement | null = null;
-		let deepestTop = -1;
-
-		for (const el of folders) {
-			const depth = Number(el.dataset.stickyDepth);
-			const stickyTop = depth * ROW_HEIGHT;
-			const naturalTop = el.offsetTop - scrollTop;
-			const isStuck =
-				naturalTop < stickyTop + 1 &&
-				el.getBoundingClientRect().top - containerRect.top <= stickyTop + 1;
-			if (isStuck && stickyTop > deepestTop) {
-				deepestTop = stickyTop;
-				deepest = el;
-			}
-		}
-
-		if (lastStickyRef.current !== deepest) {
-			if (lastStickyRef.current instanceof HTMLElement)
-				lastStickyRef.current.style.boxShadow = "";
-			if (deepest) deepest.style.boxShadow = STICKY_SHADOW;
-			lastStickyRef.current = deepest;
-		}
 	}, []);
 
 	const handleMouseMove = useCallback(
@@ -220,8 +206,7 @@ export function FilesTab({
 	const handleScroll = useCallback(() => {
 		if (lastMousePos.current)
 			updateHoverFromPoint(lastMousePos.current.x, lastMousePos.current.y);
-		updateStickyShadow();
-	}, [updateHoverFromPoint, updateStickyShadow]);
+	}, [updateHoverFromPoint]);
 
 	const handleMouseLeave = useCallback(() => {
 		lastMousePos.current = null;
@@ -254,8 +239,6 @@ export function FilesTab({
 		}
 	}, [fileTree]);
 
-	// --- Inline creation ---
-
 	const getParentForCreation = useCallback((): string => {
 		if (!selectedFilePath || !rootPath) return rootPath;
 		// Walk tree to check if selected is a directory
@@ -275,68 +258,140 @@ export function FilesTab({
 		async (mode: "file" | "folder", targetPath?: string) => {
 			const parentPath = targetPath ?? getParentForCreation();
 			if (parentPath !== rootPath) await fileTree.expand(parentPath);
-			setCreating({ mode, parentPath });
-			requestAnimationFrame(() => {
+			setInlineEdit({ kind: "create", mode, parentPath });
+
+			scrollContainerRef.current
+				?.querySelector("[data-new-item-input]")
+				?.scrollIntoView({ block: "nearest" });
+			setTimeout(() => {
 				scrollContainerRef.current
-					?.querySelector("[data-new-item-input]")
-					?.scrollIntoView({ block: "nearest" });
-			});
+					?.querySelector<HTMLInputElement>("[data-new-item-input] input")
+					?.focus();
+			}, 200);
 		},
 		[getParentForCreation, rootPath, fileTree],
 	);
 
-	const handleNewItemSubmit = useCallback(
-		async (name: string) => {
-			if (!creating || !rootPath) return;
-			const { mode, parentPath } = creating;
-			const segments = name.split("/").filter(Boolean);
-			if (segments.length === 0) return;
-
-			const absolutePath = `${parentPath}/${name}`;
-
-			try {
-				if (mode === "folder") {
-					await createDirectory.mutateAsync({
-						workspaceId,
-						absolutePath,
-						recursive: true,
-					});
-				} else {
-					if (segments.length > 1) {
-						const dirPath = `${parentPath}/${segments.slice(0, -1).join("/")}`;
-						await createDirectory.mutateAsync({
-							workspaceId,
-							absolutePath: dirPath,
-							recursive: true,
-						});
-					}
-					await writeFile.mutateAsync({
-						workspaceId,
-						absolutePath,
-						content: "",
-						options: { create: true, overwrite: false },
-					});
-					onSelectFile(absolutePath);
-				}
-			} catch {
-				// TODO: error toast
-			}
-			setCreating(null);
+	const startRenaming = useCallback(
+		(absolutePath: string, name: string, isDirectory: boolean) => {
+			setInlineEdit({ kind: "rename", absolutePath, name, isDirectory });
+			setTimeout(() => {
+				scrollContainerRef.current
+					?.querySelector<HTMLInputElement>("[data-new-item-input] input")
+					?.focus();
+			}, 200);
 		},
-		[creating, rootPath, workspaceId, writeFile, createDirectory, onSelectFile],
+		[],
 	);
 
-	const handleNewItemCancel = useCallback(() => setCreating(null), []);
+	const handleInlineEditSubmit = useCallback(
+		async (name: string) => {
+			if (!inlineEdit || !rootPath) return;
 
-	// --- Render ---
+			try {
+				if (inlineEdit.kind === "create") {
+					const { mode, parentPath } = inlineEdit;
+					const segments = name.split("/").filter(Boolean);
+					if (segments.length === 0) return;
 
-	if (workspaceQuery.isPending) {
-		return (
-			<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-				Loading workspace files...
-			</div>
-		);
-	}
+					const absolutePath = `${parentPath}/${name}`;
+
+					if (mode === "folder") {
+						await createDirectory.mutateAsync({
+							workspaceId,
+							absolutePath,
+							recursive: true,
+						});
+					} else {
+						if (segments.length > 1) {
+							const dirPath = `${parentPath}/${segments.slice(0, -1).join("/")}`;
+							await createDirectory.mutateAsync({
+								workspaceId,
+								absolutePath: dirPath,
+								recursive: true,
+							});
+						}
+						await writeFile.mutateAsync({
+							workspaceId,
+							absolutePath,
+							content: "",
+							options: { create: true, overwrite: false },
+						});
+						onSelectFile(absolutePath);
+					}
+				} else {
+					const { absolutePath } = inlineEdit;
+					const parentDir = absolutePath.slice(
+						0,
+						absolutePath.lastIndexOf("/"),
+					);
+					const destinationPath = `${parentDir}/${name}`;
+					await movePath.mutateAsync({
+						workspaceId,
+						sourceAbsolutePath: absolutePath,
+						destinationAbsolutePath: destinationPath,
+					});
+				}
+			} catch (error) {
+				toast.error(
+					inlineEdit.kind === "create"
+						? "Failed to create item"
+						: "Failed to rename",
+					{
+						description: error instanceof Error ? error.message : undefined,
+					},
+				);
+			}
+			setInlineEdit(null);
+		},
+		[
+			inlineEdit,
+			rootPath,
+			workspaceId,
+			writeFile,
+			createDirectory,
+			movePath,
+			onSelectFile,
+		],
+	);
+
+	const handleInlineEditCancel = useCallback(() => setInlineEdit(null), []);
+
+	const deletePath = workspaceTrpc.filesystem.deletePath.useMutation();
+
+	const handleDelete = useCallback(
+		(absolutePath: string, name: string, isDirectory: boolean) => {
+			const itemType = isDirectory ? "folder" : "file";
+			alert({
+				title: `Delete ${name}?`,
+				description: `Are you sure you want to delete this ${itemType}? This action cannot be undone.`,
+				actions: [
+					{
+						label: "Delete",
+						variant: "destructive",
+						onClick: () => {
+							toast.promise(
+								deletePath.mutateAsync({
+									workspaceId,
+									absolutePath,
+								}),
+								{
+									loading: `Deleting ${name}...`,
+									success: `Deleted ${name}`,
+									error: `Failed to delete ${name}`,
+								},
+							);
+						},
+					},
+					{
+						label: "Cancel",
+						variant: "ghost",
+					},
+				],
+			});
+		},
+		[workspaceId, deletePath],
+	);
 
 	if (!workspaceQuery.data?.worktreePath) {
 		return (
@@ -346,10 +401,16 @@ export function FilesTab({
 		);
 	}
 
-	const isCreatingAtRoot = creating?.parentPath === rootPath;
-	const isCreatingFileAtRoot = isCreatingAtRoot && creating?.mode === "file";
+	const isCreatingAtRoot =
+		inlineEdit?.kind === "create" && inlineEdit.parentPath === rootPath;
+	const isCreatingFileAtRoot =
+		isCreatingAtRoot &&
+		inlineEdit?.kind === "create" &&
+		inlineEdit.mode === "file";
 	const isCreatingFolderAtRoot =
-		isCreatingAtRoot && creating?.mode === "folder";
+		isCreatingAtRoot &&
+		inlineEdit?.kind === "create" &&
+		inlineEdit.mode === "folder";
 	const rootLastFolderIndex = fileTree.rootEntries.findLastIndex(
 		(n) => n.kind === "directory",
 	);
@@ -374,7 +435,7 @@ export function FilesTab({
 					}}
 				>
 					<span className="truncate">{workspaceName ?? "Explorer"}</span>
-					<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+					<div className="flex items-center gap-0.5">
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button
@@ -422,7 +483,7 @@ export function FilesTab({
 									className="size-5"
 									onClick={fileTree.collapseAll}
 								>
-									<Shrink className="size-3" />
+									<FoldVertical className="size-3" />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent side="bottom">Collapse All</TooltipContent>
@@ -444,10 +505,8 @@ export function FilesTab({
 							<NewItemInput
 								mode="folder"
 								depth={1}
-								indent={TREE_INDENT}
-								rowHeight={ROW_HEIGHT}
-								onSubmit={handleNewItemSubmit}
-								onCancel={handleNewItemCancel}
+								onSubmit={handleInlineEditSubmit}
+								onCancel={handleInlineEditCancel}
 							/>
 						)}
 						{fileTree.rootEntries.map((node, index) => (
@@ -459,28 +518,30 @@ export function FilesTab({
 									rowHeight={ROW_HEIGHT}
 									selectedFilePath={selectedFilePath}
 									hoveredPath={hoveredPath}
-									creating={creating}
+									inlineEdit={inlineEdit}
 									onSelectFile={onSelectFile}
 									onToggleDirectory={(absolutePath) =>
 										void fileTree.toggle(absolutePath)
 									}
-									onNewItemSubmit={handleNewItemSubmit}
-									onNewItemCancel={handleNewItemCancel}
+									onInlineEditSubmit={handleInlineEditSubmit}
+									onInlineEditCancel={handleInlineEditCancel}
 									onNewFile={(parentPath) =>
 										void startCreating("file", parentPath)
 									}
 									onNewFolder={(parentPath) =>
 										void startCreating("folder", parentPath)
 									}
+									onRename={(absolutePath, name, isDirectory) =>
+										startRenaming(absolutePath, name, isDirectory)
+									}
+									onDelete={handleDelete}
 								/>
 								{isCreatingFileAtRoot && index === rootLastFolderIndex && (
 									<NewItemInput
 										mode="file"
 										depth={1}
-										indent={TREE_INDENT}
-										rowHeight={ROW_HEIGHT}
-										onSubmit={handleNewItemSubmit}
-										onCancel={handleNewItemCancel}
+										onSubmit={handleInlineEditSubmit}
+										onCancel={handleInlineEditCancel}
 									/>
 								)}
 							</Fragment>
@@ -489,10 +550,8 @@ export function FilesTab({
 							<NewItemInput
 								mode="file"
 								depth={1}
-								indent={TREE_INDENT}
-								rowHeight={ROW_HEIGHT}
-								onSubmit={handleNewItemSubmit}
-								onCancel={handleNewItemCancel}
+								onSubmit={handleInlineEditSubmit}
+								onCancel={handleInlineEditCancel}
 							/>
 						)}
 					</>

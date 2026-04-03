@@ -3,6 +3,7 @@ import { cn } from "@superset/ui/utils";
 import type { FileTreeNode } from "@superset/workspace-client";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
+
 import { FileContextMenu } from "./components/FileContextMenu";
 import { FolderContextMenu } from "./components/FolderContextMenu";
 
@@ -17,6 +18,8 @@ interface WorkspaceFilesTreeItemProps {
 	onToggleDirectory: (absolutePath: string) => void;
 	onNewFile: (parentPath: string) => void;
 	onNewFolder: (parentPath: string) => void;
+	onRename: (absolutePath: string, name: string, isDirectory: boolean) => void;
+	onDelete: (absolutePath: string, name: string, isDirectory: boolean) => void;
 }
 
 export function WorkspaceFilesTreeItem({
@@ -30,6 +33,8 @@ export function WorkspaceFilesTreeItem({
 	onToggleDirectory,
 	onNewFile,
 	onNewFolder,
+	onRename,
+	onDelete,
 }: WorkspaceFilesTreeItemProps) {
 	const isFolder = node.kind === "directory";
 	const isSelected = selectedFilePath === node.absolutePath;
@@ -39,10 +44,9 @@ export function WorkspaceFilesTreeItem({
 			<ContextMenuTrigger asChild>
 				<button
 					data-filepath={node.absolutePath}
-					data-sticky-depth={isFolder ? depth : undefined}
 					aria-expanded={isFolder ? node.isExpanded : undefined}
 					className={cn(
-						"flex w-full cursor-pointer select-none items-center gap-1 px-1 text-left transition-colors",
+						"flex w-full cursor-pointer select-none items-center gap-1 pr-2 text-left transition-colors",
 						isFolder ? "bg-background" : undefined,
 						isHovered && !isSelected
 							? isFolder
@@ -91,11 +95,20 @@ export function WorkspaceFilesTreeItem({
 			</ContextMenuTrigger>
 			{isFolder ? (
 				<FolderContextMenu
+					absolutePath={node.absolutePath}
+					relativePath={node.relativePath}
 					onNewFile={() => onNewFile(node.absolutePath)}
 					onNewFolder={() => onNewFolder(node.absolutePath)}
+					onRename={() => onRename(node.absolutePath, node.name, true)}
+					onDelete={() => onDelete(node.absolutePath, node.name, true)}
 				/>
 			) : (
-				<FileContextMenu />
+				<FileContextMenu
+					absolutePath={node.absolutePath}
+					relativePath={node.relativePath}
+					onRename={() => onRename(node.absolutePath, node.name, false)}
+					onDelete={() => onDelete(node.absolutePath, node.name, false)}
+				/>
 			)}
 		</ContextMenu>
 	);

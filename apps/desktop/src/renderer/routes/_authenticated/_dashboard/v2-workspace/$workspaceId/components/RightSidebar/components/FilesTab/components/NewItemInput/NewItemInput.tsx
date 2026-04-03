@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { LuChevronDown } from "react-icons/lu";
+import {
+	ROW_HEIGHT,
+	TREE_INDENT,
+} from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/constants";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 
 interface NewItemInputProps {
 	mode: "file" | "folder";
 	depth: number;
-	indent: number;
-	rowHeight: number;
+	initialValue?: string;
 	onSubmit: (name: string) => void;
 	onCancel: () => void;
 }
@@ -14,30 +17,39 @@ interface NewItemInputProps {
 export function NewItemInput({
 	mode,
 	depth,
-	indent,
-	rowHeight,
+	initialValue = "",
 	onSubmit,
 	onCancel,
 }: NewItemInputProps) {
-	const [value, setValue] = useState("");
+	const [value, setValue] = useState(initialValue);
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	useEffect(() => {
-		inputRef.current?.focus();
-	}, []);
+		const input = inputRef.current;
+		if (!input) return;
+		// For rename: select the name up to the extension so user can type to replace
+		if (initialValue) {
+			const dotIndex = initialValue.lastIndexOf(".");
+			if (dotIndex > 0 && mode === "file") {
+				input.setSelectionRange(0, dotIndex);
+			} else {
+				input.select();
+			}
+		}
+	}, [initialValue, mode]);
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {
 		if (e.key === "Enter") {
 			e.preventDefault();
 			const trimmed = value.trim();
-			if (trimmed) onSubmit(trimmed);
+			if (trimmed && trimmed !== initialValue) onSubmit(trimmed);
+			else onCancel();
 		} else if (e.key === "Escape") {
 			e.preventDefault();
 			onCancel();
 		}
 	};
 
-	// Derive the icon file name from the last segment of the input
 	const displayName = value.includes("/")
 		? (value.split("/").pop() ?? "")
 		: value;
@@ -47,8 +59,8 @@ export function NewItemInput({
 			data-new-item-input
 			className="flex w-full items-center gap-1 px-1"
 			style={{
-				height: rowHeight,
-				paddingLeft: 4 + depth * indent,
+				height: ROW_HEIGHT,
+				paddingLeft: 4 + depth * TREE_INDENT,
 			}}
 		>
 			<span className="flex h-4 w-4 shrink-0 items-center justify-center">
@@ -61,7 +73,7 @@ export function NewItemInput({
 				className="size-4 shrink-0"
 				fileName={displayName || (mode === "folder" ? "folder" : "file")}
 				isDirectory={mode === "folder"}
-				isOpen={mode === "folder"}
+				isOpen={false}
 			/>
 
 			<input
@@ -71,7 +83,7 @@ export function NewItemInput({
 				onKeyDown={handleKeyDown}
 				onBlur={onCancel}
 				className="min-w-0 flex-1 bg-transparent text-xs outline-none ring-1 ring-ring rounded-sm px-1"
-				style={{ height: rowHeight - 4 }}
+				style={{ height: ROW_HEIGHT - 4 }}
 			/>
 		</div>
 	);

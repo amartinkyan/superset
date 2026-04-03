@@ -2,45 +2,68 @@ import {
 	ContextMenuContent,
 	ContextMenuItem,
 	ContextMenuSeparator,
-	ContextMenuShortcut,
 } from "@superset/ui/context-menu";
+import { toast } from "@superset/ui/sonner";
+import { electronTrpcClient } from "renderer/lib/trpc-client";
 
 interface FolderContextMenuProps {
+	absolutePath: string;
+	relativePath?: string;
 	onNewFile: () => void;
 	onNewFolder: () => void;
+	onRename: () => void;
+	onDelete: () => void;
 }
 
 export function FolderContextMenu({
+	absolutePath,
+	relativePath,
 	onNewFile,
 	onNewFolder,
+	onRename,
+	onDelete,
 }: FolderContextMenuProps) {
 	return (
 		<ContextMenuContent className="w-56">
-			<ContextMenuItem onClick={onNewFile}>New File...</ContextMenuItem>
-			<ContextMenuItem onClick={onNewFolder}>New Folder...</ContextMenuItem>
+			<ContextMenuItem onSelect={() => setTimeout(onNewFile, 0)}>
+				New File...
+			</ContextMenuItem>
+			<ContextMenuItem onSelect={() => setTimeout(onNewFolder, 0)}>
+				New Folder...
+			</ContextMenuItem>
 			<ContextMenuSeparator />
-			<ContextMenuItem>
+			<ContextMenuItem
+				onSelect={() =>
+					electronTrpcClient.external.openInFinder.mutate(absolutePath)
+				}
+			>
 				Reveal in Finder
-				<ContextMenuShortcut>⌥⌘R</ContextMenuShortcut>
 			</ContextMenuItem>
-			<ContextMenuItem>Open in Integrated Terminal</ContextMenuItem>
 			<ContextMenuSeparator />
-			<ContextMenuItem>
+			<ContextMenuItem
+				onSelect={() => {
+					navigator.clipboard.writeText(absolutePath);
+					toast.success("Path copied");
+				}}
+			>
 				Copy Path
-				<ContextMenuShortcut>⌥⌘C</ContextMenuShortcut>
 			</ContextMenuItem>
-			<ContextMenuItem>
-				Copy Relative Path
-				<ContextMenuShortcut>⌥⇧⌘C</ContextMenuShortcut>
-			</ContextMenuItem>
+			{relativePath && (
+				<ContextMenuItem
+					onSelect={() => {
+						navigator.clipboard.writeText(relativePath);
+						toast.success("Relative path copied");
+					}}
+				>
+					Copy Relative Path
+				</ContextMenuItem>
+			)}
 			<ContextMenuSeparator />
-			<ContextMenuItem>
+			<ContextMenuItem onSelect={() => setTimeout(onRename, 0)}>
 				Rename...
-				<ContextMenuShortcut>↵</ContextMenuShortcut>
 			</ContextMenuItem>
-			<ContextMenuItem className="text-destructive focus:text-destructive">
+			<ContextMenuItem variant="destructive" onSelect={onDelete}>
 				Delete
-				<ContextMenuShortcut>⌘⌫</ContextMenuShortcut>
 			</ContextMenuItem>
 		</ContextMenuContent>
 	);
