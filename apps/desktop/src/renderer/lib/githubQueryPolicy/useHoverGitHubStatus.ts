@@ -7,7 +7,7 @@ import {
 } from "./githubQueryPolicy";
 
 interface UseHoverGitHubStatusOptions {
-	workspaceId: string | undefined;
+	workspaceId: string | null | undefined;
 	surface: GitHubStatusQuerySurface;
 	isWorktree: boolean;
 }
