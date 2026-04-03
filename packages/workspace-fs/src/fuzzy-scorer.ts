@@ -1,7 +1,14 @@
 /**
- * Fuzzy file search scorer — direct copy from VS Code.
- * Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License.
- * Source: https://github.com/microsoft/vscode/blob/main/src/vs/base/common/fuzzyScorer.ts
+ * Fuzzy file search scorer — ported from VS Code.
+ *
+ * Copyright (c) Microsoft Corporation. All rights reserved.
+ * Licensed under the MIT License.
+ * See https://github.com/microsoft/vscode/blob/main/LICENSE.txt
+ *
+ * Source files:
+ * - https://github.com/microsoft/vscode/blob/main/src/vs/base/common/fuzzyScorer.ts
+ * - https://github.com/microsoft/vscode/blob/main/src/vs/base/common/filters.ts (matchesPrefix)
+ * - https://github.com/microsoft/vscode/blob/main/src/vs/base/common/comparers.ts (compareAnything)
  *
  * VS Code-specific imports (CharCode, filters, comparers, platform, etc.) are
  * inlined below. The scoring algorithm is unchanged.
