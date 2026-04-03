@@ -161,11 +161,7 @@ export function IntegrationsSettings({
 						isConnected={isGithubConnected}
 						connectedOrgName={githubInstallation?.accountLogin}
 						isLoading={isLoadingGithub}
-						onManage={() =>
-							gateFeature(GATED_FEATURES.INTEGRATIONS, () =>
-								handleOpenWeb("/integrations/github"),
-							)
-						}
+						onManage={() => handleOpenWeb("/integrations/github")}
 					/>
 				)}
 
