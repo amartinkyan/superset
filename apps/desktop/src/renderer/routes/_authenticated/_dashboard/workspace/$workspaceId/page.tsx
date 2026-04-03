@@ -633,7 +633,7 @@ function WorkspacePage() {
 				workspaceId={workspaceId}
 				open={quickOpenOpen}
 				onOpenChange={setQuickOpenOpen}
-				onSelectFile={() => {}}
+				onSelectFile={(filePath) => useTabsStore.getState().addFileViewerPane(workspaceId, { filePath })}
 			/>
 			<UnsavedChangesDialog
 				open={pendingTabClose !== null}
