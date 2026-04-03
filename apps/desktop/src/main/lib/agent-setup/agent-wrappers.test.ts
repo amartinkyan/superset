@@ -1220,3 +1220,30 @@ describe("agent-wrappers codex hooks.json", () => {
 		).toBeNull();
 	});
 });
+
+describe("macOS keychain init in agent wrappers (#3133)", () => {
+	it("wrapper scripts include macOS keychain initialization", () => {
+		const script = buildWrapperScript("cursor-agent", 'exec "$REAL_BIN" "$@"');
+		expect(script).toContain("security list-keychains");
+		expect(script).toContain("login.keychain-db");
+	});
+
+	it("keychain init is guarded by Darwin check", () => {
+		const script = buildWrapperScript("cursor-agent", 'exec "$REAL_BIN" "$@"');
+		expect(script).toContain("uname");
+		expect(script).toContain("Darwin");
+	});
+
+	it("keychain init fails silently on error", () => {
+		const script = buildWrapperScript("cursor-agent", 'exec "$REAL_BIN" "$@"');
+		expect(script).toContain("|| true");
+	});
+
+	it("keychain init is present in all agent wrappers", () => {
+		const agents = ["claude", "codex", "cursor-agent", "gemini", "amp"];
+		for (const agent of agents) {
+			const script = buildWrapperScript(agent, 'exec "$REAL_BIN" "$@"');
+			expect(script).toContain("security list-keychains");
+		}
+	});
+});

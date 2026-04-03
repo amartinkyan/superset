@@ -77,6 +77,27 @@ export function reconcileManagedEntries<T>({
 	return { entries, replacedManagedEntries };
 }
 
+/**
+ * On macOS, Electron child processes cannot access the login keychain via
+ * native Security framework APIs (SecItemCopyMatching) because they run
+ * outside the user's GUI security session.  This causes agent binaries
+ * (e.g. cursor-agent) to crash with "SecItemCopyMatching failed -50"
+ * followed by a segfault.
+ *
+ * Mitigate by explicitly adding the login keychain to the search list
+ * before exec-ing the real binary.  The `security` CLI is setuid and can
+ * always reach securityd, so this restores the search list that a normal
+ * interactive terminal would have.
+ */
+function buildMacosKeychainInit(): string {
+	return `# Ensure macOS login keychain is available (Electron child processes may
+# lose access to the keychain session, causing SecItemCopyMatching failures).
+if [ "$(uname)" = "Darwin" ] 2>/dev/null; then
+  security list-keychains -d user -s login.keychain-db 2>/dev/null || true
+fi
+`;
+}
+
 function buildRealBinaryResolver(): string {
 	return `find_real_binary() {
   local name="$1"
@@ -113,6 +134,7 @@ export function buildWrapperScript(
 ${WRAPPER_MARKER}
 # Superset wrapper for ${binaryName}
 
+${buildMacosKeychainInit()}
 ${buildRealBinaryResolver()}
 REAL_BIN="$(find_real_binary "${binaryName}")"
 if [ -z "$REAL_BIN" ]; then
