@@ -41,7 +41,7 @@ function IconButton({
 	);
 }
 
-export function RightSidebar({
+export function WorkspaceSidebar({
 	onSelectFile,
 	onSearch,
 	selectedFilePath,

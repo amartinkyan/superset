@@ -19,7 +19,7 @@ import { PresetsBar } from "renderer/screens/main/components/WorkspaceView/Conte
 import { useAppHotkey } from "renderer/stores/hotkeys";
 import { useStore } from "zustand";
 import { AddTabMenu } from "./components/AddTabMenu";
-import { RightSidebar } from "./components/RightSidebar";
+import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
 import { WorkspaceNotFoundState } from "./components/WorkspaceNotFoundState";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
@@ -318,7 +318,7 @@ function WorkspaceContent({
 					<>
 						<ResizableHandle />
 						<ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
-							<RightSidebar
+							<WorkspaceSidebar
 								workspaceId={workspaceId}
 								workspaceName={workspaceName}
 								onSelectFile={openFilePane}
