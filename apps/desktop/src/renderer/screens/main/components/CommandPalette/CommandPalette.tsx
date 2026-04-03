@@ -2,6 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { CommandPrimitive } from "@superset/ui/command";
 import { SearchIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 import { useFileSearch } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/hooks/useFileSearch/useFileSearch";
 import { useV2FileSearch } from "renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useV2FileSearch";
@@ -26,11 +27,16 @@ export function CommandPalette({
 	variant = "v1",
 }: CommandPaletteProps) {
 	const [query, setQuery] = useState("");
+	const [filtersOpen, setFiltersOpen] = useState(false);
+	const [includePattern, setIncludePattern] = useState("");
+	const [excludePattern, setExcludePattern] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	const v1Search = useFileSearch({
 		workspaceId: variant === "v1" && open ? workspaceId : undefined,
 		searchTerm: variant === "v1" ? query : "",
+		includePattern: variant === "v1" ? includePattern : "",
+		excludePattern: variant === "v1" ? excludePattern : "",
 		limit: SEARCH_LIMIT,
 	});
 
@@ -89,7 +95,38 @@ export function CommandPalette({
 								onValueChange={setQuery}
 								className="flex h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
 							/>
+							{variant === "v1" && (
+								<button
+									type="button"
+									className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
+									onClick={() => setFiltersOpen((v) => !v)}
+									aria-label={filtersOpen ? "Hide Filters" : "Show Filters"}
+								>
+									{filtersOpen ? (
+										<LuChevronDown className="size-4" />
+									) : (
+										<LuChevronRight className="size-4" />
+									)}
+								</button>
+							)}
 						</div>
+
+						{variant === "v1" && filtersOpen && (
+							<div className="grid grid-cols-2 gap-2 border-b px-3 py-2">
+								<input
+									value={includePattern}
+									onChange={(e) => setIncludePattern(e.target.value)}
+									placeholder="files to include (glob)"
+									className="h-8 rounded border bg-transparent px-2 text-xs outline-none placeholder:text-muted-foreground"
+								/>
+								<input
+									value={excludePattern}
+									onChange={(e) => setExcludePattern(e.target.value)}
+									placeholder="files to exclude (glob)"
+									className="h-8 rounded border bg-transparent px-2 text-xs outline-none placeholder:text-muted-foreground"
+								/>
+							</div>
+						)}
 
 						<CommandPrimitive.List className="max-h-[400px] overflow-x-hidden overflow-y-auto scroll-py-1 p-1">
 							{results.length === 0 && (
