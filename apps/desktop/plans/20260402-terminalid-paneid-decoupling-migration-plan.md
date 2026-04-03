@@ -5,6 +5,7 @@ This plan covers the first surface-area migration only:
 - decouple terminal session identity from pane identity
 - move terminal session records into `HostService`
 - make panes reference `terminalId`
+- keep terminal ownership effectively 1:1 for now
 
 This is intentionally narrower than the full durable terminal rewrite.
 
@@ -20,7 +21,7 @@ Target model:
 - `HostService` owns terminal session records by `terminalId`
 - renderer attaches a pane view to `terminalId`
 
-This is required because pane deletion should not always kill the terminal.
+This is required because pane identity and terminal identity are different concerns, even if lifecycle stays 1:1 in the first cut.
 
 ## Current State
 
@@ -91,18 +92,39 @@ Suggested first-cut shape:
 ```ts
 terminal_sessions
 - id                // terminalId
-- workspace_id      // initial spawn context / metadata
-- cwd
-- shell
-- launch_mode
-- command
 - status            // active | exited | disposed
 - created_at
 - last_attached_at
 - ended_at
+- origin_workspace_id?   // optional provenance only
 ```
 
-Optional later fields:
+Do not put create-only metadata on the main session row unless the row is
+actually going to be used to recreate the terminal later.
+
+Fields like:
+
+- `cwd`
+- `shell`
+- `launchMode`
+- `command`
+
+are create metadata, not session lifecycle state.
+
+If we need them later for revive, audit, or reopen fidelity, add a separate
+launch/create record:
+
+```ts
+terminal_session_launches
+- terminal_id
+- cwd
+- shell
+- launch_mode
+- command
+- created_at
+```
+
+Optional later session fields:
 
 - snapshot metadata
 - retention policy
@@ -113,7 +135,7 @@ Important: the pane -> terminal relationship stays in workspace state first. We 
 
 ## Lifecycle Model
 
-The intended semantics become:
+The first-cut semantics are:
 
 - create terminal session
   - create `terminal_sessions` row in host-service
@@ -125,13 +147,23 @@ The intended semantics become:
 - move pane between tabs/workspaces
   - keep same `terminalId`
 - remove pane
-  - remove pane only
-  - do not automatically dispose terminal session
+  - remove the pane reference
+  - if that was the last reference to the `terminalId`, dispose the terminal session
 - kill terminal
-  - explicit terminal session action
-  - or later orphan/TTL policy
+  - same result as removing the last pane reference in this cut
 
-That is the core behavioral change.
+So this phase decouples identity, but keeps ownership effectively 1:1.
+
+Why this is fine:
+
+- `paneId` is no longer the runtime key
+- `terminalId` is now the session key
+- but the last pane reference still owns terminal disposal
+
+Later phases can relax that to:
+
+- keep until explicit kill
+- keep for TTL when unreferenced
 
 ## Phase Order
 
@@ -161,6 +193,7 @@ Acceptance:
 
 - terminal reconnect uses `terminalId`, not `paneId`
 - moving a pane does not change terminal runtime identity
+- removing the last pane reference disposes the terminal session
 
 ### Phase 2. Add Host-Service Terminal Session Records
 
@@ -172,6 +205,7 @@ Work:
 - create a host-service API to create terminal sessions explicitly
 - stop creating a new terminal implicitly just because a socket opened
 - keep attach separate from create
+- keep `terminal_sessions` focused on lifecycle state, not create-only metadata
 
 Suggested API shape:
 
@@ -194,6 +228,7 @@ Acceptance:
 
 - terminal session has a durable record before first attach
 - socket attach is no longer the creation boundary
+- `terminal_sessions` remains a lifecycle table, not a launch-config dump
 
 ### Phase 3. Remove Launch Config From Pane Data
 
@@ -212,12 +247,18 @@ Acceptance:
 
 - terminal panes only reference `terminalId`
 - all terminal launch metadata lives in host-service
+- create metadata is either transient or stored separately from `terminal_sessions`
 
 ### Phase 4. Add Session Policies
 
-After the identity split is stable, add explicit session policies:
+After the identity split is stable, expand beyond the first-cut policy.
+
+Default policy in this migration:
 
 - dispose immediately when unreferenced
+
+Later options:
+
 - keep until explicit kill
 - keep for TTL when unreferenced
 
@@ -247,7 +288,17 @@ That is the minimum viable decoupling.
 
 It just stops being the terminal runtime key.
 
-### 3. Creation Must Move Up A Layer
+### 3. Keep Ownership Simple In This Cut
+
+Do not introduce orphan sessions yet.
+
+For this migration:
+
+- one pane reference owns one terminal session
+- deleting the last pane reference should dispose the session
+- implement that declaratively from `terminalId` reference removal, not from a specific close button path
+
+### 4. Creation Must Move Up A Layer
 
 Today terminal creation is effectively hidden inside the websocket open path in host-service.
 
@@ -257,6 +308,22 @@ We need:
 
 - explicit session create
 - later attach by `terminalId`
+
+### 5. Keep Session Rows Honest
+
+`terminal_sessions` should answer:
+
+- does this session exist?
+- what state is it in?
+- when was it created / last attached / ended?
+
+It should not also try to be:
+
+- the create request
+- the launch history
+- the revive spec
+
+unless we explicitly choose that and start reading it back during recreate.
 
 ### 4. Do Not Block On Full Restore
 
@@ -331,4 +398,3 @@ Avoid mixing this with:
 - PTY worker extraction
 
 Those are follow-on steps and will make the surface migration harder to land.
-

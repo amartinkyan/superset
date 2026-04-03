@@ -64,8 +64,14 @@ For terminal, that means:
 - panes should persist a `terminalId` reference
 - terminal session records should live in the `HostService` DB
 - switching tabs or workspaces should detach, not destroy
-- removing a pane should remove the pane reference, not necessarily kill the terminal
-- terminal disposal should be a separate session lifecycle decision
+
+Current first cut:
+
+- keep ownership effectively 1:1
+- removing the last pane reference disposes the terminal session
+- the important change is that disposal happens by `terminalId` reference removal, not because `paneId` is the runtime key
+
+Later phases can relax that into separate session policies.
 
 ## Restore Model
 
@@ -106,8 +112,21 @@ For terminal, the model should be:
 - `terminal session`
   - persisted in `HostService`
   - keyed by `terminalId`
+  - should store lifecycle state first
 - renderer view
   - attaches to the terminal session on mount
   - detaches on unmount
 
 This lets terminal sessions outlive any individual pane while keeping pane layout state separate from terminal runtime state.
+
+Creation metadata like `cwd`, `shell`, `launchMode`, and `command` should not
+automatically live on the main session row. If we need to preserve that later,
+it should be modeled separately as launch/create metadata, not mixed into basic
+session lifecycle state.
+
+The first implementation slice does not need full session independence yet. It can still use:
+
+- one pane reference -> one terminal session
+- last reference removed -> dispose session
+
+as long as `terminalId` remains the runtime identity.
