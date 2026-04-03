@@ -37,11 +37,12 @@ export function WorkspaceRow({
 	isOpening,
 }: WorkspaceRowProps) {
 	const isBranch = workspace.type === "branch";
-	const { githubStatus, onMouseEnter: onGithubMouseEnter } = useHoverGitHubStatus({
-		workspaceId: workspace.workspaceId,
-		surface: "workspace-row",
-		isWorktree: workspace.type === "worktree",
-	});
+	const { githubStatus, onMouseEnter: onGithubMouseEnter } =
+		useHoverGitHubStatus({
+			workspaceId: workspace.workspaceId,
+			surface: "workspace-row",
+			isWorktree: workspace.type === "worktree",
+		});
 	const { showDeleteDialog, setShowDeleteDialog, handleDeleteClick } =
 		useWorkspaceDeleteHandler();
 	const openFileInEditor = electronTrpc.external.openFileInEditor.useMutation({

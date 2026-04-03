@@ -67,7 +67,11 @@ export function WorkspaceListItem({
 	const isBranchWorkspace = type === "branch";
 	const navigate = useNavigate();
 	const matchRoute = useMatchRoute();
-	const { githubStatus, hasHovered, onMouseEnter: onGithubMouseEnter } = useHoverGitHubStatus({
+	const {
+		githubStatus,
+		hasHovered,
+		onMouseEnter: onGithubMouseEnter,
+	} = useHoverGitHubStatus({
 		workspaceId: id,
 		surface: "workspace-list-item",
 		isWorktree: type === "worktree",
