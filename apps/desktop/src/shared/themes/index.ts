@@ -11,6 +11,7 @@ export {
 } from "./built-in";
 export { getEditorTheme } from "./editor-theme";
 export { parseThemeConfigFile, type ThemeConfigParseResult } from "./import";
+export { getPrismTheme } from "./prism-theme";
 export type {
 	EditorColors,
 	EditorSyntaxColors,

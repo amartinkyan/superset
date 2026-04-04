@@ -1,11 +1,8 @@
 import { mermaid } from "@streamdown/mermaid";
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import {
-	oneDark,
-	oneLight,
-} from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "renderer/stores";
+import { getPrismTheme } from "shared/themes/prism-theme";
 import { Streamdown } from "streamdown";
 
 const mermaidPlugins = { mermaid };
@@ -26,7 +23,10 @@ interface CodeBlockProps {
 export function CodeBlock({ children, className, node }: CodeBlockProps) {
 	const theme = useTheme();
 	const isDark = theme?.type !== "light";
-	const syntaxStyle = isDark ? oneDark : oneLight;
+	const syntaxStyle = useMemo(
+		() => (theme ? getPrismTheme(theme) : undefined),
+		[theme],
+	);
 
 	const match = /language-(\w+)/.exec(className || "");
 	const language = match ? match[1] : undefined;
