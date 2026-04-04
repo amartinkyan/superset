@@ -180,6 +180,22 @@ export function PresetEditorSheet({
 
 								<div className="space-y-2">
 									<LabelWithTooltip
+										label="Icon"
+										htmlFor="preset-icon"
+										tooltip="An emoji (e.g. 🚀) or a built-in icon key (e.g. claude, codex). Leave empty to auto-detect from the preset name."
+									/>
+									<Input
+										id="preset-icon"
+										value={preset.icon ?? ""}
+										onChange={(e) => onFieldChange("icon", e.target.value)}
+										onBlur={() => onFieldBlur("icon")}
+										className={fieldClassName}
+										placeholder="e.g. 🚀 or claude (optional)"
+									/>
+								</div>
+
+								<div className="space-y-2">
+									<LabelWithTooltip
 										label="Description"
 										htmlFor="preset-description"
 										tooltip="Optional context to explain what this preset is for."

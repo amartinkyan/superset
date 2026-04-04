@@ -106,6 +106,7 @@ export const terminalPresetSchema = z.object({
 	id: z.string(),
 	name: z.string(),
 	description: z.string().optional(),
+	icon: z.string().optional(),
 	cwd: z.string(),
 	commands: z.array(z.string()),
 	projectIds: z.array(z.string()).nullable().optional(),

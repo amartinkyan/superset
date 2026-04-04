@@ -390,6 +390,7 @@ export const createSettingsRouter = () => {
 					patch: z.object({
 						name: z.string().optional(),
 						description: z.string().optional(),
+						icon: z.string().optional(),
 						cwd: z.string().optional(),
 						commands: z.array(z.string()).optional(),
 						projectIds: z.array(z.string()).nullable().optional(),
@@ -412,6 +413,7 @@ export const createSettingsRouter = () => {
 				if (input.patch.name !== undefined) preset.name = input.patch.name;
 				if (input.patch.description !== undefined)
 					preset.description = input.patch.description;
+				if (input.patch.icon !== undefined) preset.icon = input.patch.icon;
 				if (input.patch.cwd !== undefined) preset.cwd = input.patch.cwd;
 				if (input.patch.commands !== undefined)
 					preset.commands = input.patch.commands;
