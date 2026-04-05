@@ -1,8 +1,8 @@
 /**
  * V2 terminal environment contract.
  *
- * PTY env is built from a preserved shell snapshot captured at host-service
- * startup — never from the live host-service process.env.
+ * PTY env is built from a preserved shell snapshot resolved by the host-service
+ * at startup — never from desktop main or the live host-service process.env.
  */
 
 export { stripTerminalRuntimeEnv } from "./env-strip";
@@ -14,6 +14,10 @@ export {
 	resolveLaunchShell,
 } from "./shell-launch";
 
+import {
+	clearStrictShellEnvCache,
+	getStrictShellEnvironment,
+} from "./clean-shell-env";
 import { stripTerminalRuntimeEnv } from "./env-strip";
 import { getShellBootstrapEnv } from "./shell-launch";
 
@@ -21,21 +25,34 @@ import { getShellBootstrapEnv } from "./shell-launch";
 
 let _terminalBaseEnv: Record<string, string> | null = null;
 
-/**
- * Capture the terminal base env at host-service startup.
- *
- * Must be called early, before runtime code modifies process.env.
- * At this point process.env = shellSnapshot + desktop runtime additions.
- * Stripping the runtime additions recovers the original shell snapshot.
- */
-export function initTerminalBaseEnv(): void {
+function snapshotStringEnv(
+	baseEnv: NodeJS.ProcessEnv | Record<string, string> = process.env,
+): Record<string, string> {
 	const snapshot: Record<string, string> = {};
-	for (const [key, value] of Object.entries(process.env)) {
+	for (const [key, value] of Object.entries(baseEnv)) {
 		if (typeof value === "string") {
 			snapshot[key] = value;
 		}
 	}
-	_terminalBaseEnv = stripTerminalRuntimeEnv(snapshot);
+	return snapshot;
+}
+
+/**
+ * Resolve the shell-derived terminal base env inside the host-service process.
+ * Desktop main should not construct or own this snapshot.
+ */
+export async function resolveTerminalBaseEnv(): Promise<Record<string, string>> {
+	return getStrictShellEnvironment();
+}
+
+/**
+ * Capture the terminal base env at host-service startup.
+ *
+ * Accepts an explicit shell snapshot for the real startup path, but retains a
+ * process.env fallback for tests and local helpers.
+ */
+export function initTerminalBaseEnv(baseEnv?: Record<string, string>): void {
+	_terminalBaseEnv = stripTerminalRuntimeEnv(snapshotStringEnv(baseEnv));
 }
 
 export function getTerminalBaseEnv(): Record<string, string> {
@@ -49,6 +66,7 @@ export function getTerminalBaseEnv(): Record<string, string> {
 
 export function resetTerminalBaseEnvForTests(): void {
 	_terminalBaseEnv = null;
+	clearStrictShellEnvCache();
 }
 
 // ── Locale ───────────────────────────────────────────────────────────

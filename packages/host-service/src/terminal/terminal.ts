@@ -134,7 +134,7 @@ function createTerminalSessionInternal({
 
 	// Use the preserved shell snapshot — never live process.env
 	const baseEnv = getTerminalBaseEnv();
-	const supersetHomeDir = baseEnv.SUPERSET_HOME_DIR || "";
+	const supersetHomeDir = process.env.SUPERSET_HOME_DIR || "";
 	const shell = resolveLaunchShell(baseEnv);
 	const shellArgs = getShellLaunchArgs({ shell, supersetHomeDir });
 	const ptyEnv = buildV2TerminalEnv({

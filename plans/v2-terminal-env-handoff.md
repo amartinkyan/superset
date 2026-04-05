@@ -104,11 +104,10 @@ The shell-derived env snapshot is the only valid PTY base env.
 
 For v2:
 
-- desktop should resolve a shell-derived env snapshot once
-- host-service should be spawned from that shell-derived snapshot plus explicit
-  host-service runtime vars
-- host-service should preserve that shell snapshot as a dedicated terminal base
-  env, separate from its own runtime `process.env`
+- desktop should spawn host-service with the runtime env it needs
+- host-service should resolve a shell-derived env snapshot for terminal use
+- host-service should preserve that shell snapshot as a dedicated terminal
+  base env, separate from its own runtime `process.env`
 - PTYs should be built from that dedicated shell snapshot plus explicit v2
   terminal vars
 
@@ -122,9 +121,7 @@ passed through to user terminals by default.
 
 ### 2. Shell-derived base env
 
-Use the existing shell env primitive in:
-
-- `apps/desktop/src/lib/trpc/routers/workspaces/utils/shell-env.ts`
+Use a clean-shell resolver colocated with the host-service terminal code.
 
 But tighten the semantics:
 
@@ -306,14 +303,12 @@ If v2 needs those later, use shell integration and OSC sequences instead.
 
 ### Host-service launch env
 
-`apps/desktop/src/main/lib/host-service-manager.ts` must launch host-service
-from a real shell snapshot plus explicit host-service runtime additions.
+`apps/desktop/src/main/lib/host-service-manager.ts` should keep responsibility
+for launching host-service with the runtime env it needs.
 
-It must not start from desktop `process.env`.
-
-Host-service must also preserve the original shell snapshot as the dedicated
-terminal base env used for PTY construction. PTYs must not be derived from the
-live host-service `process.env`.
+Host-service itself must resolve and preserve the dedicated shell snapshot used
+for PTY construction. PTYs must not be derived from desktop main or the live
+host-service `process.env`.
 
 ### PTY context available in host-service
 

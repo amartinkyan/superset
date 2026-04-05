@@ -30,8 +30,9 @@ class MockChildProcess extends EventEmitter {
 	unref = mock(() => {});
 }
 
-const getStrictShellEnvironmentMock = mock(
-	async (): Promise<Record<string, string>> => ({
+const getProcessEnvWithShellPathMock = mock(
+	async (baseEnv?: NodeJS.ProcessEnv): Promise<Record<string, string>> => ({
+		...(baseEnv ? (baseEnv as Record<string, string>) : {}),
 		HOME: "/Users/test",
 		PATH: "/usr/bin:/bin",
 		SHELL: "/bin/zsh",
@@ -55,8 +56,8 @@ describe("HostServiceManager", () => {
 
 		spyOn(childProcessModule, "spawn").mockImplementation(((..._args) =>
 			spawnMock(..._args)) as typeof childProcessModule.spawn);
-		spyOn(shellEnvModule, "getStrictShellEnvironment").mockImplementation(() =>
-			getStrictShellEnvironmentMock(),
+		spyOn(shellEnvModule, "getProcessEnvWithShellPath").mockImplementation(
+			(baseEnv) => getProcessEnvWithShellPathMock(baseEnv),
 		);
 
 		mock.module("electron", () => ({
@@ -80,12 +81,15 @@ describe("HostServiceManager", () => {
 	});
 
 	beforeEach(() => {
-		getStrictShellEnvironmentMock.mockReset();
-		getStrictShellEnvironmentMock.mockImplementation(async () => ({
-			HOME: "/Users/test",
-			PATH: "/usr/bin:/bin",
-			SHELL: "/bin/zsh",
-		}));
+		getProcessEnvWithShellPathMock.mockReset();
+		getProcessEnvWithShellPathMock.mockImplementation(
+			async (baseEnv?: NodeJS.ProcessEnv) => ({
+				...(baseEnv ? (baseEnv as Record<string, string>) : {}),
+				HOME: "/Users/test",
+				PATH: "/usr/bin:/bin",
+				SHELL: "/bin/zsh",
+			}),
+		);
 		spawnMock.mockReset();
 		spawnMock.mockImplementation(() => {
 			lastChild = new MockChildProcess();
@@ -94,19 +98,18 @@ describe("HostServiceManager", () => {
 		lastChild = null;
 	});
 
-	it("dedupes concurrent starts while shell snapshot is resolving", async () => {
+	it("dedupes concurrent starts while shell env is resolving", async () => {
 		const manager = new HostServiceManager();
 		const pendingEnv = createDeferred<Record<string, string>>();
-		getStrictShellEnvironmentMock.mockImplementation(() => pendingEnv.promise);
+		getProcessEnvWithShellPathMock.mockImplementation(() => pendingEnv.promise);
 
 		const firstStart = manager.start("org-1");
 		const secondStart = manager.start("org-1");
 
 		expect(manager.getStatus("org-1")).toBe("starting");
 
-		// Flush microtasks so tryAdopt completes (no manifest → falls through to spawn)
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(getStrictShellEnvironmentMock.mock.calls).toHaveLength(1);
+		expect(getProcessEnvWithShellPathMock.mock.calls).toHaveLength(1);
 
 		pendingEnv.resolve({
 			HOME: "/Users/test",
@@ -128,19 +131,16 @@ describe("HostServiceManager", () => {
 		expect(manager.getPort("org-1")).toBe(4242);
 	});
 
-	it("spawns host-service from the strict shell snapshot plus explicit runtime keys", async () => {
+	it("spawns host-service from shell-path env plus explicit service keys", async () => {
 		const manager = new HostServiceManager();
 		manager.setAuthToken("auth-token");
 		manager.setCloudApiUrl("https://api.example.com");
 
-		const originalLeakedValues = {
-			SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
-			npm_package_name: process.env.npm_package_name,
-			ELECTRON_CLI_ARGS: process.env.ELECTRON_CLI_ARGS,
+		const originalValues = {
+			__HOST_SERVICE_RUNTIME_ENV_TEST__:
+				process.env.__HOST_SERVICE_RUNTIME_ENV_TEST__,
 		};
-		process.env.SENTRY_AUTH_TOKEN = "desktop-secret";
-		process.env.npm_package_name = "desktop-app";
-		process.env.ELECTRON_CLI_ARGS = "--inspect";
+		process.env.__HOST_SERVICE_RUNTIME_ENV_TEST__ = "desktop-runtime";
 
 		try {
 			const startPromise = manager.start("org-1");
@@ -156,6 +156,7 @@ describe("HostServiceManager", () => {
 				HOME: "/Users/test",
 				PATH: "/usr/bin:/bin",
 				SHELL: "/bin/zsh",
+				__HOST_SERVICE_RUNTIME_ENV_TEST__: "desktop-runtime",
 				AUTH_TOKEN: "auth-token",
 				CLOUD_API_URL: "https://api.example.com",
 				ELECTRON_RUN_AS_NODE: "1",
@@ -164,27 +165,15 @@ describe("HostServiceManager", () => {
 			});
 			expect(env?.HOST_SERVICE_SECRET).toEqual(expect.any(String));
 			expect(env?.HOST_DB_PATH).toEqual(expect.any(String));
-			expect(env?.SENTRY_AUTH_TOKEN).toBeUndefined();
-			expect(env?.npm_package_name).toBeUndefined();
-			expect(env?.ELECTRON_CLI_ARGS).toBeUndefined();
 
 			lastChild?.emit("message", { type: "ready", port: 4001 });
 			await startPromise;
 		} finally {
-			if (originalLeakedValues.SENTRY_AUTH_TOKEN !== undefined) {
-				process.env.SENTRY_AUTH_TOKEN = originalLeakedValues.SENTRY_AUTH_TOKEN;
+			if (originalValues.__HOST_SERVICE_RUNTIME_ENV_TEST__ !== undefined) {
+				process.env.__HOST_SERVICE_RUNTIME_ENV_TEST__ =
+					originalValues.__HOST_SERVICE_RUNTIME_ENV_TEST__;
 			} else {
-				delete process.env.SENTRY_AUTH_TOKEN;
-			}
-			if (originalLeakedValues.npm_package_name !== undefined) {
-				process.env.npm_package_name = originalLeakedValues.npm_package_name;
-			} else {
-				delete process.env.npm_package_name;
-			}
-			if (originalLeakedValues.ELECTRON_CLI_ARGS !== undefined) {
-				process.env.ELECTRON_CLI_ARGS = originalLeakedValues.ELECTRON_CLI_ARGS;
-			} else {
-				delete process.env.ELECTRON_CLI_ARGS;
+				delete process.env.__HOST_SERVICE_RUNTIME_ENV_TEST__;
 			}
 		}
 	});

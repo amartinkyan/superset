@@ -2,20 +2,26 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app";
 import { env } from "./env";
 import { PskHostAuthProvider } from "./providers/host-auth";
-import { initTerminalBaseEnv } from "./terminal/env";
+import { initTerminalBaseEnv, resolveTerminalBaseEnv } from "./terminal/env";
 
-// Capture the shell-derived base env before any runtime modifications.
-// This preserved snapshot is the only valid base env for PTY construction.
-initTerminalBaseEnv();
+async function main(): Promise<void> {
+	const terminalBaseEnv = await resolveTerminalBaseEnv();
+	initTerminalBaseEnv(terminalBaseEnv);
 
-const hostAuth = new PskHostAuthProvider(env.HOST_SERVICE_SECRET);
-const { app, injectWebSocket } = createApp({
-	dbPath: env.HOST_DB_PATH,
-	hostAuth,
-	allowedOrigins: env.CORS_ORIGINS ?? [],
+	const hostAuth = new PskHostAuthProvider(env.HOST_SERVICE_SECRET);
+	const { app, injectWebSocket } = createApp({
+		dbPath: env.HOST_DB_PATH,
+		hostAuth,
+		allowedOrigins: env.CORS_ORIGINS ?? [],
+	});
+
+	const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
+		console.log(`[host-service] listening on http://localhost:${info.port}`);
+	});
+	injectWebSocket(server);
+}
+
+void main().catch((error) => {
+	console.error("[host-service] Failed to start:", error);
+	process.exit(1);
 });
-
-const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
-	console.log(`[host-service] listening on http://localhost:${info.port}`);
-});
-injectWebSocket(server);

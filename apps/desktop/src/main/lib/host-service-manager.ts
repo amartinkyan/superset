@@ -5,7 +5,7 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import { app } from "electron";
 import { env as sharedEnv } from "shared/env.shared";
-import { getStrictShellEnvironment } from "../../lib/trpc/routers/workspaces/utils/shell-env";
+import { getProcessEnvWithShellPath } from "../../lib/trpc/routers/workspaces/utils/shell-env";
 import { SUPERSET_HOME_DIR } from "./app-environment";
 import { getDeviceName, getHashedDeviceId } from "./device-info";
 import {
@@ -121,24 +121,14 @@ export function checkCompatibility(instance: {
 	return { compatible: true, updateAvailable };
 }
 
-/**
- * Resolve a real shell-derived env snapshot for terminal construction.
- * Throws if shell resolution fails — v2 terminal creation fails closed.
- * Desktop process.env is never a valid substitute.
- */
-async function resolveTerminalShellSnapshot(): Promise<Record<string, string>> {
-	return getStrictShellEnvironment();
-}
-
 async function buildHostServiceEnv(
 	organizationId: string,
 	secret: string,
 ): Promise<Record<string, string>> {
-	const shellSnapshot = await resolveTerminalShellSnapshot();
 	const orgDir = manifestDir(organizationId);
 
-	return {
-		...shellSnapshot,
+	return getProcessEnvWithShellPath({
+		...(process.env as Record<string, string>),
 		// Host-service runtime keys
 		ELECTRON_RUN_AS_NODE: "1",
 		ORGANIZATION_ID: organizationId,
@@ -156,7 +146,7 @@ async function buildHostServiceEnv(
 		SUPERSET_HOME_DIR: SUPERSET_HOME_DIR,
 		SUPERSET_AGENT_HOOK_PORT: String(sharedEnv.DESKTOP_NOTIFICATIONS_PORT),
 		SUPERSET_AGENT_HOOK_VERSION: HOOK_PROTOCOL_VERSION,
-	};
+	});
 }
 
 export class HostServiceManager extends EventEmitter {
