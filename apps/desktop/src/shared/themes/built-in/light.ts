@@ -21,7 +21,7 @@ export const lightTheme: Theme = {
 		primaryForeground: "oklch(0.985 0 0)",
 		secondary: "oklch(0.97 0 0)",
 		secondaryForeground: "oklch(0.205 0 0)",
-		muted: "oklch(0.97 0 0)",
+		muted: "oklch(0.94 0 0)",
 		mutedForeground: "oklch(0.556 0 0)",
 		accent: "oklch(0.93 0 0)",
 		accentForeground: "oklch(0.205 0 0)",
