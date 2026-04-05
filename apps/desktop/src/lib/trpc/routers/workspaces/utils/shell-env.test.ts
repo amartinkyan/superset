@@ -112,14 +112,12 @@ describe("shell env cache", () => {
 			{ clearShellEnvCache, getStrictShellEnvironment },
 			defaultShellModule,
 		] = await Promise.all([import("./shell-env"), import("default-shell")]);
+		const raw = defaultShellModule.default as string | { default: string };
 		const resolvedDefaultShell =
-			typeof defaultShellModule.default === "string"
-				? defaultShellModule.default
-				: typeof defaultShellModule.default === "object" &&
-						defaultShellModule.default !== null &&
-						"default" in defaultShellModule.default &&
-						typeof defaultShellModule.default.default === "string"
-					? defaultShellModule.default.default
+			typeof raw === "string"
+				? raw
+				: typeof raw?.default === "string"
+					? raw.default
 					: null;
 
 		if (!resolvedDefaultShell?.endsWith("zsh")) {

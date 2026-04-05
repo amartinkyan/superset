@@ -72,7 +72,9 @@ function parseEnvOutput(stdout: string): Record<string, string> {
 	}
 
 	if (Object.keys(result).length === 0) {
-		throw new Error("Shell env resolution returned empty — shell may have failed to start");
+		throw new Error(
+			"Shell env resolution returned empty — shell may have failed to start",
+		);
 	}
 
 	return result;

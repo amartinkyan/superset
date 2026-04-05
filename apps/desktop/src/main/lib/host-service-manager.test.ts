@@ -30,11 +30,13 @@ class MockChildProcess extends EventEmitter {
 	unref = mock(() => {});
 }
 
-const getStrictShellEnvironmentMock = mock(async () => ({
-	HOME: "/Users/test",
-	PATH: "/usr/bin:/bin",
-	SHELL: "/bin/zsh",
-}));
+const getStrictShellEnvironmentMock = mock(
+	async (): Promise<Record<string, string>> => ({
+		HOME: "/Users/test",
+		PATH: "/usr/bin:/bin",
+		SHELL: "/bin/zsh",
+	}),
+);
 let lastChild: MockChildProcess | null = null;
 const spawnMock = mock((..._args: unknown[]) => {
 	lastChild = new MockChildProcess();
