@@ -49,6 +49,7 @@ const {
 	setupCopyHandler,
 	setupKeyboardHandler,
 	setupPasteHandler,
+	setupResizeHandlers,
 } = await import("./helpers");
 
 describe("getDefaultTerminalTheme", () => {
@@ -422,5 +423,195 @@ describe("setupPasteHandler", () => {
 		expect(onWrite).not.toHaveBeenCalled();
 		expect(preventDefault).not.toHaveBeenCalled();
 		expect(stopImmediatePropagation).not.toHaveBeenCalled();
+	});
+});
+
+describe("setupResizeHandlers", () => {
+	// Mock ResizeObserver and requestAnimationFrame for test environment
+	const originalResizeObserver = globalThis.ResizeObserver;
+	const originalRAF = globalThis.requestAnimationFrame;
+	beforeEach(() => {
+		globalThis.ResizeObserver = class MockResizeObserver {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		} as unknown as typeof ResizeObserver;
+		globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
+			cb(0);
+			return 0;
+		};
+	});
+	afterEach(() => {
+		if (originalResizeObserver) {
+			globalThis.ResizeObserver = originalResizeObserver;
+		}
+		if (originalRAF) {
+			globalThis.requestAnimationFrame = originalRAF;
+		}
+	});
+
+	function createResizeStubs(initialCols = 80, initialRows = 24) {
+		let cols = initialCols;
+		let rows = initialRows;
+		const fitAddon = {
+			fit: mock(() => {}),
+		};
+		const xterm = {
+			get cols() {
+				return cols;
+			},
+			get rows() {
+				return rows;
+			},
+			buffer: { active: { viewportY: 0, baseY: 10 } },
+			scrollToBottom: mock(() => {}),
+		};
+		const container = document.createElement("div");
+		return {
+			xterm: xterm as unknown as XTerm,
+			fitAddon,
+			container,
+			setDimensions(c: number, r: number) {
+				cols = c;
+				rows = r;
+			},
+		};
+	}
+
+	it("calls onResize when dimensions change after fit", async () => {
+		const { xterm, fitAddon, container, setDimensions } = createResizeStubs(
+			80,
+			24,
+		);
+		const onResize = mock(() => {});
+
+		// Make fitAddon.fit() simulate a dimension change
+		fitAddon.fit.mockImplementation(() => setDimensions(100, 30));
+
+		const cleanup = setupResizeHandlers(
+			container,
+			xterm,
+			fitAddon as never,
+			onResize,
+		);
+
+		// Trigger window resize
+		window.dispatchEvent(new Event("resize"));
+
+		// Wait for debounce (150ms) + buffer
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(fitAddon.fit).toHaveBeenCalled();
+		expect(onResize).toHaveBeenCalledWith(100, 30);
+
+		cleanup();
+	});
+
+	it("does NOT call onResize when dimensions remain unchanged after fit (zoom scenario)", async () => {
+		const { xterm, fitAddon, container } = createResizeStubs(80, 24);
+		const onResize = mock(() => {});
+
+		// fitAddon.fit() does NOT change cols/rows (simulates zoom where dimensions stay the same)
+		const cleanup = setupResizeHandlers(
+			container,
+			xterm,
+			fitAddon as never,
+			onResize,
+		);
+
+		// Trigger multiple window resize events (as zoom would)
+		window.dispatchEvent(new Event("resize"));
+		window.dispatchEvent(new Event("resize"));
+		window.dispatchEvent(new Event("resize"));
+
+		// Wait for debounce
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(fitAddon.fit).toHaveBeenCalled();
+		expect(onResize).not.toHaveBeenCalled();
+
+		cleanup();
+	});
+
+	it("calls onResize only once when multiple resize events fire with same final dimensions", async () => {
+		const { xterm, fitAddon, container, setDimensions } = createResizeStubs(
+			80,
+			24,
+		);
+		const onResize = mock(() => {});
+
+		fitAddon.fit.mockImplementation(() => setDimensions(90, 28));
+
+		const cleanup = setupResizeHandlers(
+			container,
+			xterm,
+			fitAddon as never,
+			onResize,
+		);
+
+		// Rapid-fire resize events (simulates zoom)
+		window.dispatchEvent(new Event("resize"));
+		window.dispatchEvent(new Event("resize"));
+		window.dispatchEvent(new Event("resize"));
+
+		// Wait for debounce
+		await new Promise((r) => setTimeout(r, 200));
+
+		// Debounce should collapse to one call, and dimensions changed so onResize fires once
+		expect(onResize).toHaveBeenCalledTimes(1);
+		expect(onResize).toHaveBeenCalledWith(90, 28);
+
+		cleanup();
+	});
+
+	it("does not call onResize after second resize if dimensions match previous resize", async () => {
+		const { xterm, fitAddon, container, setDimensions } = createResizeStubs(
+			80,
+			24,
+		);
+		const onResize = mock(() => {});
+
+		fitAddon.fit.mockImplementation(() => setDimensions(100, 30));
+
+		const cleanup = setupResizeHandlers(
+			container,
+			xterm,
+			fitAddon as never,
+			onResize,
+		);
+
+		// First resize - dimensions change
+		window.dispatchEvent(new Event("resize"));
+		await new Promise((r) => setTimeout(r, 200));
+		expect(onResize).toHaveBeenCalledTimes(1);
+
+		// Second resize - dimensions stay at 100x30 (already set)
+		window.dispatchEvent(new Event("resize"));
+		await new Promise((r) => setTimeout(r, 200));
+
+		// Should still only have been called once total
+		expect(onResize).toHaveBeenCalledTimes(1);
+
+		cleanup();
+	});
+
+	it("cleans up event listeners on dispose", async () => {
+		const { xterm, fitAddon, container } = createResizeStubs(80, 24);
+		const onResize = mock(() => {});
+
+		const cleanup = setupResizeHandlers(
+			container,
+			xterm,
+			fitAddon as never,
+			onResize,
+		);
+
+		cleanup();
+
+		// After cleanup, resize events should not trigger fit
+		window.dispatchEvent(new Event("resize"));
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(fitAddon.fit).not.toHaveBeenCalled();
 	});
 });

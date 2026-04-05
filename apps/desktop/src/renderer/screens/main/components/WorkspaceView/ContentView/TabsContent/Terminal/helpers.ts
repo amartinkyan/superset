@@ -713,11 +713,20 @@ export function setupResizeHandlers(
 	fitAddon: FitAddon,
 	onResize: (cols: number, rows: number) => void,
 ): () => void {
+	let lastCols = xterm.cols;
+	let lastRows = xterm.rows;
+
 	const debouncedHandleResize = debounce(() => {
 		const buffer = xterm.buffer.active;
 		const wasAtBottom = buffer.viewportY >= buffer.baseY;
 		fitAddon.fit();
-		onResize(xterm.cols, xterm.rows);
+		const newCols = xterm.cols;
+		const newRows = xterm.rows;
+		if (newCols !== lastCols || newRows !== lastRows) {
+			lastCols = newCols;
+			lastRows = newRows;
+			onResize(newCols, newRows);
+		}
 		if (wasAtBottom) {
 			requestAnimationFrame(() => scrollToBottom(xterm));
 		}
