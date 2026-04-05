@@ -505,7 +505,6 @@ Secondary follow-up targets:
    - `npm_`
    - `npm_config_`
    - `ELECTRON_`
-   - `VSCODE_`
    - `VITE_`
    - `NEXT_PUBLIC_`
    - `TURBO_`
