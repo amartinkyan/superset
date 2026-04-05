@@ -130,8 +130,10 @@ export function buildV2TerminalEnv(
 		agentHookVersion,
 	} = params;
 
-	// 1. Copy the base (already stripped shell snapshot)
-	const env = { ...baseEnv };
+	// 1. Strip runtime keys (defense in depth — baseEnv should already be
+	//    pre-stripped via initTerminalBaseEnv, but we strip again to guarantee
+	//    no runtime keys reach PTYs regardless of call site)
+	const env = stripTerminalRuntimeEnv(baseEnv);
 
 	// 2. Merge shell bootstrap env
 	const bootstrapEnv = getShellBootstrapEnv({

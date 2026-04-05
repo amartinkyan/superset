@@ -1,12 +1,12 @@
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
 	buildV2TerminalEnv,
 	getShellBootstrapEnv,
 	getShellLaunchArgs,
-	getSupersetShellPaths,
+	getTerminalBaseEnv,
+	initTerminalBaseEnv,
 	normalizeUtf8Locale,
+	resetTerminalBaseEnvForTests,
 	resolveLaunchShell,
 	stripTerminalRuntimeEnv,
 } from "./env";
@@ -69,6 +69,11 @@ describe("stripTerminalRuntimeEnv", () => {
 		NODE_ENV: "development",
 		NODE_OPTIONS: "--max-old-space-size=4096",
 		NODE_PATH: "/some/path",
+		// Dev-runner and Electron runtime vars
+		npm_package_name: "superset",
+		npm_config_registry: "https://registry.npmjs.org",
+		npm_lifecycle_event: "dev",
+		ELECTRON_ENABLE_LOGGING: "1",
 		// Build-tool prefix keys
 		VITE_API_URL: "http://localhost:3000",
 		NEXT_PUBLIC_KEY: "pk_123",
@@ -115,6 +120,36 @@ describe("stripTerminalRuntimeEnv", () => {
 		expect(result.NODE_ENV).toBeUndefined();
 		expect(result.NODE_OPTIONS).toBeUndefined();
 		expect(result.NODE_PATH).toBeUndefined();
+	});
+
+	test("dev-runner and Electron runtime vars do not reach PTY env", () => {
+		const result = stripTerminalRuntimeEnv(secretsEnv);
+		expect(result.npm_package_name).toBeUndefined();
+		expect(result.npm_config_registry).toBeUndefined();
+		expect(result.npm_lifecycle_event).toBeUndefined();
+		expect(result.ELECTRON_ENABLE_LOGGING).toBeUndefined();
+	});
+
+	test("HOST_*, DESKTOP_*, DEVICE_* prefixes are stripped", () => {
+		const env: Record<string, string> = {
+			HOST_DB_PATH: "/tmp/db",
+			HOST_MANIFEST_DIR: "/tmp/manifests",
+			HOST_CUSTOM_KEY: "value",
+			DESKTOP_VITE_PORT: "5173",
+			DESKTOP_OTHER: "val",
+			DEVICE_CLIENT_ID: "abc",
+			DEVICE_NAME: "Mac",
+			HOME: "/Users/test",
+		};
+		const result = stripTerminalRuntimeEnv(env);
+		expect(result.HOST_DB_PATH).toBeUndefined();
+		expect(result.HOST_MANIFEST_DIR).toBeUndefined();
+		expect(result.HOST_CUSTOM_KEY).toBeUndefined();
+		expect(result.DESKTOP_VITE_PORT).toBeUndefined();
+		expect(result.DESKTOP_OTHER).toBeUndefined();
+		expect(result.DEVICE_CLIENT_ID).toBeUndefined();
+		expect(result.DEVICE_NAME).toBeUndefined();
+		expect(result.HOME).toBe("/Users/test");
 	});
 
 	test("build-tool prefix keys are stripped", () => {
@@ -177,15 +212,16 @@ describe("getShellLaunchArgs", () => {
 		).toEqual(["-l"]);
 	});
 
-	test("bash uses rcfile when present", () => {
-		// This test depends on actual filesystem — check for existence
+	test("bash falls back to login shell when rcfile missing", () => {
 		const args = getShellLaunchArgs({ shell: "/bin/bash", supersetHomeDir });
-		// With a non-existent supersetHomeDir, should fall back to login shell
 		expect(args).toEqual(["-l"]);
 	});
 
 	test("fish uses init-command", () => {
-		const args = getShellLaunchArgs({ shell: "/usr/bin/fish", supersetHomeDir });
+		const args = getShellLaunchArgs({
+			shell: "/usr/bin/fish",
+			supersetHomeDir,
+		});
 		expect(args[0]).toBe("-l");
 		expect(args[1]).toBe("--init-command");
 		expect(args[2]).toContain("_superset_bin");
@@ -213,7 +249,6 @@ describe("getShellLaunchArgs", () => {
 
 describe("getShellBootstrapEnv", () => {
 	test("zsh bootstrap applies only when wrapper files exist", () => {
-		// Non-existent supersetHomeDir: should return empty
 		const result = getShellBootstrapEnv({
 			shell: "/bin/zsh",
 			baseEnv: { HOME: "/Users/test" },
@@ -250,6 +285,70 @@ describe("getShellBootstrapEnv", () => {
 	});
 });
 
+// ── Terminal base env preservation ───────────────────────────────────
+
+describe("terminal base env preservation", () => {
+	test("getTerminalBaseEnv throws when not initialized", () => {
+		resetTerminalBaseEnvForTests();
+		expect(() => getTerminalBaseEnv()).toThrow("not initialized");
+	});
+
+	test("PTY env is built from preserved snapshot, not live process.env", () => {
+		resetTerminalBaseEnvForTests();
+
+		// Simulate host-service startup: process.env = shellSnapshot + runtime keys
+		const originalProcessEnv = { ...process.env };
+		try {
+			// Set up process.env as if desktop spawned host-service
+			process.env.HOME = "/Users/test";
+			process.env.PATH = "/usr/bin";
+			process.env.SHELL = "/bin/zsh";
+			process.env.NVM_DIR = "/Users/test/.nvm";
+			// Runtime keys that should be stripped
+			process.env.HOST_SERVICE_SECRET = "secret-123";
+			process.env.ORGANIZATION_ID = "org-abc";
+			process.env.ELECTRON_RUN_AS_NODE = "1";
+
+			initTerminalBaseEnv();
+
+			const baseEnv = getTerminalBaseEnv();
+
+			// Shell vars preserved
+			expect(baseEnv.HOME).toBe("/Users/test");
+			expect(baseEnv.PATH).toBe("/usr/bin");
+			expect(baseEnv.SHELL).toBe("/bin/zsh");
+			expect(baseEnv.NVM_DIR).toBe("/Users/test/.nvm");
+
+			// Runtime keys stripped
+			expect(baseEnv.HOST_SERVICE_SECRET).toBeUndefined();
+			expect(baseEnv.ORGANIZATION_ID).toBeUndefined();
+			expect(baseEnv.ELECTRON_RUN_AS_NODE).toBeUndefined();
+
+			// Modify process.env after init — preserved snapshot unaffected
+			process.env.INJECTED_LATER = "should-not-appear";
+			const freshBaseEnv = getTerminalBaseEnv();
+			expect(freshBaseEnv.INJECTED_LATER).toBeUndefined();
+		} finally {
+			// Restore original process.env
+			for (const key of Object.keys(process.env)) {
+				if (!(key in originalProcessEnv)) {
+					delete process.env[key];
+				}
+			}
+			for (const [key, value] of Object.entries(originalProcessEnv)) {
+				process.env[key] = value;
+			}
+			resetTerminalBaseEnvForTests();
+		}
+	});
+
+	test("shell resolution failure means no terminal base env", () => {
+		resetTerminalBaseEnvForTests();
+		// Without calling initTerminalBaseEnv(), getTerminalBaseEnv throws
+		expect(() => getTerminalBaseEnv()).toThrow();
+	});
+});
+
 // ── buildV2TerminalEnv ───────────────────────────────────────────────
 
 describe("buildV2TerminalEnv", () => {
@@ -258,14 +357,7 @@ describe("buildV2TerminalEnv", () => {
 			HOME: "/Users/test",
 			PATH: "/usr/bin",
 			SHELL: "/bin/zsh",
-			HOST_SERVICE_VERSION: "2.0.0",
 			SUPERSET_HOME_DIR: "/Users/test/.superset",
-			SUPERSET_AGENT_HOOK_PORT: "51741",
-			SUPERSET_AGENT_HOOK_VERSION: "2",
-			NODE_ENV: "production",
-			// Secrets that must not leak
-			AUTH_TOKEN: "secret",
-			HOST_SERVICE_SECRET: "secret",
 		},
 		shell: "/bin/zsh",
 		supersetHomeDir: "/Users/test/.superset",
@@ -274,6 +366,10 @@ describe("buildV2TerminalEnv", () => {
 		workspaceId: "ws-1",
 		workspacePath: "/tmp/workspace",
 		rootPath: "/tmp/repo",
+		hostServiceVersion: "2.0.0",
+		supersetEnv: "production" as const,
+		agentHookPort: "51741",
+		agentHookVersion: "2",
 	};
 
 	test("v2 Superset metadata is present", () => {
@@ -302,24 +398,18 @@ describe("buildV2TerminalEnv", () => {
 		expect(env.SUPERSET_ROOT_PATH).toBe("");
 	});
 
-	test("secrets do not leak through buildV2TerminalEnv", () => {
-		const env = buildV2TerminalEnv(baseParams);
-		expect(env.AUTH_TOKEN).toBeUndefined();
-		expect(env.HOST_SERVICE_SECRET).toBeUndefined();
-	});
-
-	test("SUPERSET_ENV reflects NODE_ENV correctly", () => {
+	test("SUPERSET_ENV reflects the passed value", () => {
 		const env = buildV2TerminalEnv(baseParams);
 		expect(env.SUPERSET_ENV).toBe("production");
 
 		const devEnv = buildV2TerminalEnv({
 			...baseParams,
-			baseEnv: { ...baseParams.baseEnv, NODE_ENV: "development" },
+			supersetEnv: "development",
 		});
 		expect(devEnv.SUPERSET_ENV).toBe("development");
 	});
 
-	test("does not include legacy v1 vars", () => {
+	test("does not include legacy v1 vars from base env", () => {
 		const env = buildV2TerminalEnv({
 			...baseParams,
 			baseEnv: {
@@ -366,24 +456,25 @@ describe("buildV2TerminalEnv", () => {
 	});
 });
 
-// ── Integration-level: env never degenerates to raw process.env ──────
+// ── Integration: env never degenerates to process.env ────────────────
 
 describe("v2 env contract boundary", () => {
-	test("when fallback env is filtered, it does not contain raw process.env secrets", () => {
-		// Simulate a host-service process.env that contains runtime secrets
-		const hostServiceProcessEnv: Record<string, string> = {
-			HOME: "/Users/test",
-			PATH: "/usr/bin",
-			SHELL: "/bin/zsh",
-			HOST_SERVICE_SECRET: "top-secret",
-			AUTH_TOKEN: "bearer-xyz",
-			ORGANIZATION_ID: "org-abc",
-			NODE_ENV: "production",
-			VITE_SECRET: "vite-key",
-		};
-
-		const ptyEnv = buildV2TerminalEnv({
-			baseEnv: hostServiceProcessEnv,
+	test("runtime secrets in base env are stripped even when present", () => {
+		// Simulate a base env that somehow has runtime secrets
+		// (e.g. from shell snapshot contamination)
+		const env = buildV2TerminalEnv({
+			baseEnv: {
+				HOME: "/Users/test",
+				PATH: "/usr/bin",
+				SHELL: "/bin/zsh",
+				HOST_SERVICE_SECRET: "top-secret",
+				AUTH_TOKEN: "bearer-xyz",
+				ORGANIZATION_ID: "org-abc",
+				NODE_ENV: "production",
+				VITE_SECRET: "vite-key",
+				npm_package_name: "superset",
+				ELECTRON_IS_DEV: "1",
+			},
 			shell: "/bin/zsh",
 			supersetHomeDir: "/Users/test/.superset",
 			cwd: "/tmp/ws",
@@ -391,18 +482,24 @@ describe("v2 env contract boundary", () => {
 			workspaceId: "w-1",
 			workspacePath: "/tmp/ws",
 			rootPath: "",
+			hostServiceVersion: "2.0.0",
+			supersetEnv: "production",
+			agentHookPort: "51741",
+			agentHookVersion: "2",
 		});
 
 		// None of the runtime secrets should be present
-		expect(ptyEnv.HOST_SERVICE_SECRET).toBeUndefined();
-		expect(ptyEnv.AUTH_TOKEN).toBeUndefined();
-		expect(ptyEnv.ORGANIZATION_ID).toBeUndefined();
-		expect(ptyEnv.NODE_ENV).toBeUndefined();
-		expect(ptyEnv.VITE_SECRET).toBeUndefined();
+		expect(env.HOST_SERVICE_SECRET).toBeUndefined();
+		expect(env.AUTH_TOKEN).toBeUndefined();
+		expect(env.ORGANIZATION_ID).toBeUndefined();
+		expect(env.NODE_ENV).toBeUndefined();
+		expect(env.VITE_SECRET).toBeUndefined();
+		expect(env.npm_package_name).toBeUndefined();
+		expect(env.ELECTRON_IS_DEV).toBeUndefined();
 
 		// But user shell vars remain
-		expect(ptyEnv.HOME).toBe("/Users/test");
-		expect(ptyEnv.PATH).toBe("/usr/bin");
-		expect(ptyEnv.SHELL).toBe("/bin/zsh");
+		expect(env.HOME).toBe("/Users/test");
+		expect(env.PATH).toBe("/usr/bin");
+		expect(env.SHELL).toBe("/bin/zsh");
 	});
 });
