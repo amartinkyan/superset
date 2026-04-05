@@ -18,6 +18,12 @@ interface RegisterWorkspaceTerminalRouteOptions {
 	upgradeWebSocket: NodeWebSocket["upgradeWebSocket"];
 }
 
+function parseThemeType(
+	value: string | null | undefined,
+): "dark" | "light" | undefined {
+	return value === "dark" || value === "light" ? value : undefined;
+}
+
 type TerminalClientMessage =
 	| { type: "input"; data: string }
 	| { type: "resize"; cols: number; rows: number }
@@ -100,12 +106,14 @@ function disposeSession(terminalId: string, db: HostDb) {
 interface CreateTerminalSessionOptions {
 	terminalId: string;
 	workspaceId: string;
+	themeType?: "dark" | "light";
 	db: HostDb;
 }
 
 function createTerminalSessionInternal({
 	terminalId,
 	workspaceId,
+	themeType,
 	db,
 }: CreateTerminalSessionOptions): TerminalSession | { error: string } {
 	const existing = sessions.get(terminalId);
@@ -141,6 +149,7 @@ function createTerminalSessionInternal({
 		baseEnv,
 		shell,
 		supersetHomeDir,
+		themeType,
 		cwd,
 		terminalId,
 		workspaceId,
@@ -283,6 +292,7 @@ export function registerWorkspaceTerminalRoute({
 		upgradeWebSocket((c) => {
 			const terminalId = c.req.param("terminalId") ?? "";
 			const workspaceId = c.req.query("workspaceId") ?? null;
+			const themeType = parseThemeType(c.req.query("themeType"));
 
 			return {
 				onOpen: (_event, ws) => {
@@ -326,6 +336,7 @@ export function registerWorkspaceTerminalRoute({
 					const result = createTerminalSessionInternal({
 						terminalId,
 						workspaceId,
+						themeType,
 						db,
 					});
 

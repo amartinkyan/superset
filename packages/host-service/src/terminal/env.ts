@@ -14,12 +14,25 @@ export {
 	resolveLaunchShell,
 } from "./shell-launch";
 
+import fs from "node:fs";
+import os from "node:os";
 import {
 	clearStrictShellEnvCache,
 	getStrictShellEnvironment,
 } from "./clean-shell-env";
 import { stripTerminalRuntimeEnv } from "./env-strip";
 import { getShellBootstrapEnv } from "./shell-launch";
+
+const MACOS_SYSTEM_CERT_FILE = "/etc/ssl/cert.pem";
+let cachedMacosSystemCertAvailable: boolean | null = null;
+
+function hasMacosSystemCertBundle(): boolean {
+	if (cachedMacosSystemCertAvailable !== null) {
+		return cachedMacosSystemCertAvailable;
+	}
+	cachedMacosSystemCertAvailable = fs.existsSync(MACOS_SYSTEM_CERT_FILE);
+	return cachedMacosSystemCertAvailable;
+}
 
 // ── Shell snapshot preservation ──────────────────────────────────────
 
@@ -68,6 +81,7 @@ export function getTerminalBaseEnv(): Record<string, string> {
 
 export function resetTerminalBaseEnvForTests(): void {
 	_terminalBaseEnv = null;
+	cachedMacosSystemCertAvailable = null;
 	clearStrictShellEnvCache();
 }
 
@@ -88,6 +102,7 @@ interface BuildV2TerminalEnvParams {
 	baseEnv: Record<string, string>;
 	shell: string;
 	supersetHomeDir: string;
+	themeType?: "dark" | "light";
 	cwd: string;
 	terminalId: string;
 	workspaceId: string;
@@ -110,6 +125,7 @@ export function buildV2TerminalEnv(
 		baseEnv,
 		shell,
 		supersetHomeDir,
+		themeType,
 		cwd,
 		terminalId,
 		workspaceId,
@@ -131,6 +147,7 @@ export function buildV2TerminalEnv(
 	env.TERM_PROGRAM = "Superset";
 	env.TERM_PROGRAM_VERSION = hostServiceVersion;
 	env.COLORTERM = "truecolor";
+	env.COLORFGBG = themeType === "light" ? "0;15" : "15;0";
 	env.LANG = normalizeUtf8Locale(baseEnv);
 	env.PWD = cwd;
 
@@ -141,6 +158,20 @@ export function buildV2TerminalEnv(
 	env.SUPERSET_ENV = supersetEnv;
 	env.SUPERSET_AGENT_HOOK_PORT = agentHookPort;
 	env.SUPERSET_AGENT_HOOK_VERSION = agentHookVersion;
+
+	if (supersetHomeDir) {
+		env.SUPERSET_HOME_DIR = supersetHomeDir;
+	}
+
+	// Electron child processes can't access macOS Keychain for TLS cert verification,
+	// causing "x509: OSStatus -26276" in Go binaries like `gh`. File-based fallback.
+	if (
+		os.platform() === "darwin" &&
+		!env.SSL_CERT_FILE &&
+		hasMacosSystemCertBundle()
+	) {
+		env.SSL_CERT_FILE = MACOS_SYSTEM_CERT_FILE;
+	}
 
 	return env;
 }

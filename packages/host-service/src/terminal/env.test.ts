@@ -422,6 +422,19 @@ describe("buildV2TerminalEnv", () => {
 		expect(devEnv.SUPERSET_ROOT_PATH).toBe("");
 	});
 
+	test("defaults COLORFGBG to dark mode", () => {
+		const env = buildV2TerminalEnv(baseParams);
+		expect(env.COLORFGBG).toBe("15;0");
+	});
+
+	test("sets COLORFGBG to light mode when themeType is light", () => {
+		const env = buildV2TerminalEnv({
+			...baseParams,
+			themeType: "light",
+		});
+		expect(env.COLORFGBG).toBe("0;15");
+	});
+
 	test("drops removed v1 metadata while preserving user shell vars", () => {
 		const env = buildV2TerminalEnv({
 			...baseParams,

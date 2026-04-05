@@ -5,6 +5,8 @@ import {
 	type ConnectionState,
 	terminalRuntimeRegistry,
 } from "renderer/lib/terminal/terminal-runtime-registry";
+import { useTheme } from "renderer/stores/theme";
+import { resolveTerminalThemeType } from "renderer/stores/theme/utils";
 import type {
 	PaneViewerData,
 	TerminalPaneData,
@@ -29,13 +31,21 @@ function getConnectionState(terminalId: string): ConnectionState {
 export function TerminalPane({ ctx, workspaceId }: TerminalPaneProps) {
 	const { terminalId } = ctx.pane.data as TerminalPaneData;
 	const containerRef = useRef<HTMLDivElement | null>(null);
+	const activeTheme = useTheme();
 
 	const appearance = useTerminalAppearance();
 	const appearanceRef = useRef(appearance);
 	appearanceRef.current = appearance;
+	const initialThemeTypeRef = useRef<ReturnType<typeof resolveTerminalThemeType>>(
+		resolveTerminalThemeType({
+			activeThemeType: activeTheme?.type,
+		}),
+	);
+	const initialThemeType = initialThemeTypeRef.current;
 
 	const websocketUrl = useWorkspaceWsUrl(`/terminal/${terminalId}`, {
 		workspaceId,
+		themeType: initialThemeType,
 	});
 
 	const connectionState = useSyncExternalStore(
