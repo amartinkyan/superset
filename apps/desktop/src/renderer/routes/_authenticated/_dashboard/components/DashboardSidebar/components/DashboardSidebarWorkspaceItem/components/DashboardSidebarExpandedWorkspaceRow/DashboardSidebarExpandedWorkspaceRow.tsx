@@ -2,7 +2,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
 import { type ComponentPropsWithoutRef, forwardRef, useMemo } from "react";
 import { HiMiniXMark } from "react-icons/hi2";
-import { HotkeyTooltipContent } from "renderer/components/HotkeyTooltipContent";
+import { HotkeyLabel } from "renderer/hotkeys";
 import { RenameInput } from "renderer/screens/main/components/WorkspaceSidebar/RenameInput";
 import type { ActivePaneStatus } from "shared/tabs-types";
 import type { DashboardSidebarWorkspace } from "../../../../types";
@@ -183,9 +183,9 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 													</button>
 												</TooltipTrigger>
 												<TooltipContent side="top" sideOffset={4}>
-													<HotkeyTooltipContent
+													<HotkeyLabel
 														label="Close workspace"
-														hotkeyId={isActive ? "CLOSE_WORKSPACE" : undefined}
+														id={isActive ? "CLOSE_WORKSPACE" : undefined}
 													/>
 												</TooltipContent>
 											</Tooltip>
@@ -265,9 +265,9 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 													</button>
 												</TooltipTrigger>
 												<TooltipContent side="top" sideOffset={4}>
-													<HotkeyTooltipContent
+													<HotkeyLabel
 														label="Close workspace"
-														hotkeyId={isActive ? "CLOSE_WORKSPACE" : undefined}
+														id={isActive ? "CLOSE_WORKSPACE" : undefined}
 													/>
 												</TooltipContent>
 											</Tooltip>
