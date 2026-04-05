@@ -17,11 +17,16 @@ import {
 	LocalGitCredentialProvider,
 	PskHostAuthProvider,
 } from "@superset/host-service";
+import { initTerminalBaseEnv } from "@superset/host-service/terminal-env";
 import {
 	HOST_SERVICE_PROTOCOL_VERSION,
 	removeManifest,
 	writeManifest,
 } from "main/lib/host-service-manifest";
+
+// Capture the shell-derived base env before any runtime modifications.
+// This preserved snapshot is the only valid base env for PTY construction.
+initTerminalBaseEnv();
 
 const authToken = process.env.AUTH_TOKEN;
 const cloudApiUrl = process.env.CLOUD_API_URL;

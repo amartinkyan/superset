@@ -96,25 +96,108 @@ export async function getShellEnvironment(
 }
 
 /**
+ * Minimal env keys needed to bootstrap a login shell.
+ * Matches what macOS gives a packaged Electron app — no .env secrets,
+ * no Vite build vars, just enough for the shell to start and source
+ * user profiles.
+ */
+const SHELL_BOOTSTRAP_KEYS = [
+	"HOME",
+	"USER",
+	"LOGNAME",
+	"SHELL",
+	"PATH",
+	"TERM",
+	"TMPDIR",
+	"LANG",
+	"LC_ALL",
+	"LC_CTYPE",
+	"__CF_USER_TEXT_ENCODING",
+	"Apple_PubSub_Socket_Render",
+];
+
+const CLEAN_SHELL_DELIMITER = "__SUPERSET_CLEAN_SHELL_ENV__";
+
+/**
+ * Spawn a login shell with a minimal parent env and capture the resulting
+ * environment. This simulates what a packaged (production) Electron app
+ * gets from macOS — the user's shell profiles populate the env, but
+ * Vite .env secrets never enter the subshell.
+ */
+async function spawnCleanShellEnv(): Promise<Record<string, string>> {
+	const shell = process.env.SHELL || "/bin/sh";
+
+	// Build minimal parent env
+	const minimalEnv: Record<string, string> = {
+		// From shell-env: prevent oh-my-zsh from blocking
+		DISABLE_AUTO_UPDATE: "true",
+		ZSH_TMUX_AUTOSTARTED: "true",
+		ZSH_TMUX_AUTOSTART: "false",
+	};
+	for (const key of SHELL_BOOTSTRAP_KEYS) {
+		const value = process.env[key];
+		if (value) minimalEnv[key] = value;
+	}
+
+	// Ensure common macOS paths are in PATH so login profiles can find tools
+	augmentPathForMacOS(minimalEnv);
+
+	const { stdout } = await execFileAsync(
+		shell,
+		[
+			"-ilc",
+			`echo -n "${CLEAN_SHELL_DELIMITER}"; command env; echo -n "${CLEAN_SHELL_DELIMITER}"; exit`,
+		],
+		{
+			encoding: "utf8",
+			timeout: SHELL_ENV_TIMEOUT_MS,
+			env: minimalEnv,
+		},
+	);
+
+	const envSection = stdout.split(CLEAN_SHELL_DELIMITER)[1];
+	if (!envSection) {
+		throw new Error("Failed to parse shell environment output");
+	}
+
+	const result: Record<string, string> = {};
+	for (const line of envSection.split("\n").filter(Boolean)) {
+		const idx = line.indexOf("=");
+		if (idx > 0) {
+			result[line.slice(0, idx)] = line.slice(idx + 1);
+		}
+	}
+
+	return result;
+}
+
+/** Cache for the clean shell snapshot (separate from getShellEnvironment cache). */
+let cleanShellCache: Record<string, string> | null = null;
+let cleanShellCacheTime = 0;
+
+/**
  * Resolve a real shell-derived environment snapshot.
- * Unlike getShellEnvironment(), this function never falls back to process.env.
- * If shell resolution fails, it throws — callers that require a genuine shell
- * snapshot (e.g. v2 terminal env construction) should use this.
+ *
+ * Spawns the user's login shell with a minimal parent env so that
+ * Vite .env secrets never contaminate the snapshot. The shell's
+ * profile scripts populate the env with the user's actual vars.
+ *
+ * Unlike getShellEnvironment(), this function:
+ * - never falls back to process.env
+ * - never inherits desktop/Electron runtime env into the snapshot
+ * - throws on failure (callers must handle the error)
  */
 export async function getStrictShellEnvironment(): Promise<
 	Record<string, string>
 > {
-	// Bypass the cache if it holds a fallback (process.env) result
-	if (!isFallbackCache && cachedEnv && Date.now() - cacheTime < CACHE_TTL_MS) {
-		return { ...cachedEnv };
+	if (cleanShellCache && Date.now() - cleanShellCacheTime < CACHE_TTL_MS) {
+		return { ...cleanShellCache };
 	}
 
-	const env = await getShellEnvWithTimeout();
-	cachedEnv = env as Record<string, string>;
-	cacheTime = Date.now();
-	isFallbackCache = false;
-	fallbackCacheTtlMs = FALLBACK_CACHE_TTL_MS;
-	return { ...cachedEnv };
+	const env = await spawnCleanShellEnv();
+	cleanShellCache = env;
+	cleanShellCacheTime = Date.now();
+	return { ...cleanShellCache };
 }
 
 const COMMON_MACOS_PATHS = [

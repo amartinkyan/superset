@@ -128,19 +128,31 @@ Use the existing shell env primitive in:
 
 But tighten the semantics:
 
-- normal path: use the resolved shell snapshot
+- normal path: use the resolved shell snapshot from a clean spawn
 - failure path: fail closed for terminal env construction
 
 Important:
 
-- the current helper falls back to `process.env` when shell env resolution
-  fails
-- the current helper does not currently expose whether the returned env is a
-  real shell snapshot or that fallback
-- that fallback must not be used for v2 terminal env construction
-- if a real shell snapshot cannot be resolved, v2 terminal creation should fail
-  with an explicit error instead of silently inheriting desktop or host-service
-  runtime env
+- the existing `getShellEnvironment()` helper spawns a subshell that inherits
+  the full Electron `process.env`, which in dev includes all Vite `.env`
+  secrets — that contaminates the snapshot at the source
+- the existing helper also falls back to `process.env` when shell env
+  resolution fails
+- neither the contaminated snapshot nor the fallback are acceptable for v2
+  terminal env construction
+
+For v2, shell snapshot resolution must:
+
+- spawn the user's login shell with a **minimal parent env** (HOME, USER,
+  SHELL, PATH, TERM, and a few OS-specific keys) so that Vite `.env` secrets
+  never enter the subshell
+- let the shell's profile scripts populate the env with the user's actual
+  vars (version managers, proxy config, SSH agent, etc.)
+- throw on failure instead of falling back to `process.env`
+
+This "clean spawn" approach means dev and production behave identically — the
+snapshot only contains what the user's shell profile produces, never what
+Electron or Vite loaded into the app process.
 
 For v2, PTY creation must never degenerate into `...process.env` or any other
 desktop-runtime fallback.
@@ -335,7 +347,9 @@ Primary implementation targets:
 - `apps/desktop/src/lib/trpc/routers/workspaces/utils/shell-env.ts`
 - `packages/host-service/src/terminal/terminal.ts`
 - new: `packages/host-service/src/terminal/env.ts`
-- new or extracted: shared shell launch helper for zsh/bash/fish behavior
+- new: `packages/host-service/src/terminal/env-strip.ts`
+- new: `packages/host-service/src/terminal/shell-launch.ts`
+- `apps/desktop/src/main/host-service/index.ts` (desktop entry point for host-service)
 
 Secondary follow-up targets:
 
@@ -359,13 +373,11 @@ Secondary follow-up targets:
 
    Required behavior:
 
-   - first, replace or wrap `getShellEnvironment()` so the caller can
-     distinguish `source: "shell"` from `source: "fallback"`
-   - accept the result only when `source === "shell"`
-   - do not accept the helper's internal `process.env` fallback for terminal env
-     construction
-   - if a real shell snapshot cannot be resolved, throw an explicit error that
-     blocks v2 terminal creation
+   - call `getStrictShellEnvironment()`, which spawns the user's login shell
+     with a minimal parent env (clean spawn) so Vite `.env` secrets never
+     contaminate the snapshot
+   - if shell resolution fails, throw — do not fall back to `process.env` or
+     any filtered variant
 
    This policy is final for v2:
 
