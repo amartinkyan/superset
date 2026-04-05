@@ -18,28 +18,36 @@ describe("getAppCommand", () => {
 		expect(getAppCommand("finder", "/path/to/file")).toBeNull();
 	});
 
-	test("returns single-element array for cursor", () => {
+	test("uses CLI command for cursor to enable window reuse", () => {
 		const result = getAppCommand("cursor", "/path/to/file");
-		expect(result).toEqual([
-			{ command: "open", args: ["-a", "Cursor", "/path/to/file"] },
-		]);
+		expect(result).toEqual([{ command: "cursor", args: ["/path/to/file"] }]);
 	});
 
-	test("returns single-element array for vscode", () => {
+	test("uses CLI command for vscode to enable window reuse", () => {
 		const result = getAppCommand("vscode", "/path/to/file");
+		expect(result).toEqual([{ command: "code", args: ["/path/to/file"] }]);
+	});
+
+	test("uses CLI command for vscode-insiders to enable window reuse", () => {
+		const result = getAppCommand("vscode-insiders", "/path/to/file");
 		expect(result).toEqual([
-			{
-				command: "open",
-				args: ["-a", "Visual Studio Code", "/path/to/file"],
-			},
+			{ command: "code-insiders", args: ["/path/to/file"] },
 		]);
 	});
 
-	test("returns single-element array for sublime", () => {
+	test("uses CLI command for windsurf to enable window reuse", () => {
+		const result = getAppCommand("windsurf", "/path/to/file");
+		expect(result).toEqual([{ command: "windsurf", args: ["/path/to/file"] }]);
+	});
+
+	test("uses CLI command for zed to enable window reuse", () => {
+		const result = getAppCommand("zed", "/path/to/file");
+		expect(result).toEqual([{ command: "zed", args: ["/path/to/file"] }]);
+	});
+
+	test("uses CLI command for sublime to enable window reuse", () => {
 		const result = getAppCommand("sublime", "/path/to/file");
-		expect(result).toEqual([
-			{ command: "open", args: ["-a", "Sublime Text", "/path/to/file"] },
-		]);
+		expect(result).toEqual([{ command: "subl", args: ["/path/to/file"] }]);
 	});
 
 	test("returns single-element array for xcode", () => {
@@ -132,9 +140,16 @@ describe("getAppCommand", () => {
 		const result = getAppCommand("cursor", "/path/with spaces/file.ts");
 		expect(result).toEqual([
 			{
-				command: "open",
-				args: ["-a", "Cursor", "/path/with spaces/file.ts"],
+				command: "cursor",
+				args: ["/path/with spaces/file.ts"],
 			},
+		]);
+	});
+
+	test("editors without CLI use open -a on macOS", () => {
+		const result = getAppCommand("xcode", "/path/to/file");
+		expect(result).toEqual([
+			{ command: "open", args: ["-a", "Xcode", "/path/to/file"] },
 		]);
 	});
 

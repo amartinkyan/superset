@@ -33,6 +33,20 @@ const MACOS_APP_NAMES: Record<ExternalApp, string | null> = {
 };
 
 /**
+ * macOS CLI commands for editors that support window reuse.
+ * Using the CLI (e.g. `cursor <path>`) instead of `open -a` allows the editor
+ * to reuse an existing window for the same workspace instead of always opening a new one.
+ */
+const MACOS_CLI_COMMANDS: Partial<Record<ExternalApp, string>> = {
+	cursor: "cursor",
+	vscode: "code",
+	"vscode-insiders": "code-insiders",
+	windsurf: "windsurf",
+	zed: "zed",
+	sublime: "subl",
+};
+
+/**
  * Bundle ID candidates for JetBrains IDEs with multiple editions.
  * `open -b <bundleId>` works regardless of the .app display name,
  * so "IntelliJ IDEA Ultimate.app" and "IntelliJ IDEA CE.app" both resolve correctly.
@@ -96,6 +110,13 @@ export function getAppCommand(
 	platform: NodeJS.Platform = process.platform,
 ): { command: string; args: string[] }[] | null {
 	if (platform === "darwin") {
+		// Prefer CLI commands for editors that support window reuse.
+		// `cursor <path>` reuses an existing window; `open -a Cursor <path>` always opens a new one.
+		const cliCmd = MACOS_CLI_COMMANDS[app];
+		if (cliCmd) {
+			return [{ command: cliCmd, args: [targetPath] }];
+		}
+
 		const bundleIds = BUNDLE_ID_CANDIDATES[app];
 		if (bundleIds) {
 			return bundleIds.map((id) => ({
