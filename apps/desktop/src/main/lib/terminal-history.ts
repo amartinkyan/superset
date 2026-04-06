@@ -22,6 +22,7 @@ import { SUPERSET_DIR_NAME } from "shared/constants";
 const MAX_HISTORY_BYTES = 5 * 1024 * 1024; // 5MB per session
 const MAX_PENDING_WRITE_BYTES = 256 * 1024; // cap in-memory backlog when disk is slow
 const DRAIN_TIMEOUT_MS = 1000;
+const FLUSH_INTERVAL_MS = 2000; // Debounce disk writes: flush every 2 seconds
 const HISTORY_DIR_MODE = 0o700;
 const HISTORY_FILE_MODE = 0o600;
 
@@ -135,6 +136,9 @@ export class HistoryWriter {
 	private pendingWriteBytes = 0;
 	private warnedCapReached = false;
 	private warnedBackpressureDrop = false;
+	private writeBuffer: string[] = [];
+	private writeBufferBytes = 0;
+	private flushTimer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(
 		workspaceId: string,
@@ -217,6 +221,11 @@ export class HistoryWriter {
 		// Best-effort permission hardening (mode isn't updated on existing files).
 		await fs.chmod(this.scrollbackPath, HISTORY_FILE_MODE).catch(() => {});
 
+		// Start periodic flush timer to batch disk writes.
+		// This reduces filesystem events from thousands/sec to one every few seconds,
+		// avoiding severe performance issues with endpoint security tools.
+		this.startFlushTimer();
+
 		// Write meta.json immediately (without endedAt)
 		// This enables cold restore detection - if app crashes,
 		// meta.json exists but has no endedAt, indicating unclean shutdown
@@ -226,6 +235,10 @@ export class HistoryWriter {
 	/**
 	 * Write terminal data to the scrollback file.
 	 * Non-blocking - errors are swallowed to avoid disrupting terminal operation.
+	 *
+	 * Data is buffered in memory and flushed to disk periodically (every
+	 * FLUSH_INTERVAL_MS) to reduce filesystem events. This prevents excessive
+	 * disk writes that can degrade performance with endpoint security tools.
 	 */
 	write(data: string): void {
 		if (this.closed || this.streamErrored || !this.stream) {
@@ -249,27 +262,71 @@ export class HistoryWriter {
 				return;
 			}
 
-			// Respect filesystem backpressure. When disk is slow, stop feeding the
-			// stream buffer and keep a small in-memory backlog; beyond that we drop.
-			if (this.isBackpressured || this.pendingWrites.length > 0) {
-				if (this.pendingWriteBytes + bytes > MAX_PENDING_WRITE_BYTES) {
-					if (!this.warnedBackpressureDrop) {
-						this.warnedBackpressureDrop = true;
-						console.warn(
-							`[HistoryWriter] Write backlog cap reached for ${this.paneId} (${MAX_PENDING_WRITE_BYTES} bytes); dropping history until drain`,
-						);
-					}
-					return;
-				}
+			// Buffer the data for periodic flush instead of writing to disk immediately.
+			this.bytesWritten += bytes;
+			this.writeBuffer.push(data);
+			this.writeBufferBytes += bytes;
+		} catch {
+			this.streamErrored = true;
+		}
+	}
 
-				this.pendingWrites.push({ data, bytes });
-				this.pendingWriteBytes += bytes;
-				this.bytesWritten += bytes;
+	private startFlushTimer(): void {
+		this.stopFlushTimer();
+		this.flushTimer = setInterval(() => {
+			this.flushWriteBuffer();
+			this.flushPendingWrites();
+		}, FLUSH_INTERVAL_MS);
+		// Don't let the timer prevent process exit
+		if (
+			this.flushTimer &&
+			typeof this.flushTimer === "object" &&
+			"unref" in this.flushTimer
+		) {
+			this.flushTimer.unref();
+		}
+	}
+
+	private stopFlushTimer(): void {
+		if (this.flushTimer !== null) {
+			clearInterval(this.flushTimer);
+			this.flushTimer = null;
+		}
+	}
+
+	/**
+	 * Flush the in-memory write buffer to the stream as a single write.
+	 */
+	private flushWriteBuffer(): void {
+		if (this.closed || this.streamErrored || !this.stream) {
+			return;
+		}
+		if (this.writeBuffer.length === 0) {
+			return;
+		}
+
+		const data = this.writeBuffer.join("");
+		const bytes = this.writeBufferBytes;
+		this.writeBuffer = [];
+		this.writeBufferBytes = 0;
+
+		// If backpressured, queue as a pending write instead
+		if (this.isBackpressured || this.pendingWrites.length > 0) {
+			if (this.pendingWriteBytes + bytes > MAX_PENDING_WRITE_BYTES) {
+				if (!this.warnedBackpressureDrop) {
+					this.warnedBackpressureDrop = true;
+					console.warn(
+						`[HistoryWriter] Write backlog cap reached for ${this.paneId} (${MAX_PENDING_WRITE_BYTES} bytes); dropping history until drain`,
+					);
+				}
 				return;
 			}
+			this.pendingWrites.push({ data, bytes });
+			this.pendingWriteBytes += bytes;
+			return;
+		}
 
-			// node-pty produces UTF-8 strings
-			this.bytesWritten += bytes;
+		try {
 			const ok = this.stream.write(data, "utf8");
 			if (!ok) {
 				this.isBackpressured = true;
@@ -309,7 +366,7 @@ export class HistoryWriter {
 	}
 
 	/**
-	 * Flush pending writes to disk.
+	 * Flush buffered and pending writes to disk.
 	 * Returns a promise that resolves when data is flushed.
 	 */
 	async flush(): Promise<void> {
@@ -317,14 +374,21 @@ export class HistoryWriter {
 			return;
 		}
 
+		// Flush the write buffer into the stream first
+		this.flushWriteBuffer();
+		this.flushPendingWrites();
+
+		const stream = this.stream;
+		if (!stream || stream.writableLength === 0) {
+			return;
+		}
+
 		return new Promise<void>((resolve) => {
-			this.flushPendingWrites();
-			// Cork and uncork forces a flush
-			this.stream?.once("drain", resolve);
-			// If nothing to drain, resolve immediately
-			if (this.stream?.writableLength === 0) {
+			const timeout = setTimeout(resolve, DRAIN_TIMEOUT_MS);
+			stream.once("drain", () => {
+				clearTimeout(timeout);
 				resolve();
-			}
+			});
 		});
 	}
 
@@ -335,6 +399,10 @@ export class HistoryWriter {
 		if (this.closed) {
 			return;
 		}
+		this.stopFlushTimer();
+
+		// Flush write buffer into stream/pending before marking closed.
+		this.flushWriteBuffer();
 		this.closed = true;
 
 		// Best-effort: flush any pending backlog before closing.
@@ -391,6 +459,8 @@ export class HistoryWriter {
 	 * Closes the current stream and creates a fresh empty file.
 	 */
 	async reinitialize(): Promise<void> {
+		this.stopFlushTimer();
+
 		// Close existing stream without writing endedAt
 		if (this.stream && !this.streamErrored) {
 			await new Promise<void>((resolve) => {
@@ -405,6 +475,8 @@ export class HistoryWriter {
 		this.isBackpressured = false;
 		this.pendingWrites = [];
 		this.pendingWriteBytes = 0;
+		this.writeBuffer = [];
+		this.writeBufferBytes = 0;
 		this.bytesWritten = 0;
 		this.warnedCapReached = false;
 		this.warnedBackpressureDrop = false;
@@ -422,6 +494,8 @@ export class HistoryWriter {
 	 * Delete all history files for this session.
 	 */
 	async deleteHistory(): Promise<void> {
+		this.stopFlushTimer();
+
 		// Close stream first
 		if (this.stream && !this.streamErrored) {
 			await new Promise<void>((resolve) => {
@@ -433,6 +507,8 @@ export class HistoryWriter {
 		this.stream = null;
 		this.pendingWrites = [];
 		this.pendingWriteBytes = 0;
+		this.writeBuffer = [];
+		this.writeBufferBytes = 0;
 		this.closed = true;
 
 		// Delete the directory
