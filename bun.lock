@@ -523,6 +523,25 @@
         "typescript": "^5.9.3",
       },
     },
+    "apps/relay": {
+      "name": "@superset/relay",
+      "version": "0.1.0",
+      "dependencies": {
+        "@hono/node-server": "^1.14.1",
+        "@hono/node-ws": "^1.3.0",
+        "@superset/db": "workspace:*",
+        "drizzle-orm": "0.45.1",
+        "hono": "^4.8.5",
+        "jose": "^6.1.3",
+        "zod": "^4.3.5",
+      },
+      "devDependencies": {
+        "@superset/typescript": "workspace:*",
+        "@types/node": "^24.9.1",
+        "bun-types": "^1.3.1",
+        "typescript": "^5.9.3",
+      },
+    },
     "apps/streams": {
       "name": "streams",
       "version": "0.0.0",
@@ -2392,6 +2411,8 @@
     "@superset/mobile": ["@superset/mobile@workspace:apps/mobile"],
 
     "@superset/panes": ["@superset/panes@workspace:packages/panes"],
+
+    "@superset/relay": ["@superset/relay@workspace:apps/relay"],
 
     "@superset/shared": ["@superset/shared@workspace:packages/shared"],
 
