@@ -123,6 +123,63 @@ export function useDashboardSidebarState() {
 		[collections],
 	);
 
+	const reorderProjectChildren = useCallback(
+		(
+			projectId: string,
+			orderedItems: Array<{ type: "workspace" | "section"; id: string }>,
+		) => {
+			orderedItems.forEach((item, index) => {
+				const tabOrder = index + 1;
+				if (item.type === "workspace") {
+					if (!collections.v2WorkspaceLocalState.get(item.id)) return;
+					collections.v2WorkspaceLocalState.update(item.id, (draft) => {
+						draft.sidebarState.tabOrder = tabOrder;
+						draft.sidebarState.sectionId = null;
+						draft.sidebarState.projectId = projectId;
+					});
+				} else {
+					if (!collections.v2SidebarSections.get(item.id)) return;
+					collections.v2SidebarSections.update(item.id, (draft) => {
+						draft.tabOrder = tabOrder;
+					});
+				}
+			});
+		},
+		[collections],
+	);
+
+	const moveWorkspaceToSectionAtIndex = useCallback(
+		(
+			workspaceId: string,
+			projectId: string,
+			sectionId: string,
+			index: number,
+		) => {
+			const existing = collections.v2WorkspaceLocalState.get(workspaceId);
+			if (!existing) return;
+			const siblings = Array.from(
+				collections.v2WorkspaceLocalState.state.values(),
+			)
+				.filter(
+					(item) =>
+						item.sidebarState.projectId === projectId &&
+						item.workspaceId !== workspaceId &&
+						item.sidebarState.sectionId === sectionId,
+				)
+				.sort((a, b) => a.sidebarState.tabOrder - b.sidebarState.tabOrder);
+			const reordered = [...siblings];
+			reordered.splice(index, 0, existing);
+			reordered.forEach((item, i) => {
+				collections.v2WorkspaceLocalState.update(item.workspaceId, (draft) => {
+					draft.sidebarState.tabOrder = i + 1;
+					draft.sidebarState.sectionId = sectionId;
+					draft.sidebarState.projectId = projectId;
+				});
+			});
+		},
+		[collections],
+	);
+
 	const createSection = useCallback(
 		(projectId: string, name = "New Section") => {
 			ensureSidebarProjectRecord(collections, projectId);
@@ -274,7 +331,9 @@ export function useDashboardSidebarState() {
 		ensureProjectInSidebar,
 		ensureWorkspaceInSidebar,
 		moveWorkspaceToSection,
+		moveWorkspaceToSectionAtIndex,
 		removeProjectFromSidebar,
+		reorderProjectChildren,
 		removeWorkspaceFromSidebar,
 		reorderProjects,
 		reorderWorkspaces,

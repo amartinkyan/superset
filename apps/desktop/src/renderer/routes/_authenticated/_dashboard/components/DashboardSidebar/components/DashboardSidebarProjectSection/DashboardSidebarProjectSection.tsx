@@ -26,7 +26,7 @@ export function DashboardSidebarProjectSection({
 	onWorkspaceHover,
 	onToggleCollapse,
 }: DashboardSidebarProjectSectionProps) {
-	const allSections = useMemo(
+	const _allSections = useMemo(
 		() => getProjectChildrenSections(project.children),
 		[project.children],
 	);
@@ -108,9 +108,9 @@ export function DashboardSidebarProjectSection({
 			</DashboardSidebarProjectContextMenu>
 
 			<DashboardSidebarExpandedProjectContent
+				projectId={project.id}
 				isCollapsed={project.isCollapsed}
 				projectChildren={project.children}
-				allSections={allSections}
 				workspaceShortcutLabels={workspaceShortcutLabels}
 				onWorkspaceHover={onWorkspaceHover}
 				onDeleteSection={deleteSection}
