@@ -678,6 +678,7 @@ export function FileViewerPane({
 						<FileViewerContent
 							viewMode={viewMode}
 							filePath={filePath}
+							documentKey={documentKey}
 							isLoadingRaw={isLoadingRaw}
 							isLoadingImage={isLoadingImage}
 							isLoadingDiff={isLoadingDiff}

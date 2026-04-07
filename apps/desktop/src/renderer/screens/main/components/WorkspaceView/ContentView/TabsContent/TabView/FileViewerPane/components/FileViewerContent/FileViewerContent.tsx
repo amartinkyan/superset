@@ -1,6 +1,7 @@
 import {
 	type MutableRefObject,
 	type RefObject,
+	useCallback,
 	useEffect,
 	useRef,
 } from "react";
@@ -12,6 +13,10 @@ import {
 import { LightDiffViewer } from "renderer/screens/main/components/WorkspaceView/ChangesContent/components/LightDiffViewer";
 import type { CodeEditorAdapter } from "renderer/screens/main/components/WorkspaceView/ContentView/components";
 import { CodeEditor } from "renderer/screens/main/components/WorkspaceView/components/CodeEditor";
+import {
+	getEditorViewState,
+	setEditorViewState,
+} from "renderer/stores/editor-state/editorViewStateCache";
 import type { Tab } from "renderer/stores/tabs/types";
 import type { DiffViewMode } from "shared/changes-types";
 import { detectLanguage } from "shared/detect-language";
@@ -103,6 +108,7 @@ interface TextSearchState {
 interface FileViewerContentProps {
 	viewMode: FileViewerMode;
 	filePath: string;
+	documentKey: string;
 	isLoadingRaw: boolean;
 	isLoadingImage?: boolean;
 	isLoadingDiff: boolean;
@@ -138,6 +144,7 @@ interface FileViewerContentProps {
 export function FileViewerContent({
 	viewMode,
 	filePath,
+	documentKey,
 	isLoadingRaw,
 	isLoadingImage,
 	isLoadingDiff,
@@ -177,6 +184,23 @@ export function FileViewerContent({
 		diffData,
 		enabled: viewMode === "diff" && !isLoadingDiff && !!diffData,
 	});
+
+	const saveCursorPosition = useCallback(() => {
+		if (editorRef.current) {
+			const pos = editorRef.current.getCursorPosition();
+			if (pos) {
+				setEditorViewState(documentKey, pos);
+			}
+		}
+	}, [documentKey, editorRef]);
+
+	// Save cursor position when the component unmounts or when the file/document changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: save on documentKey change or unmount
+	useEffect(() => {
+		return () => {
+			saveCursorPosition();
+		};
+	}, [documentKey, saveCursorPosition]);
 
 	const hasAppliedInitialLocationRef = useRef(false);
 	const lastDiffLocationRef = useRef<
@@ -257,7 +281,6 @@ export function FileViewerContent({
 		if (
 			viewMode !== "raw" ||
 			!editorRef.current ||
-			!initialLine ||
 			hasAppliedInitialLocationRef.current ||
 			isLoadingRaw ||
 			!rawFileData?.ok
@@ -265,7 +288,16 @@ export function FileViewerContent({
 			return;
 		}
 
-		editorRef.current.revealPosition(initialLine, initialColumn ?? 1);
+		// Use explicit initial position if provided, otherwise fall back to cached view state
+		const targetLine = initialLine ?? getEditorViewState(documentKey)?.line;
+		if (!targetLine) {
+			return;
+		}
+
+		const targetColumn =
+			initialColumn ?? getEditorViewState(documentKey)?.column ?? 1;
+
+		editorRef.current.revealPosition(targetLine, targetColumn);
 		hasAppliedInitialLocationRef.current = true;
 	}, [
 		viewMode,
@@ -274,6 +306,7 @@ export function FileViewerContent({
 		initialColumn,
 		isLoadingRaw,
 		rawFileData,
+		documentKey,
 	]);
 
 	if (viewMode === "diff") {

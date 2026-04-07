@@ -73,6 +73,14 @@ function createCodeMirrorAdapter(view: EditorView): CodeEditorAdapter {
 			});
 			view.focus();
 		},
+		getCursorPosition() {
+			const selection = view.state.selection.main;
+			const lineInfo = view.state.doc.lineAt(selection.head);
+			return {
+				line: lineInfo.number,
+				column: selection.head - lineInfo.from + 1,
+			};
+		},
 		getSelectionLines() {
 			const selection = view.state.selection.main;
 			const startLine = view.state.doc.lineAt(selection.from).number;
