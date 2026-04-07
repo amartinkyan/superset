@@ -90,7 +90,10 @@ export const DashboardSidebarSectionHeader = forwardRef<
 					<span className="shrink-0 truncate">{section.name}</span>
 				)}
 
-				<div className={cn("grid shrink-0 items-center [&>*]:col-start-1 [&>*]:row-start-1", isRenaming && "invisible")}>
+				{isRenaming ? (
+					<div className="h-px w-4 bg-border shrink-0" />
+				) : null}
+				<div className={cn("grid shrink-0 items-center [&>*]:col-start-1 [&>*]:row-start-1", isRenaming && "hidden")}>
 					<span className="pointer-events-none text-[10px] font-normal tabular-nums transition-opacity duration-150 group-hover:opacity-0">
 						({section.workspaces.length})
 					</span>
