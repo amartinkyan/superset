@@ -55,11 +55,9 @@ function buildFlatItems(
 			items.push(wsId(child.workspace.id));
 		} else {
 			items.push(secId(child.section.id));
-			// Only include workspaces if section is expanded
-			if (!child.section.isCollapsed) {
-				for (const ws of child.section.workspaces) {
-					items.push(wsId(ws.id));
-				}
+			// Always include workspaces so AnimatePresence can animate collapse
+			for (const ws of child.section.workspaces) {
+				items.push(wsId(ws.id));
 			}
 		}
 	}
@@ -145,9 +143,7 @@ export function useSidebarDnd({
 	useEffect(() => {
 		const fingerprint = projectChildren
 			.map((c) =>
-				c.type === "workspace"
-					? c.workspace.id
-					: `s:${c.section.id}:${c.section.isCollapsed}`,
+				c.type === "workspace" ? c.workspace.id : `s:${c.section.id}`,
 			)
 			.sort()
 			.join(",");
@@ -155,6 +151,16 @@ export function useSidebarDnd({
 			prevFingerprintRef.current = fingerprint;
 			setFlatItems(buildFlatItems(projectChildren));
 		}
+	}, [projectChildren]);
+
+	const collapsedSectionIds = useMemo(() => {
+		const set = new Set<string>();
+		for (const child of projectChildren) {
+			if (child.type === "section" && child.section.isCollapsed) {
+				set.add(child.section.id);
+			}
+		}
+		return set;
 	}, [projectChildren]);
 
 	// ── Lookups ──────────────────────────────────────────────────────
@@ -346,6 +352,7 @@ export function useSidebarDnd({
 		activeItem,
 		predictedColor,
 		groupInfo,
+		collapsedSectionIds,
 		workspacesById,
 		sectionsById,
 		handlers: { onDragStart, onDragOver, onDragEnd, onDragCancel },

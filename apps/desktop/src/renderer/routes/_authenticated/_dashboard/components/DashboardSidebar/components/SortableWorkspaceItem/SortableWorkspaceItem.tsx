@@ -7,6 +7,7 @@ interface SortableWorkspaceItemProps {
 	sortableId: string;
 	workspace: DashboardSidebarWorkspace;
 	accentColor?: string | null;
+	isInSection?: boolean;
 	onHoverCardOpen?: () => void;
 	shortcutLabel?: string;
 }
@@ -15,6 +16,7 @@ export function SortableWorkspaceItem({
 	sortableId,
 	workspace,
 	accentColor,
+	isInSection,
 	onHoverCardOpen,
 	shortcutLabel,
 }: SortableWorkspaceItemProps) {
@@ -36,6 +38,7 @@ export function SortableWorkspaceItem({
 				workspace={workspace}
 				onHoverCardOpen={onHoverCardOpen}
 				shortcutLabel={shortcutLabel}
+				isInSection={isInSection}
 			/>
 		</div>
 	);

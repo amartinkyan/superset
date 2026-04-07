@@ -1,3 +1,7 @@
+import type {
+	DraggableAttributes,
+	DraggableSyntheticListeners,
+} from "@dnd-kit/core";
 import { cn } from "@superset/ui/utils";
 import { type ComponentPropsWithoutRef, forwardRef } from "react";
 import { HiChevronRight } from "react-icons/hi2";
@@ -15,6 +19,8 @@ interface DashboardSidebarSectionHeaderProps
 	onCancelRename: () => void;
 	onStartRename: () => void;
 	onToggleCollapse: () => void;
+	dragHandleListeners?: DraggableSyntheticListeners;
+	dragHandleAttributes?: DraggableAttributes;
 }
 
 export const DashboardSidebarSectionHeader = forwardRef<
@@ -31,6 +37,8 @@ export const DashboardSidebarSectionHeader = forwardRef<
 			onCancelRename,
 			onStartRename,
 			onToggleCollapse,
+			dragHandleListeners,
+			dragHandleAttributes,
 			className,
 			...props
 		},
@@ -62,7 +70,15 @@ export const DashboardSidebarSectionHeader = forwardRef<
 				)}
 				{...props}
 			>
-				<LuGripVertical className="size-3 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity cursor-grab active:cursor-grabbing" />
+				<button
+					type="button"
+					className="flex shrink-0 items-center justify-center w-5 h-5 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity cursor-grab active:cursor-grabbing touch-none"
+					onClick={(e) => e.stopPropagation()}
+					{...(dragHandleListeners ?? {})}
+					{...(dragHandleAttributes ?? {})}
+				>
+					<LuGripVertical className="size-3" />
+				</button>
 
 				<div className="h-px flex-1 bg-border" />
 
@@ -80,7 +96,7 @@ export const DashboardSidebarSectionHeader = forwardRef<
 							onChange={onRenameValueChange}
 							onSubmit={onSubmitRename}
 							onCancel={onCancelRename}
-							className="-ml-1 h-5 min-w-0 px-1 py-0 text-[11px] font-medium bg-transparent border-none outline-none text-muted-foreground"
+							className="-ml-1 -mr-1 h-5 min-w-0 px-1 py-0 text-[11px] font-medium bg-transparent border-none outline-none text-muted-foreground [field-sizing:content]"
 						/>
 					) : (
 						<span className="shrink-0 truncate">{section.name}</span>

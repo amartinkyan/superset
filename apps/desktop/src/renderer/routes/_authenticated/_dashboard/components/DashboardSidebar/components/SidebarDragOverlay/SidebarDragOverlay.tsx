@@ -29,19 +29,22 @@ export function SidebarDragOverlay({ activeItem }: SidebarDragOverlayProps) {
 		section.color != null && section.color !== PROJECT_COLOR_DEFAULT;
 
 	return (
-		<div
-			className="bg-background shadow-lg"
-			style={{
-				borderLeft: hasColor
-					? `2px solid ${section.color}`
-					: "2px solid var(--color-border)",
-			}}
-		>
-			<div className="flex min-h-8 w-full items-center gap-1.5 pl-2 pr-2 py-1.5 text-[11px] font-medium text-muted-foreground">
-				<span className="truncate">{section.name}</span>
-				<span className="text-[10px] font-normal tabular-nums shrink-0">
-					({section.workspaces.length})
-				</span>
+		<div className="bg-background shadow-lg">
+			<div className="flex min-h-7 w-full items-center gap-1.5 px-1 py-1 text-[11px] font-medium text-muted-foreground">
+				<div className="h-px flex-1 bg-border" />
+				<div className="flex shrink-0 items-center gap-1.5">
+					{hasColor && (
+						<span
+							className="size-2 shrink-0 rounded-full"
+							style={{ backgroundColor: section.color! }}
+						/>
+					)}
+					<span className="truncate">{section.name}</span>
+					<span className="text-[10px] font-normal tabular-nums shrink-0">
+						({section.workspaces.length})
+					</span>
+				</div>
+				<div className="h-px flex-1 bg-border" />
 			</div>
 		</div>
 	);

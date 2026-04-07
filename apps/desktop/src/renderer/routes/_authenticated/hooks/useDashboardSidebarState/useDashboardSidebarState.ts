@@ -2,6 +2,7 @@ import type { WorkspaceState } from "@superset/panes";
 import { useCallback } from "react";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import type { AppCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider/collections";
+import { PROJECT_CUSTOM_COLORS } from "shared/constants/project-colors";
 
 function getNextTabOrder(items: Array<{ tabOrder: number }>): number {
 	const maxTabOrder = items.reduce(
@@ -189,6 +190,11 @@ export function useDashboardSidebarState() {
 				collections.v2SidebarSections.state.values(),
 			).filter((item) => item.projectId === projectId);
 
+			const randomColor =
+				PROJECT_CUSTOM_COLORS[
+					Math.floor(Math.random() * PROJECT_CUSTOM_COLORS.length)
+				].value;
+
 			collections.v2SidebarSections.insert({
 				sectionId,
 				projectId,
@@ -196,7 +202,7 @@ export function useDashboardSidebarState() {
 				createdAt: new Date(),
 				tabOrder: getNextTabOrder(sectionOrders),
 				isCollapsed: false,
-				color: null,
+				color: randomColor,
 			});
 
 			return sectionId;
@@ -238,6 +244,45 @@ export function useDashboardSidebarState() {
 		(workspaceId: string, projectId: string, sectionId: string | null) => {
 			const existing = collections.v2WorkspaceLocalState.get(workspaceId);
 			if (!existing) return;
+
+			if (sectionId === null) {
+				// "Remove from group" — place right above the first section.
+				// Find the lowest section tabOrder, then use tabOrder - 1.
+				// If no sections exist, append to end of ungrouped workspaces.
+				const sectionOrders = Array.from(
+					collections.v2SidebarSections.state.values(),
+				)
+					.filter((s) => s.projectId === projectId)
+					.map((s) => s.tabOrder);
+
+				const firstSectionOrder =
+					sectionOrders.length > 0 ? Math.min(...sectionOrders) : null;
+
+				let newTabOrder: number;
+				if (firstSectionOrder != null) {
+					// Place just before the first section
+					newTabOrder = firstSectionOrder - 1;
+				} else {
+					// No sections — append to end
+					const ungroupedOrders = Array.from(
+						collections.v2WorkspaceLocalState.state.values(),
+					)
+						.filter(
+							(item) =>
+								item.sidebarState.projectId === projectId &&
+								item.workspaceId !== workspaceId &&
+								item.sidebarState.sectionId === null,
+						)
+						.map((item) => ({ tabOrder: item.sidebarState.tabOrder }));
+					newTabOrder = getNextTabOrder(ungroupedOrders);
+				}
+
+				collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
+					draft.sidebarState.sectionId = null;
+					draft.sidebarState.tabOrder = newTabOrder;
+				});
+				return;
+			}
 
 			const siblingRows = Array.from(
 				collections.v2WorkspaceLocalState.state.values(),

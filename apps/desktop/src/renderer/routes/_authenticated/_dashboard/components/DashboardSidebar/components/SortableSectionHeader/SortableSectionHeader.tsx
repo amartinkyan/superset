@@ -70,8 +70,8 @@ export function SortableSectionHeader({
 						setIsRenaming(true);
 					}}
 					onToggleCollapse={() => onToggleCollapse(section.id)}
-					{...attributes}
-					{...listeners}
+					dragHandleListeners={listeners}
+					dragHandleAttributes={attributes}
 				/>
 			</DashboardSidebarSectionContextMenu>
 		</div>

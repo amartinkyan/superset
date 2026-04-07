@@ -44,6 +44,7 @@ export function DashboardSidebarExpandedProjectContent({
 		activeItem,
 		predictedColor,
 		groupInfo,
+		collapsedSectionIds,
 		workspacesById,
 		sectionsById,
 		handlers,
@@ -92,13 +93,16 @@ export function DashboardSidebarExpandedProjectContent({
 									const workspace = workspacesById.get(parsed.realId);
 									if (!workspace) return null;
 									const group = groupInfo.get(parsed.realId);
-									const isInSection = groupInfo.has(parsed.realId);
-									const hiddenBySectionDrag =
-										activeType === "section" && isInSection;
+									const isInSection = !!group;
+									const isInCollapsedSection =
+										isInSection && collapsedSectionIds.has(group.sectionId);
+									const hidden =
+										isInCollapsedSection ||
+										(activeType === "section" && isInSection);
 
 									return (
 										<AnimatePresence key={String(id)} initial={false}>
-											{!hiddenBySectionDrag && (
+											{!hidden && (
 												<motion.div
 													initial={{ height: 0, opacity: 0 }}
 													animate={{ height: "auto", opacity: 1 }}
@@ -111,6 +115,7 @@ export function DashboardSidebarExpandedProjectContent({
 														accentColor={
 															activeId === id ? predictedColor : group?.color
 														}
+														isInSection={groupInfo.has(parsed.realId)}
 														onHoverCardOpen={() =>
 															onWorkspaceHover(parsed.realId)
 														}
