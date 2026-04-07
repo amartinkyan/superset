@@ -8,14 +8,22 @@ import {
 } from "./port-scanner";
 import type { TerminalSession } from "./types";
 
-// How often to poll for port changes (in ms)
-const SCAN_INTERVAL_MS = 2500;
+// How often to poll for port changes (in ms).
+// The hint-based scan (HINT_SCAN_DELAY_MS) handles prompt detection when a dev
+// server starts. This periodic scan is a safety-net sweep, so a longer interval
+// is fine and reduces process spawns (ps/lsof) that trigger EDR agent overhead.
+export const SCAN_INTERVAL_MS = 10_000;
 
 // Delay before scanning after a port hint is detected (in ms)
 const HINT_SCAN_DELAY_MS = 500;
 
 // Ports to ignore (common system ports that are usually not dev servers)
 const IGNORED_PORTS = new Set([22, 80, 443, 5432, 3306, 6379, 27017]);
+
+// Sessions with no detected ports and no port-hint output in this window are
+// considered idle and skipped during periodic scans. Hint scans still fire
+// immediately when a dev server starts.
+export const IDLE_SESSION_TIMEOUT_MS = 60_000;
 
 /**
  * Check if terminal output contains hints that a port may have been opened.
@@ -64,6 +72,8 @@ class PortManager extends EventEmitter {
 	private scanInterval: ReturnType<typeof setInterval> | null = null;
 	private pendingHintScans = new Map<string, ReturnType<typeof setTimeout>>();
 	private isScanning = false;
+	/** Tracks the last time a port-hint was seen for each pane, used to skip idle sessions */
+	private lastHintActivity = new Map<string, number>();
 
 	constructor() {
 		super();
@@ -84,6 +94,7 @@ class PortManager extends EventEmitter {
 		this.sessions.delete(paneId);
 		this.removePortsForPane(paneId);
 		this.clearPendingHintScan(paneId);
+		this.lastHintActivity.delete(paneId);
 	}
 
 	/**
@@ -106,10 +117,12 @@ class PortManager extends EventEmitter {
 		this.daemonSessions.delete(paneId);
 		this.removePortsForPane(paneId);
 		this.clearPendingHintScan(paneId);
+		this.lastHintActivity.delete(paneId);
 	}
 
 	checkOutputForHint(data: string, paneId: string): void {
 		if (!containsPortHint(data)) return;
+		this.lastHintActivity.set(paneId, Date.now());
 		this.scheduleHintScan(paneId);
 	}
 
@@ -220,10 +233,28 @@ class PortManager extends EventEmitter {
 		};
 	}
 
+	/**
+	 * A session is considered idle if it has no currently-detected ports AND
+	 * has not seen port-hint output within IDLE_SESSION_TIMEOUT_MS. Idle
+	 * sessions are skipped during periodic scans to avoid unnecessary
+	 * ps/lsof spawns that drive EDR agent CPU usage.
+	 */
+	private isSessionIdle(paneId: string): boolean {
+		// If the session has detected ports, it's not idle
+		for (const port of this.ports.values()) {
+			if (port.paneId === paneId) return false;
+		}
+
+		const lastHint = this.lastHintActivity.get(paneId);
+		if (lastHint === undefined) return true;
+		return Date.now() - lastHint > IDLE_SESSION_TIMEOUT_MS;
+	}
+
 	private async collectRegularSessionPids(scanState: ScanState): Promise<void> {
 		const tasks: Promise<void>[] = [];
 		for (const [paneId, { session, workspaceId }] of this.sessions) {
 			if (!session.isAlive) continue;
+			if (this.isSessionIdle(paneId)) continue;
 			tasks.push(
 				this.collectPidTree({
 					paneId,
@@ -240,6 +271,7 @@ class PortManager extends EventEmitter {
 		const tasks: Promise<void>[] = [];
 		for (const [paneId, { workspaceId, pid }] of this.daemonSessions) {
 			if (pid === null) continue;
+			if (this.isSessionIdle(paneId)) continue;
 			tasks.push(
 				this.collectPidTree({
 					paneId,
