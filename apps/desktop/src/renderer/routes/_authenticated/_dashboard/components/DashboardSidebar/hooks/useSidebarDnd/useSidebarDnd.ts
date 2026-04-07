@@ -221,8 +221,10 @@ export function useSidebarDnd({
 		if (!activeId || !overId || activeType !== "workspace") return null;
 		const overIndex = flatItems.indexOf(overId);
 		if (overIndex === -1) return null;
-		// Walk backwards from the over position to find the nearest section header
-		for (let i = overIndex; i >= 0; i--) {
+		// If over is a section header, the workspace lands ABOVE it,
+		// so look for the section above the over position (skip the over itself)
+		const startFrom = isSec(overId) ? overIndex - 1 : overIndex;
+		for (let i = startFrom; i >= 0; i--) {
 			const p = parseId(flatItems[i]);
 			if (p?.type === "section") {
 				const sec = sectionsById.get(p.realId);
