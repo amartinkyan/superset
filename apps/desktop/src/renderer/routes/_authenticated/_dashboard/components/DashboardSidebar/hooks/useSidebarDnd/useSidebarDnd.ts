@@ -138,14 +138,15 @@ export function useSidebarDnd({
 		return flatItems;
 	}, [flatItems, activeType]);
 
-	// Sync from external data only when items are added/removed
+	// Sync from external data when items or their order/membership changes
 	const prevFingerprintRef = useRef("");
 	useEffect(() => {
 		const fingerprint = projectChildren
 			.map((c) =>
-				c.type === "workspace" ? c.workspace.id : `s:${c.section.id}`,
+				c.type === "workspace"
+					? c.workspace.id
+					: `s:${c.section.id}:${c.section.workspaces.map((w) => w.id).join("|")}`,
 			)
-			.sort()
 			.join(",");
 		if (fingerprint !== prevFingerprintRef.current) {
 			prevFingerprintRef.current = fingerprint;
