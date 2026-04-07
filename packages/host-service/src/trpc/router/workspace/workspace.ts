@@ -132,6 +132,27 @@ export const workspaceRouter = router({
 			return cloudRow;
 		}),
 
+	getInitState: protectedProcedure
+		.input(z.object({ workspaceId: z.string() }))
+		.query(({ ctx, input }) => {
+			const localWorkspace = ctx.db.query.workspaces
+				.findFirst({ where: eq(workspaces.id, input.workspaceId) })
+				.sync();
+
+			if (!localWorkspace) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Workspace not found",
+				});
+			}
+
+			return {
+				workspaceId: input.workspaceId,
+				phase: "ready" as const,
+				progress: null as number | null,
+			};
+		}),
+
 	gitStatus: protectedProcedure
 		.input(z.object({ id: z.string() }))
 		.query(async ({ ctx, input }) => {

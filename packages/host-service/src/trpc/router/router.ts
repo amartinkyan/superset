@@ -8,6 +8,7 @@ import { healthRouter } from "./health";
 import { projectRouter } from "./project";
 import { pullRequestsRouter } from "./pull-requests";
 import { workspaceRouter } from "./workspace";
+import { workspaceCreationRouter } from "./workspace-creation";
 
 export const appRouter = router({
 	health: healthRouter,
@@ -19,6 +20,7 @@ export const appRouter = router({
 	pullRequests: pullRequestsRouter,
 	project: projectRouter,
 	workspace: workspaceRouter,
+	workspaceCreation: workspaceCreationRouter,
 });
 
 export type AppRouter = typeof appRouter;

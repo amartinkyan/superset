@@ -12,9 +12,48 @@ import { useWorkspaceHostOptions } from "../../components/DashboardNewWorkspaceF
 
 interface CreateDashboardWorkspaceInput {
 	projectId: string;
-	name: string;
-	branch: string;
 	hostTarget: WorkspaceHostTarget;
+	source: "prompt" | "pull-request" | "branch" | "issue";
+	names: {
+		workspaceName?: string;
+		branchName?: string;
+	};
+	composer: {
+		prompt?: string;
+		compareBaseBranch?: string;
+		runSetupScript?: boolean;
+	};
+	linkedContext?: {
+		internalIssueIds?: string[];
+		githubIssueUrls?: string[];
+		linkedPrUrl?: string;
+		attachments?: Array<{
+			data: string;
+			mediaType: string;
+			filename?: string;
+		}>;
+	};
+	launch?: {
+		agentId?: string;
+		autoRun?: boolean;
+	};
+	behavior?: {
+		onExistingWorkspace?: "open" | "error";
+		onExistingWorktree?: "adopt" | "error";
+	};
+}
+
+export type CreateWorkspaceOutcome =
+	| "created_workspace"
+	| "opened_existing_workspace"
+	| "opened_worktree"
+	| "adopted_external_worktree";
+
+interface CreateWorkspaceResult {
+	outcome: CreateWorkspaceOutcome;
+	workspace: { id: string };
+	init: { phase: string; progress: number | null };
+	warnings: string[];
 }
 
 export function useCreateDashboardWorkspace() {
@@ -23,7 +62,9 @@ export function useCreateDashboardWorkspace() {
 	const { ensureWorkspaceInSidebar } = useDashboardSidebarState();
 
 	const createWorkspace = useCallback(
-		async (input: CreateDashboardWorkspaceInput) => {
+		async (
+			input: CreateDashboardWorkspaceInput,
+		): Promise<CreateWorkspaceResult> => {
 			setIsPending(true);
 			try {
 				const hostUrl = resolveCreateWorkspaceHostUrl(
@@ -39,13 +80,21 @@ export function useCreateDashboardWorkspace() {
 						? localHostService.client
 						: getHostServiceClientByUrl(hostUrl);
 
-				const workspace = await client.workspace.create.mutate({
+				const result = await client.workspaceCreation.create.mutate({
 					projectId: input.projectId,
-					name: input.name,
-					branch: input.branch,
+					source: input.source,
+					names: input.names,
+					composer: input.composer,
+					linkedContext: input.linkedContext,
+					launch: input.launch,
+					behavior: input.behavior,
 				});
-				ensureWorkspaceInSidebar(workspace.id, input.projectId);
-				return workspace;
+
+				if (result.workspace) {
+					ensureWorkspaceInSidebar(result.workspace.id, input.projectId);
+				}
+
+				return result as CreateWorkspaceResult;
 			} finally {
 				setIsPending(false);
 			}
