@@ -127,13 +127,7 @@ export function DashboardSidebarExpandedProjectContent({
 							</SortableContext>
 
 							{createPortal(
-								<DragOverlay
-									dropAnimation={{
-										sideEffects: defaultDropAnimationSideEffects({
-											styles: { active: { opacity: "0.5" } },
-										}),
-									}}
-								>
+								<DragOverlay dropAnimation={null}>
 									{activeId ? (
 										<SidebarDragOverlay activeItem={activeItem} />
 									) : null}
