@@ -96,8 +96,7 @@ export function DashboardSidebarExpandedProjectContent({
 									if (!workspace) return null;
 									const group = groupInfo.get(parsed.realId);
 									const isInSection = groupInfo.has(parsed.realId);
-									const hiddenBySectionDrag =
-										activeType === "section" && isInSection;
+									const hiddenBySectionDrag = activeType === "section";
 
 									return (
 										<AnimatePresence key={String(id)} initial={false}>
