@@ -122,7 +122,21 @@ export function useSidebarDnd({
 		buildFlatItems(projectChildren),
 	);
 	const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
+	const activeType: "workspace" | "section" | null = activeId
+		? isSec(activeId)
+			? "section"
+			: "workspace"
+		: null;
 	const clonedRef = useRef<UniqueIdentifier[] | null>(null);
+
+	// When dragging a section, SortableContext only has section IDs.
+	// When dragging a workspace (or idle), SortableContext has everything.
+	const sortableItems = useMemo(() => {
+		if (activeType === "section") {
+			return flatItems.filter((id) => isSec(id));
+		}
+		return flatItems;
+	}, [flatItems, activeType]);
 
 	// Sync from external data only when items are added/removed
 	const prevFingerprintRef = useRef("");
@@ -235,41 +249,54 @@ export function useSidebarDnd({
 
 			if (!over || active.id === over.id) return;
 
-			const oldIndex = flatItems.indexOf(active.id);
-			const overIndex = flatItems.indexOf(over.id);
-			if (oldIndex === -1 || overIndex === -1) return;
-
-			let newItems: UniqueIdentifier[];
-
 			if (isSec(active.id)) {
-				// Section drag: move the header AND all its workspaces as a group
-				const groupStart = oldIndex;
-				let groupEnd = groupStart + 1;
-				while (groupEnd < flatItems.length && !isSec(flatItems[groupEnd])) {
-					groupEnd++;
+				// Section drag: only section IDs were in the SortableContext.
+				// Reorder sections, then rebuild the full flat list with
+				// workspaces in their original positions under each section.
+				const sectionIds = flatItems.filter((id) => isSec(id));
+				const oldIdx = sectionIds.indexOf(active.id);
+				const newIdx = sectionIds.indexOf(over.id);
+				if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
+
+				const reorderedSections = arrayMove(sectionIds, oldIdx, newIdx);
+
+				// Rebuild flat list: ungrouped workspaces first, then
+				// each section with its workspaces in new section order
+				const ungrouped: UniqueIdentifier[] = [];
+				const sectionGroups = new Map<string, UniqueIdentifier[]>();
+
+				let currentSec: string | null = null;
+				for (const id of flatItems) {
+					if (isSec(id)) {
+						currentSec = String(id);
+						sectionGroups.set(currentSec, []);
+					} else if (currentSec) {
+						sectionGroups.get(currentSec)?.push(id);
+					} else {
+						ungrouped.push(id);
+					}
 				}
-				const group = flatItems.slice(groupStart, groupEnd);
-				const without = [
-					...flatItems.slice(0, groupStart),
-					...flatItems.slice(groupEnd),
-				];
 
-				// Find insertion point in the array without the group
-				const newOverIndex = without.indexOf(over.id);
-				const insertAt = newOverIndex >= 0 ? newOverIndex : without.length;
+				const newItems: UniqueIdentifier[] = [...ungrouped];
+				for (const secSortId of reorderedSections) {
+					newItems.push(secSortId);
+					const wsInSec = sectionGroups.get(String(secSortId)) ?? [];
+					newItems.push(...wsInSec);
+				}
 
-				newItems = [
-					...without.slice(0, insertAt),
-					...group,
-					...without.slice(insertAt),
-				];
+				setFlatItems(newItems);
+				commitToDb(newItems);
 			} else {
-				// Workspace drag: simple arrayMove
-				newItems = arrayMove(flatItems, oldIndex, overIndex);
-			}
+				// Workspace drag: simple arrayMove in the full flat list
+				const oldIndex = flatItems.indexOf(active.id);
+				const overIndex = flatItems.indexOf(over.id);
+				if (oldIndex === -1 || overIndex === -1 || oldIndex === overIndex)
+					return;
 
-			setFlatItems(newItems);
-			commitToDb(newItems);
+				const newItems = arrayMove(flatItems, oldIndex, overIndex);
+				setFlatItems(newItems);
+				commitToDb(newItems);
+			}
 		},
 		[flatItems, commitToDb],
 	);
@@ -287,7 +314,9 @@ export function useSidebarDnd({
 		measuring,
 		collisionDetection: closestCenter,
 		flatItems,
+		sortableItems,
 		activeId,
+		activeType,
 		activeItem,
 		groupInfo,
 		workspacesById,

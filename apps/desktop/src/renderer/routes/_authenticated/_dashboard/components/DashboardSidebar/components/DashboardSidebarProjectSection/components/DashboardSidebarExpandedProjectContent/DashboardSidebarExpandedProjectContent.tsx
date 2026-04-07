@@ -42,7 +42,9 @@ export function DashboardSidebarExpandedProjectContent({
 		measuring,
 		collisionDetection,
 		flatItems,
+		sortableItems,
 		activeId,
+		activeType,
 		activeItem,
 		groupInfo,
 		workspacesById,
@@ -68,7 +70,7 @@ export function DashboardSidebarExpandedProjectContent({
 							{...handlers}
 						>
 							<SortableContext
-								items={flatItems}
+								items={sortableItems}
 								strategy={verticalListSortingStrategy}
 							>
 								{flatItems.map((id) => {
@@ -89,6 +91,10 @@ export function DashboardSidebarExpandedProjectContent({
 											/>
 										);
 									}
+
+									// During section drag, hide workspaces that belong to a section
+									if (activeType === "section" && groupInfo.has(parsed.realId))
+										return null;
 
 									const workspace = workspacesById.get(parsed.realId);
 									if (!workspace) return null;
