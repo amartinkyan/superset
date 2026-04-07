@@ -10,10 +10,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PullRequestInfo } from "./git";
 import {
 	branchExistsOnRemote,
 	createWorktree,
+	createWorktreeFromPr,
 	getCurrentBranch,
+	getPrLocalBranchName,
 	hasUnpushedCommits,
 	isUnbornHeadError,
 	parsePorcelainStatusV2,
@@ -877,5 +880,168 @@ describe("parsePrUrl", () => {
 		expect(
 			parsePrUrl("https://github.com/superset-sh/superset/issues/1781"),
 		).toBe(null);
+	});
+});
+
+describe("getPrLocalBranchName", () => {
+	test("returns headRefName for same-repo PRs", () => {
+		const prInfo: PullRequestInfo = {
+			number: 42,
+			title: "Test PR",
+			headRefName: "feature-branch",
+			headRepository: { owner: "superset-sh", name: "superset" },
+			headRepositoryOwner: { login: "superset-sh" },
+			isCrossRepository: false,
+		};
+		expect(getPrLocalBranchName(prInfo)).toBe("feature-branch");
+	});
+
+	test("prefixes with fork owner for cross-repo PRs, producing a slash", () => {
+		const prInfo: PullRequestInfo = {
+			number: 42,
+			title: "Test PR",
+			headRefName: "feature-branch",
+			headRepository: { owner: "contributor", name: "superset" },
+			headRepositoryOwner: { login: "Contributor" },
+			isCrossRepository: true,
+		};
+		// The slash in the name is exactly what triggers the bug
+		expect(getPrLocalBranchName(prInfo)).toBe("contributor/feature-branch");
+	});
+});
+
+describe("createWorktreeFromPr — slash-in-branch fallback", () => {
+	const shellEnvMod = require("./shell-env") as typeof import("./shell-env");
+	const gitClientMod = require("./git-client") as typeof import("./git-client");
+
+	const fakePrInfo: PullRequestInfo = {
+		number: 99,
+		title: "Fork PR",
+		headRefName: "feature-branch",
+		headRepository: { owner: "contributor", name: "superset" },
+		headRepositoryOwner: { login: "Contributor" },
+		isCrossRepository: true,
+	};
+
+	test("falls back to git checkout --no-track FETCH_HEAD when gh pr checkout fails with 'is not a branch'", async () => {
+		const repoPath = createTestRepo("pr-slash-fallback");
+		seedCommit(repoPath);
+		const worktreePath = join(TEST_DIR, "pr-slash-worktree");
+
+		// Mock getSimpleGitWithShellPath to return a fake simple-git with empty branch list
+		const getSimpleGitSpy = spyOn(
+			gitClientMod,
+			"getSimpleGitWithShellPath",
+		).mockResolvedValue({
+			branchLocal: () =>
+				Promise.resolve({
+					all: [],
+					current: "",
+					branches: {},
+					detached: false,
+				}),
+		} as any);
+
+		// Mock execGitWithShellPath calls:
+		// 1. worktree add --detach (succeeds)
+		// 2. checkout -b ... --no-track FETCH_HEAD (the fallback — succeeds)
+		// 3. config push.autoSetupRemote (succeeds)
+		const execGitCalls: string[][] = [];
+		const execGitSpy = spyOn(
+			gitClientMod,
+			"execGitWithShellPath",
+		).mockImplementation(async (args: string[]) => {
+			execGitCalls.push(args);
+			return { stdout: "", stderr: "" };
+		});
+
+		// Mock execWithShellEnv to simulate `gh pr checkout` failing with "is not a branch"
+		const execShellSpy = spyOn(
+			shellEnvMod,
+			"execWithShellEnv",
+		).mockImplementation(async (cmd: string, args: string[]) => {
+			if (cmd === "gh" && args.includes("pr") && args.includes("checkout")) {
+				throw new Error(
+					"Command failed: gh pr checkout 99 --branch contributor/feature-branch --force\n" +
+						"fatal: cannot set up tracking information; starting point " +
+						"'origin/contributor/feature-branch' is not a branch",
+				);
+			}
+			return { stdout: "", stderr: "" };
+		});
+
+		await createWorktreeFromPr({
+			mainRepoPath: repoPath,
+			worktreePath,
+			prInfo: fakePrInfo,
+			localBranchName: "contributor/feature-branch",
+		});
+
+		// Verify the fallback git checkout was called with --no-track FETCH_HEAD
+		const fallbackCall = execGitCalls.find(
+			(args) => args.includes("checkout") && args.includes("--no-track"),
+		);
+		expect(fallbackCall).toBeDefined();
+		expect(fallbackCall).toContain("-b");
+		expect(fallbackCall).toContain("contributor/feature-branch");
+		expect(fallbackCall).toContain("FETCH_HEAD");
+
+		// Verify autoSetupRemote was configured
+		const configCall = execGitCalls.find(
+			(args) =>
+				args.includes("config") && args.includes("push.autoSetupRemote"),
+		);
+		expect(configCall).toBeDefined();
+
+		getSimpleGitSpy.mockRestore();
+		execGitSpy.mockRestore();
+		execShellSpy.mockRestore();
+	});
+
+	test("re-throws non-tracking errors from gh pr checkout", async () => {
+		const repoPath = createTestRepo("pr-slash-rethrow");
+		seedCommit(repoPath);
+		const worktreePath = join(TEST_DIR, "pr-slash-rethrow-wt");
+
+		const getSimpleGitSpy = spyOn(
+			gitClientMod,
+			"getSimpleGitWithShellPath",
+		).mockResolvedValue({
+			branchLocal: () =>
+				Promise.resolve({
+					all: [],
+					current: "",
+					branches: {},
+					detached: false,
+				}),
+		} as any);
+
+		const execGitSpy = spyOn(
+			gitClientMod,
+			"execGitWithShellPath",
+		).mockImplementation(async () => ({ stdout: "", stderr: "" }));
+
+		const execShellSpy = spyOn(
+			shellEnvMod,
+			"execWithShellEnv",
+		).mockImplementation(async (cmd: string, args: string[]) => {
+			if (cmd === "gh" && args.includes("checkout")) {
+				throw new Error("authentication required");
+			}
+			return { stdout: "", stderr: "" };
+		});
+
+		await expect(
+			createWorktreeFromPr({
+				mainRepoPath: repoPath,
+				worktreePath,
+				prInfo: fakePrInfo,
+				localBranchName: "contributor/feature-branch",
+			}),
+		).rejects.toThrow("authentication required");
+
+		getSimpleGitSpy.mockRestore();
+		execGitSpy.mockRestore();
+		execShellSpy.mockRestore();
 	});
 });

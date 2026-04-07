@@ -1777,18 +1777,45 @@ export async function createWorktreeFromPr({
 			});
 		}
 
-		await execWithShellEnv(
-			"gh",
-			[
-				"pr",
-				"checkout",
-				String(prInfo.number),
-				"--branch",
-				localBranchName,
-				"--force",
-			],
-			{ cwd: worktreePath, timeout: 120_000 },
-		);
+		try {
+			await execWithShellEnv(
+				"gh",
+				[
+					"pr",
+					"checkout",
+					String(prInfo.number),
+					"--branch",
+					localBranchName,
+					"--force",
+				],
+				{ cwd: worktreePath, timeout: 120_000 },
+			);
+		} catch (checkoutError) {
+			const msg =
+				checkoutError instanceof Error
+					? checkoutError.message
+					: String(checkoutError);
+			if (msg.includes("is not a branch")) {
+				// Branch names containing '/' cause `gh pr checkout` to fail when
+				// setting up tracking (origin/<name> can't be resolved as a ref).
+				// Since `gh pr checkout` already fetched the PR head, FETCH_HEAD
+				// points to the correct commit — check out from there without tracking.
+				await execGitWithShellPath(
+					[
+						"-C",
+						worktreePath,
+						"checkout",
+						"-b",
+						localBranchName,
+						"--no-track",
+						"FETCH_HEAD",
+					],
+					{ timeout: 30_000 },
+				);
+			} else {
+				throw checkoutError;
+			}
+		}
 
 		// Enable autoSetupRemote so `git push` just works without -u flag.
 		await execGitWithShellPath(
