@@ -1,4 +1,6 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	getHostServiceClientByUrl,
 	type HostServiceClient,
@@ -7,66 +9,141 @@ import {
 	resolveCreateWorkspaceHostUrl,
 	type WorkspaceHostTarget,
 } from "renderer/lib/v2-workspace-host";
+import { navigateToV2Workspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
+import {
+	useClearPendingWorkspace,
+	useSetPendingWorkspace,
+	useSetPendingWorkspaceStatus,
+} from "renderer/stores/new-workspace-modal";
+import { sanitizeBranchNameWithMaxLength } from "shared/utils/branch";
 import { useWorkspaceHostOptions } from "../../components/DashboardNewWorkspaceForm/components/DevicePicker/hooks/useWorkspaceHostOptions";
+import type {
+	LinkedIssue,
+	LinkedPR,
+} from "../../DashboardNewWorkspaceDraftContext";
 
-interface CreateDashboardWorkspaceInput {
+// ── Utilities (pure functions, not hooks) ────────────────────────────
+
+async function convertBlobUrlToDataUrl(url: string): Promise<string> {
+	const response = await fetch(url);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch attachment: ${response.statusText}`);
+	}
+	const blob = await response.blob();
+	return new Promise<string>((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onloadend = () => resolve(reader.result as string);
+		reader.onerror = () => reject(new Error("Failed to read attachment data"));
+		reader.onabort = () => reject(new Error("Attachment read was aborted"));
+		reader.readAsDataURL(blob);
+	});
+}
+
+function revokeDetachedFiles(files: Array<{ url: string }>): void {
+	for (const file of files) {
+		if (file.url?.startsWith("blob:")) {
+			URL.revokeObjectURL(file.url);
+		}
+	}
+}
+
+// ── Types ────────────────────────────────────────────────────────────
+
+export interface CreateWorkspaceInput {
 	projectId: string;
 	hostTarget: WorkspaceHostTarget;
-	source: "prompt" | "pull-request" | "branch" | "issue";
-	names: {
-		workspaceName?: string;
-		branchName?: string;
-	};
-	composer: {
-		prompt?: string;
-		compareBaseBranch?: string;
-		runSetupScript?: boolean;
-	};
-	linkedContext?: {
-		internalIssueIds?: string[];
-		githubIssueUrls?: string[];
-		linkedPrUrl?: string;
-		attachments?: Array<{
-			data: string;
-			mediaType: string;
-			filename?: string;
-		}>;
-	};
-	launch?: {
-		agentId?: string;
-		autoRun?: boolean;
-	};
-	behavior?: {
-		onExistingWorkspace?: "open" | "error";
-		onExistingWorktree?: "adopt" | "error";
-	};
+	prompt: string;
+	workspaceName?: string;
+	branchName?: string;
+	branchNameEdited: boolean;
+	compareBaseBranch?: string;
+	runSetupScript: boolean;
+	linkedPR?: LinkedPR | null;
+	linkedIssues: LinkedIssue[];
+	attachmentFiles: Array<{ url: string; mediaType: string; filename?: string }>;
 }
 
-export type CreateWorkspaceOutcome =
-	| "created_workspace"
-	| "opened_existing_workspace"
-	| "opened_worktree"
-	| "adopted_external_worktree";
-
-interface CreateWorkspaceResult {
-	outcome: CreateWorkspaceOutcome;
-	workspace: { id: string };
-	init: { phase: string; progress: number | null };
-	warnings: string[];
-}
+// ── Hook ─────────────────────────────────────────────────────────────
 
 export function useCreateDashboardWorkspace() {
 	const [isPending, setIsPending] = useState(false);
+	const navigate = useNavigate();
 	const { localHostService } = useWorkspaceHostOptions();
 	const { ensureWorkspaceInSidebar } = useDashboardSidebarState();
+	const setPendingWorkspace = useSetPendingWorkspace();
+	const setPendingWorkspaceStatus = useSetPendingWorkspaceStatus();
+	const clearPendingWorkspace = useClearPendingWorkspace();
+	const generateBranchNameMutation =
+		electronTrpc.workspaces.generateBranchName.useMutation();
 
 	const createWorkspace = useCallback(
-		async (
-			input: CreateDashboardWorkspaceInput,
-		): Promise<CreateWorkspaceResult> => {
+		async (input: CreateWorkspaceInput): Promise<void> => {
+			if (isPending) return;
 			setIsPending(true);
+
+			const pendingId = crypto.randomUUID();
+			const displayName =
+				input.workspaceName?.trim() || input.prompt.trim() || "New workspace";
+			const willGenerateAIName =
+				!input.branchNameEdited && !!input.prompt.trim() && !input.linkedPR;
+
+			setPendingWorkspace({
+				id: pendingId,
+				projectId: input.projectId,
+				name: displayName,
+				status: willGenerateAIName ? "generating-branch" : "preparing",
+			});
+
 			try {
+				// 1. AI branch name generation
+				let aiBranchName: string | null = null;
+				if (willGenerateAIName) {
+					try {
+						const result = await Promise.race([
+							generateBranchNameMutation.mutateAsync({
+								prompt: input.prompt.trim(),
+								projectId: input.projectId,
+							}),
+							new Promise<never>((_, reject) =>
+								setTimeout(() => reject(new Error("timeout")), 30000),
+							),
+						]);
+						aiBranchName = result.branchName;
+					} catch {
+						// Fall through — host-service will generate a name if none provided
+					} finally {
+						setPendingWorkspaceStatus(pendingId, "preparing");
+					}
+				}
+
+				// 2. Convert attachment blob URLs to data URLs
+				let attachments:
+					| Array<{ data: string; mediaType: string; filename?: string }>
+					| undefined;
+				if (input.attachmentFiles.length > 0) {
+					attachments = await Promise.all(
+						input.attachmentFiles.map(async (file) => ({
+							data: await convertBlobUrlToDataUrl(file.url),
+							mediaType: file.mediaType,
+							filename: file.filename,
+						})),
+					);
+				}
+
+				// 3. Resolve branch name
+				const resolvedBranchName =
+					(input.branchNameEdited && input.branchName?.trim()
+						? sanitizeBranchNameWithMaxLength(
+								input.branchName.trim(),
+								undefined,
+								{ preserveCase: true },
+							)
+						: aiBranchName) || undefined;
+
+				// 4. Call host-service
+				setPendingWorkspaceStatus(pendingId, "creating");
+
 				const hostUrl = resolveCreateWorkspaceHostUrl(
 					input.hostTarget,
 					localHostService?.url ?? null,
@@ -82,24 +159,43 @@ export function useCreateDashboardWorkspace() {
 
 				const result = await client.workspaceCreation.create.mutate({
 					projectId: input.projectId,
-					source: input.source,
-					names: input.names,
-					composer: input.composer,
-					linkedContext: input.linkedContext,
-					launch: input.launch,
-					behavior: input.behavior,
+					source: input.linkedPR ? "pull-request" : "prompt",
+					names: {
+						workspaceName: input.workspaceName?.trim() || undefined,
+						branchName: resolvedBranchName,
+					},
+					composer: {
+						prompt: input.prompt.trim() || undefined,
+						compareBaseBranch: input.compareBaseBranch || undefined,
+						runSetupScript: input.runSetupScript,
+					},
+					linkedContext: {
+						linkedPrUrl: input.linkedPR?.url,
+						attachments,
+					},
 				});
 
+				// 5. Handle outcome
 				if (result.workspace) {
 					ensureWorkspaceInSidebar(result.workspace.id, input.projectId);
+					void navigateToV2Workspace(result.workspace.id, navigate);
 				}
-
-				return result as CreateWorkspaceResult;
 			} finally {
+				clearPendingWorkspace(pendingId);
+				revokeDetachedFiles(input.attachmentFiles);
 				setIsPending(false);
 			}
 		},
-		[ensureWorkspaceInSidebar, localHostService],
+		[
+			clearPendingWorkspace,
+			ensureWorkspaceInSidebar,
+			generateBranchNameMutation,
+			isPending,
+			localHostService,
+			navigate,
+			setPendingWorkspace,
+			setPendingWorkspaceStatus,
+		],
 	);
 
 	return { createWorkspace, isPending };

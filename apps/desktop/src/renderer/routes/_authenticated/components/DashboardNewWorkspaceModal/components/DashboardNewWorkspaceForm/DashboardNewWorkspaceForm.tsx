@@ -22,10 +22,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { cn } from "@superset/ui/utils";
-import { useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { GoGitBranch, GoIssueOpened } from "react-icons/go";
 import { HiCheck, HiChevronUpDown } from "react-icons/hi2";
 import { LuGitPullRequest } from "react-icons/lu";
@@ -33,16 +32,13 @@ import { SiLinear } from "react-icons/si";
 import { AgentSelect } from "renderer/components/AgentSelect";
 import { LinkedIssuePill } from "renderer/components/Chat/ChatInterface/components/ChatInputFooter/components/LinkedIssuePill";
 import { IssueLinkCommand } from "renderer/components/Chat/ChatInterface/components/IssueLinkCommand";
+import { GitHubIssueLinkCommand } from "renderer/components/NewWorkspaceModal/components/PromptGroup/components/GitHubIssueLinkCommand";
+import { LinkedGitHubIssuePill } from "renderer/components/NewWorkspaceModal/components/PromptGroup/components/LinkedGitHubIssuePill";
+import { LinkedPRPill } from "renderer/components/NewWorkspaceModal/components/PromptGroup/components/LinkedPRPill";
+import { PRLinkCommand } from "renderer/components/NewWorkspaceModal/components/PromptGroup/components/PRLinkCommand";
 import { useAgentLaunchPreferences } from "renderer/hooks/useAgentLaunchPreferences";
 import { PLATFORM } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { navigateToV2Workspace } from "renderer/routes/_authenticated/_dashboard/utils/workspace-navigation";
-import {
-	useClearPendingWorkspace,
-	useNewWorkspaceModalOpen,
-	useSetPendingWorkspace,
-	useSetPendingWorkspaceStatus,
-} from "renderer/stores/new-workspace-modal";
 import {
 	type AgentDefinitionId,
 	getEnabledAgentConfigs,
@@ -54,42 +50,27 @@ import {
 } from "../../DashboardNewWorkspaceDraftContext";
 import { useCreateDashboardWorkspace } from "../../hooks/useCreateDashboardWorkspace";
 import { DevicePicker } from "./components/DevicePicker";
-import { GitHubIssueLinkCommand } from "./components/GitHubIssueLinkCommand";
-import { LinkedGitHubIssuePill } from "./components/LinkedGitHubIssuePill";
-import { LinkedPRPill } from "./components/LinkedPRPill";
-import { PRLinkCommand } from "./components/PRLinkCommand";
 import { ProjectSelector } from "./components/ProjectSelector";
+import { useBranchContext } from "./hooks/useBranchContext";
 import { useDashboardNewWorkspaceProjectSelection } from "./hooks/useDashboardNewWorkspaceProjectSelection";
-import { useResolvedLocalProject } from "./hooks/useResolvedLocalProject";
 
 type WorkspaceCreateAgent = AgentDefinitionId | "none";
+type LinkCommand = "issue" | "github-issue" | "pr";
 
 const AGENT_STORAGE_KEY = "lastSelectedWorkspaceCreateAgent";
-
 const PILL_BUTTON_CLASS =
 	"!h-[22px] min-h-0 rounded-md border-[0.5px] border-border bg-foreground/[0.04] shadow-none text-[11px]";
 
-type ConvertedFile = {
-	data: string;
-	mediaType: string;
-	filename?: string;
-};
-
-// ── Attachment Buttons ────────────────────────────────────────────────
+// ── Small sub-components ─────────────────────────────────────────────
 
 function AttachmentButtons({
 	anchorRef,
-	onOpenIssueLink,
-	onOpenGitHubIssue,
-	onOpenPRLink,
+	onOpen,
 }: {
 	anchorRef: React.RefObject<HTMLDivElement | null>;
-	onOpenIssueLink: () => void;
-	onOpenGitHubIssue: () => void;
-	onOpenPRLink: () => void;
+	onOpen: (cmd: LinkCommand) => void;
 }) {
 	const attachments = usePromptInputAttachments();
-
 	return (
 		<div ref={anchorRef} className="flex items-center gap-1">
 			<Tooltip>
@@ -103,73 +84,54 @@ function AttachmentButtons({
 				</TooltipTrigger>
 				<TooltipContent side="bottom">Add attachment</TooltipContent>
 			</Tooltip>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<PromptInputButton
-						className={`${PILL_BUTTON_CLASS} w-[22px]`}
-						onClick={onOpenIssueLink}
-					>
-						<SiLinear className="size-3.5" />
-					</PromptInputButton>
-				</TooltipTrigger>
-				<TooltipContent side="bottom">Link issue</TooltipContent>
-			</Tooltip>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<PromptInputButton
-						className={`${PILL_BUTTON_CLASS} w-[22px]`}
-						onClick={onOpenGitHubIssue}
-					>
-						<GoIssueOpened className="size-3.5" />
-					</PromptInputButton>
-				</TooltipTrigger>
-				<TooltipContent side="bottom">Link GitHub issue</TooltipContent>
-			</Tooltip>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<PromptInputButton
-						className={`${PILL_BUTTON_CLASS} w-[22px]`}
-						onClick={onOpenPRLink}
-					>
-						<LuGitPullRequest className="size-3.5" />
-					</PromptInputButton>
-				</TooltipTrigger>
-				<TooltipContent side="bottom">Link pull request</TooltipContent>
-			</Tooltip>
+			{(
+				[
+					["issue", SiLinear, "Link issue"],
+					["github-issue", GoIssueOpened, "Link GitHub issue"],
+					["pr", LuGitPullRequest, "Link pull request"],
+				] as const
+			).map(([cmd, Icon, label]) => (
+				<Tooltip key={cmd}>
+					<TooltipTrigger asChild>
+						<PromptInputButton
+							className={`${PILL_BUTTON_CLASS} w-[22px]`}
+							onClick={() => onOpen(cmd)}
+						>
+							<Icon className="size-3.5" />
+						</PromptInputButton>
+					</TooltipTrigger>
+					<TooltipContent side="bottom">{label}</TooltipContent>
+				</Tooltip>
+			))}
 		</div>
 	);
 }
 
-// ── Compare Base Branch Picker ────────────────────────────────────────
-
 function CompareBaseBranchPicker({
-	effectiveCompareBaseBranch,
+	effectiveBranch,
 	defaultBranch,
-	isBranchesLoading,
-	isBranchesError,
+	isLoading,
+	isError,
 	branches,
-	onSelectCompareBaseBranch,
+	onSelect,
 }: {
-	effectiveCompareBaseBranch: string | null;
-	defaultBranch?: string;
-	isBranchesLoading: boolean;
-	isBranchesError: boolean;
-	branches: Array<{ name: string; lastCommitDate: number; isLocal: boolean }>;
-	onSelectCompareBaseBranch: (branchName: string) => void;
+	effectiveBranch: string | null;
+	defaultBranch?: string | null;
+	isLoading: boolean;
+	isError: boolean;
+	branches: Array<{ name: string }>;
+	onSelect: (name: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
-	const [branchSearch, setBranchSearch] = useState("");
+	const [search, setSearch] = useState("");
 
-	const filteredBranches = useMemo(() => {
-		if (!branches.length) return [];
-		if (!branchSearch) return branches;
-		const searchLower = branchSearch.toLowerCase();
-		return branches.filter((branch) =>
-			branch.name.toLowerCase().includes(searchLower),
-		);
-	}, [branches, branchSearch]);
+	const filtered = useMemo(() => {
+		if (!search) return branches;
+		const q = search.toLowerCase();
+		return branches.filter((b) => b.name.toLowerCase().includes(q));
+	}, [branches, search]);
 
-	if (isBranchesError) {
+	if (isError) {
 		return (
 			<span className="text-xs text-destructive">Failed to load branches</span>
 		);
@@ -180,21 +142,21 @@ function CompareBaseBranchPicker({
 			open={open}
 			onOpenChange={(v) => {
 				setOpen(v);
-				if (!v) setBranchSearch("");
+				if (!v) setSearch("");
 			}}
 		>
 			<PopoverTrigger asChild>
 				<button
 					type="button"
-					disabled={isBranchesLoading}
+					disabled={isLoading}
 					className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 min-w-0 max-w-full"
 				>
 					<GoGitBranch className="size-3 shrink-0" />
-					{isBranchesLoading ? (
+					{isLoading ? (
 						<span className="h-2.5 w-14 rounded-sm bg-muted-foreground/15 animate-pulse" />
 					) : (
 						<span className="font-mono truncate">
-							{effectiveCompareBaseBranch || "..."}
+							{effectiveBranch || "..."}
 						</span>
 					)}
 					<HiChevronUpDown className="size-3 shrink-0" />
@@ -203,22 +165,22 @@ function CompareBaseBranchPicker({
 			<PopoverContent
 				className="w-80 p-0"
 				align="start"
-				onWheel={(event) => event.stopPropagation()}
+				onWheel={(e) => e.stopPropagation()}
 			>
 				<Command shouldFilter={false}>
 					<CommandInput
 						placeholder="Search branches..."
-						value={branchSearch}
-						onValueChange={setBranchSearch}
+						value={search}
+						onValueChange={setSearch}
 					/>
 					<CommandList className="max-h-[300px]">
 						<CommandEmpty>No branches found</CommandEmpty>
-						{filteredBranches.map((branch) => (
+						{filtered.map((branch) => (
 							<CommandItem
 								key={branch.name}
 								value={branch.name}
 								onSelect={() => {
-									onSelectCompareBaseBranch(branch.name);
+									onSelect(branch.name);
 									setOpen(false);
 								}}
 								className="flex items-center justify-between"
@@ -234,7 +196,7 @@ function CompareBaseBranchPicker({
 										</span>
 									)}
 								</span>
-								{effectiveCompareBaseBranch === branch.name && (
+								{effectiveBranch === branch.name && (
 									<HiCheck className="size-4 text-primary" />
 								)}
 							</CommandItem>
@@ -246,7 +208,7 @@ function CompareBaseBranchPicker({
 	);
 }
 
-// ── Main Form ─────────────────────────────────────────────────────────
+// ── Main Form ────────────────────────────────────────────────────────
 
 interface DashboardNewWorkspaceFormProps {
 	isOpen: boolean;
@@ -257,20 +219,17 @@ export function DashboardNewWorkspaceForm({
 	isOpen,
 	preSelectedProjectId,
 }: DashboardNewWorkspaceFormProps) {
-	const navigate = useNavigate();
 	const modKey = PLATFORM === "mac" ? "⌘" : "Ctrl";
-	const isNewWorkspaceModalOpen = useNewWorkspaceModalOpen();
-	const { closeAndResetDraft, closeModal, draft, runAsyncAction, updateDraft } =
+	const { closeAndResetDraft, closeModal, draft, updateDraft } =
 		useDashboardNewWorkspaceDraft();
 	const attachments = useProviderAttachments();
-	const clearPendingWorkspace = useClearPendingWorkspace();
-	const setPendingWorkspace = useSetPendingWorkspace();
-	const setPendingWorkspaceStatus = useSetPendingWorkspaceStatus();
+	const plusMenuRef = useRef<HTMLDivElement>(null);
+	const [activeLinkCommand, setActiveLinkCommand] =
+		useState<LinkCommand | null>(null);
 
 	const {
 		compareBaseBranch,
 		prompt,
-		runSetupScript,
 		workspaceName,
 		workspaceNameEdited,
 		branchName,
@@ -278,32 +237,31 @@ export function DashboardNewWorkspaceForm({
 		linkedIssues,
 		linkedPR,
 		hostTarget,
+		runSetupScript,
 	} = draft;
 
 	// ── Project selection ────────────────────────────────────────────
 	const handleSelectProject = useCallback(
-		(selectedProjectId: string | null) => {
-			updateDraft({ selectedProjectId });
+		(projectId: string | null) => {
+			updateDraft({ selectedProjectId: projectId, compareBaseBranch: null });
 		},
 		[updateDraft],
 	);
-	const { githubRepository } = useDashboardNewWorkspaceProjectSelection({
+	useDashboardNewWorkspaceProjectSelection({
 		isOpen,
 		preSelectedProjectId,
 		selectedProjectId: draft.selectedProjectId,
 		onSelectProject: handleSelectProject,
 	});
-	const resolvedLocalProjectId = useResolvedLocalProject(githubRepository);
 
 	// ── Agent presets ────────────────────────────────────────────────
 	const agentPresetsQuery = electronTrpc.settings.getAgentPresets.useQuery();
-	const agentPresets = agentPresetsQuery.data ?? [];
 	const enabledAgentPresets = useMemo(
-		() => getEnabledAgentConfigs(agentPresets),
-		[agentPresets],
+		() => getEnabledAgentConfigs(agentPresetsQuery.data ?? []),
+		[agentPresetsQuery.data],
 	);
 	const selectableAgentIds = useMemo(
-		() => enabledAgentPresets.map((preset) => preset.id),
+		() => enabledAgentPresets.map((p) => p.id),
 		[enabledAgentPresets],
 	);
 	const { selectedAgent, setSelectedAgent } =
@@ -315,261 +273,58 @@ export function DashboardNewWorkspaceForm({
 			agentsReady: agentPresetsQuery.isFetched,
 		});
 
-	// ── Branch data (via local project electronTrpc for now) ─────────
-	const hasLocalProject = !!resolvedLocalProjectId;
-
-	const { data: project } = electronTrpc.projects.get.useQuery(
-		{ id: resolvedLocalProjectId ?? "" },
-		{ enabled: hasLocalProject },
-	);
-
+	// ── Branch data (via host-service) ───────────────────────────────
 	const {
-		data: localBranchData,
-		isLoading: isLocalBranchesLoading,
+		data: branchData,
+		isLoading: isBranchesLoading,
 		isError: isBranchesError,
-	} = electronTrpc.projects.getBranchesLocal.useQuery(
-		{ projectId: resolvedLocalProjectId ?? "" },
-		{ enabled: hasLocalProject },
-	);
-	const { data: remoteBranchData } = electronTrpc.projects.getBranches.useQuery(
-		{ projectId: resolvedLocalProjectId ?? "" },
-		{ enabled: hasLocalProject },
-	);
-	const branchData = remoteBranchData ?? localBranchData;
-	const isBranchesLoading = isLocalBranchesLoading && !branchData;
+	} = useBranchContext(draft.selectedProjectId, hostTarget);
 
-	const effectiveCompareBaseBranch = useMemo(() => {
-		if (compareBaseBranch) return compareBaseBranch;
-		if (project?.workspaceBaseBranch) return project.workspaceBaseBranch;
-		return branchData?.defaultBranch ?? null;
-	}, [
-		compareBaseBranch,
-		project?.workspaceBaseBranch,
-		branchData?.defaultBranch,
-	]);
-
-	// ── Link state ───────────────────────────────────────────────────
-	const [issueLinkOpen, setIssueLinkOpen] = useState(false);
-	const [gitHubIssueLinkOpen, setGitHubIssueLinkOpen] = useState(false);
-	const [prLinkOpen, setPRLinkOpen] = useState(false);
-	const plusMenuRef = useRef<HTMLDivElement>(null);
-	const submitStartedRef = useRef(false);
-	const trimmedPrompt = prompt.trim();
-
-	// ── AI branch name ───────────────────────────────────────────────
-	const generateBranchNameMutation =
-		electronTrpc.workspaces.generateBranchName.useMutation();
-
-	useEffect(() => {
-		if (isNewWorkspaceModalOpen) {
-			submitStartedRef.current = false;
-		}
-	}, [isNewWorkspaceModalOpen]);
-
-	const previousProjectIdRef = useRef(draft.selectedProjectId);
-	useEffect(() => {
-		if (previousProjectIdRef.current === draft.selectedProjectId) return;
-		previousProjectIdRef.current = draft.selectedProjectId;
-		updateDraft({ compareBaseBranch: null });
-	}, [draft.selectedProjectId, updateDraft]);
+	const effectiveCompareBaseBranch =
+		compareBaseBranch || branchData?.defaultBranch || null;
 
 	// ── Create workspace ─────────────────────────────────────────────
-	const { createWorkspace } = useCreateDashboardWorkspace();
+	const { createWorkspace, isPending } = useCreateDashboardWorkspace();
 
-	const convertBlobUrlToDataUrl = useCallback(
-		async (url: string): Promise<string> => {
-			const response = await fetch(url);
-			if (!response.ok) {
-				throw new Error(`Failed to fetch attachment: ${response.statusText}`);
-			}
-			const blob = await response.blob();
-			return new Promise<string>((resolve, reject) => {
-				const reader = new FileReader();
-				reader.onloadend = () => resolve(reader.result as string);
-				reader.onerror = () =>
-					reject(new Error("Failed to read attachment data"));
-				reader.onabort = () => reject(new Error("Attachment read was aborted"));
-				reader.readAsDataURL(blob);
-			});
-		},
-		[],
-	);
-
-	const handleCreate = useCallback(async () => {
+	const handleCreate = useCallback(() => {
 		if (!draft.selectedProjectId) {
 			toast.error("Select a project first");
 			return;
 		}
-
-		if (submitStartedRef.current) return;
-		submitStartedRef.current = true;
-
-		const displayName =
-			workspaceNameEdited && workspaceName.trim()
-				? workspaceName.trim()
-				: trimmedPrompt || "New workspace";
-		const willGenerateAIName =
-			!branchNameEdited && !!trimmedPrompt && !linkedPR;
-		const pendingWorkspaceId = crypto.randomUUID();
 		const detachedFiles = attachments.takeFiles();
-
-		setPendingWorkspace({
-			id: pendingWorkspaceId,
-			projectId: draft.selectedProjectId,
-			name: displayName,
-			status: willGenerateAIName ? "generating-branch" : "preparing",
-		});
 		closeAndResetDraft();
 
-		try {
-			// AI branch name generation
-			let aiBranchName: string | null = null;
-			if (willGenerateAIName) {
-				try {
-					const result = await Promise.race([
-						generateBranchNameMutation.mutateAsync({
-							prompt: trimmedPrompt,
-							projectId: draft.selectedProjectId,
-						}),
-						new Promise<never>((_, reject) =>
-							setTimeout(() => reject(new Error("timeout")), 30000),
-						),
-					]);
-					aiBranchName = result.branchName;
-				} catch (error) {
-					const msg = error instanceof Error ? error.message : String(error);
-					if (
-						msg.includes("auth") ||
-						msg.includes("401") ||
-						msg.includes("403")
-					) {
-						clearPendingWorkspace(pendingWorkspaceId);
-						toast.error("AI authentication failed.");
-						return;
-					}
-					toast.info("Using random branch name");
-				} finally {
-					setPendingWorkspaceStatus(pendingWorkspaceId, "preparing");
-				}
-			}
-
-			// Convert attachments
-			let convertedFiles: ConvertedFile[] = [];
-			if (detachedFiles.length > 0) {
-				try {
-					convertedFiles = await Promise.all(
-						detachedFiles.map(async (file) => ({
-							data: await convertBlobUrlToDataUrl(file.url),
-							mediaType: file.mediaType,
-							filename: file.filename,
-						})),
-					);
-				} catch (err) {
-					clearPendingWorkspace(pendingWorkspaceId);
-					toast.error(
-						err instanceof Error
-							? err.message
-							: "Failed to process attachments",
-					);
-					return;
-				}
-			}
-
-			setPendingWorkspaceStatus(pendingWorkspaceId, "creating");
-
-			const resolvedBranchName =
-				(branchNameEdited && branchName.trim()
-					? sanitizeBranchNameWithMaxLength(branchName.trim(), undefined, {
-							preserveCase: true,
-						})
-					: aiBranchName) || undefined;
-
-			const source = linkedPR ? ("pull-request" as const) : ("prompt" as const);
-
-			void runAsyncAction(
-				createWorkspace({
-					projectId: draft.selectedProjectId,
-					hostTarget,
-					source,
-					names: {
-						workspaceName:
-							workspaceNameEdited && workspaceName.trim()
-								? workspaceName.trim()
-								: undefined,
-						branchName: resolvedBranchName,
-					},
-					composer: {
-						prompt: trimmedPrompt || undefined,
-						compareBaseBranch: compareBaseBranch || undefined,
-						runSetupScript,
-					},
-					linkedContext: {
-						linkedPrUrl: linkedPR?.url,
-						attachments: convertedFiles.length > 0 ? convertedFiles : undefined,
-					},
-				}).then((result) => {
-					if (result.workspace) {
-						navigateToV2Workspace(result.workspace.id, navigate);
-					}
-					return result;
-				}),
-				{
-					loading: "Creating workspace...",
-					success: "Workspace created",
-					error: (err) =>
-						err instanceof Error ? err.message : "Failed to create workspace",
-				},
-				{ closeAndReset: false },
-			).finally(() => {
-				clearPendingWorkspace(pendingWorkspaceId);
-			});
-		} finally {
-			for (const file of detachedFiles) {
-				if (file.url?.startsWith("blob:")) {
-					URL.revokeObjectURL(file.url);
-				}
-			}
-		}
+		void createWorkspace({
+			projectId: draft.selectedProjectId,
+			hostTarget,
+			prompt,
+			workspaceName: workspaceNameEdited ? workspaceName : undefined,
+			branchName,
+			branchNameEdited,
+			compareBaseBranch: compareBaseBranch || undefined,
+			runSetupScript,
+			linkedPR,
+			linkedIssues,
+			attachmentFiles: detachedFiles,
+		});
 	}, [
 		attachments,
 		branchName,
 		branchNameEdited,
-		clearPendingWorkspace,
 		closeAndResetDraft,
 		compareBaseBranch,
-		convertBlobUrlToDataUrl,
 		createWorkspace,
 		draft.selectedProjectId,
-		generateBranchNameMutation,
 		hostTarget,
+		linkedIssues,
 		linkedPR,
-		navigate,
-		runAsyncAction,
+		prompt,
 		runSetupScript,
-		setPendingWorkspace,
-		setPendingWorkspaceStatus,
-		trimmedPrompt,
 		workspaceName,
 		workspaceNameEdited,
 	]);
 
-	const handlePromptSubmit = useCallback(() => {
-		void handleCreate();
-	}, [handleCreate]);
-
-	useEffect(() => {
-		if (!isNewWorkspaceModalOpen) return;
-		const handler = (e: KeyboardEvent) => {
-			if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-				e.preventDefault();
-				void handleCreate();
-			}
-		};
-		window.addEventListener("keydown", handler);
-		return () => window.removeEventListener("keydown", handler);
-	}, [isNewWorkspaceModalOpen, handleCreate]);
-
-	// ── Issue / PR linking helpers ───────────────────────────────────
+	// ── Issue / PR linking ───────────────────────────────────────────
 
 	const addLinkedIssue = (
 		slug: string,
@@ -577,7 +332,7 @@ export function DashboardNewWorkspaceForm({
 		taskId: string | undefined,
 		url?: string,
 	) => {
-		if (linkedIssues.some((issue) => issue.slug === slug)) return;
+		if (linkedIssues.some((i) => i.slug === slug)) return;
 		updateDraft({
 			linkedIssues: [
 				...linkedIssues,
@@ -592,39 +347,38 @@ export function DashboardNewWorkspaceForm({
 		url: string,
 		state: string,
 	) => {
-		const normalizedState: "open" | "closed" =
-			state.toLowerCase() === "closed" ? "closed" : "open";
-		const issue = {
-			slug: `#${issueNumber}`,
-			title,
-			source: "github" as const,
-			url,
-			number: issueNumber,
-			state: normalizedState,
-		};
 		if (linkedIssues.some((i) => i.url === url)) return;
-		updateDraft({ linkedIssues: [...linkedIssues, issue] });
-	};
-
-	const removeLinkedIssue = (slug: string) => {
 		updateDraft({
-			linkedIssues: linkedIssues.filter((issue) => issue.slug !== slug),
+			linkedIssues: [
+				...linkedIssues,
+				{
+					slug: `#${issueNumber}`,
+					title,
+					source: "github" as const,
+					url,
+					number: issueNumber,
+					state: state.toLowerCase() === "closed" ? "closed" : "open",
+				},
+			],
 		});
 	};
 
-	const setLinkedPR = (pr: LinkedPR) => {
-		updateDraft({ linkedPR: pr });
-	};
+	const removeLinkedIssue = (slug: string) =>
+		updateDraft({
+			linkedIssues: linkedIssues.filter((i) => i.slug !== slug),
+		});
 
-	const removeLinkedPR = () => {
-		updateDraft({ linkedPR: null });
-	};
+	const setLinkedPR = (pr: LinkedPR) => updateDraft({ linkedPR: pr });
+	const removeLinkedPR = () => updateDraft({ linkedPR: null });
+
+	const openLinkCommand = (cmd: LinkCommand) =>
+		requestAnimationFrame(() => setActiveLinkCommand(cmd));
 
 	// ── Render ────────────────────────────────────────────────────────
 
 	return (
 		<div className="p-3 space-y-2">
-			{/* Workspace name + branch name header */}
+			{/* Workspace name + branch name */}
 			<div className="flex items-center">
 				<Input
 					className="border-none bg-transparent dark:bg-transparent shadow-none text-base font-medium px-0 h-auto focus-visible:ring-0 placeholder:text-muted-foreground/40 min-w-0 flex-1"
@@ -637,9 +391,8 @@ export function DashboardNewWorkspaceForm({
 						})
 					}
 					onBlur={() => {
-						if (!workspaceName.trim()) {
+						if (!workspaceName.trim())
 							updateDraft({ workspaceName: "", workspaceNameEdited: false });
-						}
 					}}
 				/>
 				<div className="shrink min-w-0 ml-auto max-w-[50%]">
@@ -661,11 +414,9 @@ export function DashboardNewWorkspaceForm({
 								undefined,
 								{ preserveCase: true },
 							);
-							if (!sanitized) {
+							if (!sanitized)
 								updateDraft({ branchName: "", branchNameEdited: false });
-							} else {
-								updateDraft({ branchName: sanitized });
-							}
+							else updateDraft({ branchName: sanitized });
 						}}
 					/>
 				</div>
@@ -673,7 +424,7 @@ export function DashboardNewWorkspaceForm({
 
 			{/* Rich prompt input */}
 			<PromptInput
-				onSubmit={handlePromptSubmit}
+				onSubmit={handleCreate}
 				multiple
 				maxFiles={5}
 				maxFileSize={10 * 1024 * 1024}
@@ -757,26 +508,18 @@ export function DashboardNewWorkspaceForm({
 					<div className="flex items-center gap-2">
 						<AttachmentButtons
 							anchorRef={plusMenuRef}
-							onOpenIssueLink={() =>
-								requestAnimationFrame(() => setIssueLinkOpen(true))
-							}
-							onOpenGitHubIssue={() =>
-								requestAnimationFrame(() => setGitHubIssueLinkOpen(true))
-							}
-							onOpenPRLink={() =>
-								requestAnimationFrame(() => setPRLinkOpen(true))
-							}
+							onOpen={openLinkCommand}
 						/>
 						<IssueLinkCommand
 							variant="popover"
 							anchorRef={plusMenuRef}
-							open={issueLinkOpen}
-							onOpenChange={setIssueLinkOpen}
+							open={activeLinkCommand === "issue"}
+							onOpenChange={(open) => !open && setActiveLinkCommand(null)}
 							onSelect={addLinkedIssue}
 						/>
 						<GitHubIssueLinkCommand
-							open={gitHubIssueLinkOpen}
-							onOpenChange={setGitHubIssueLinkOpen}
+							open={activeLinkCommand === "github-issue"}
+							onOpenChange={(open) => !open && setActiveLinkCommand(null)}
 							onSelect={(issue) =>
 								addLinkedGitHubIssue(
 									issue.issueNumber,
@@ -785,23 +528,24 @@ export function DashboardNewWorkspaceForm({
 									issue.state,
 								)
 							}
-							projectId={resolvedLocalProjectId}
+							projectId={null}
 							anchorRef={plusMenuRef}
 						/>
 						<PRLinkCommand
-							open={prLinkOpen}
-							onOpenChange={setPRLinkOpen}
+							open={activeLinkCommand === "pr"}
+							onOpenChange={(open) => !open && setActiveLinkCommand(null)}
 							onSelect={setLinkedPR}
-							projectId={resolvedLocalProjectId}
-							githubOwner={project?.githubOwner ?? null}
-							repoName={project?.mainRepoPath.split("/").pop() ?? null}
+							projectId={null}
+							githubOwner={null}
+							repoName={null}
 							anchorRef={plusMenuRef}
 						/>
 						<PromptInputSubmit
 							className="size-[22px] rounded-full border border-transparent bg-foreground/10 shadow-none p-[5px] hover:bg-foreground/20"
+							disabled={isPending}
 							onClick={(e) => {
 								e.preventDefault();
-								void handleCreate();
+								handleCreate();
 							}}
 						>
 							<ArrowUpIcon className="size-3.5 text-muted-foreground" />
@@ -810,7 +554,7 @@ export function DashboardNewWorkspaceForm({
 				</PromptInputFooter>
 			</PromptInput>
 
-			{/* Bottom bar: project, branch, host target, shortcut hint */}
+			{/* Bottom bar */}
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2 min-w-0 flex-1">
 					<ProjectSelector
@@ -830,7 +574,7 @@ export function DashboardNewWorkspaceForm({
 								<LuGitPullRequest className="size-3 shrink-0" />
 								based off PR #{linkedPR.prNumber}
 							</motion.span>
-						) : hasLocalProject ? (
+						) : branchData ? (
 							<motion.div
 								key="branch-picker"
 								className="min-w-0"
@@ -840,12 +584,12 @@ export function DashboardNewWorkspaceForm({
 								transition={{ duration: 0.2, ease: "easeOut" }}
 							>
 								<CompareBaseBranchPicker
-									effectiveCompareBaseBranch={effectiveCompareBaseBranch}
-									defaultBranch={branchData?.defaultBranch}
-									isBranchesLoading={isBranchesLoading}
-									isBranchesError={isBranchesError}
-									branches={branchData?.branches ?? []}
-									onSelectCompareBaseBranch={(branch) =>
+									effectiveBranch={effectiveCompareBaseBranch}
+									defaultBranch={branchData.defaultBranch}
+									isLoading={isBranchesLoading}
+									isError={isBranchesError}
+									branches={branchData.branches}
+									onSelect={(branch) =>
 										updateDraft({ compareBaseBranch: branch })
 									}
 								/>
@@ -856,7 +600,7 @@ export function DashboardNewWorkspaceForm({
 				<div className="flex items-center gap-1.5">
 					<DevicePicker
 						hostTarget={hostTarget}
-						onSelectHostTarget={(hostTarget) => updateDraft({ hostTarget })}
+						onSelectHostTarget={(t) => updateDraft({ hostTarget: t })}
 					/>
 					<span className="text-[11px] text-muted-foreground/50">
 						{modKey}↵
