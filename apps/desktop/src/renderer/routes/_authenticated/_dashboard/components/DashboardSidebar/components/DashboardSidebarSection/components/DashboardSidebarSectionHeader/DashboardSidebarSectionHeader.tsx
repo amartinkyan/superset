@@ -76,38 +76,36 @@ export const DashboardSidebarSectionHeader = forwardRef<
 				{isRenaming ? (
 					<div
 						className="shrink min-w-0"
-						style={{ width: `${Math.max(renameValue.length + 2, 4)}ch` }}
+						style={{ width: `${Math.max(renameValue.length + 1, 3)}ch` }}
 					>
 						<RenameInput
 							value={renameValue}
 							onChange={onRenameValueChange}
 							onSubmit={onSubmitRename}
 							onCancel={onCancelRename}
-							className="h-5 w-full px-1 py-0 text-[11px] font-medium text-center bg-transparent border-none outline-none text-muted-foreground"
+							className="h-5 w-full py-0 text-[11px] font-medium text-center bg-transparent border-none outline-none text-muted-foreground"
 						/>
 					</div>
 				) : (
 					<span className="shrink-0 truncate">{section.name}</span>
 				)}
 
-				{!isRenaming && (
-					<div className="grid shrink-0 items-center [&>*]:col-start-1 [&>*]:row-start-1">
-						<span className="pointer-events-none text-[10px] font-normal tabular-nums transition-opacity duration-150 group-hover:opacity-0">
-							({section.workspaces.length})
-						</span>
-						<button
-							type="button"
-							onClick={(event) => {
-								event.stopPropagation();
-								onStartRename();
-							}}
-							className="flex items-center justify-center opacity-0 text-muted-foreground transition-[opacity,color] duration-150 group-hover:opacity-100 hover:text-foreground"
-							aria-label="Rename section"
-						>
-							<LuPencil className="size-3.5" />
-						</button>
-					</div>
-				)}
+				<div className={cn("grid shrink-0 items-center [&>*]:col-start-1 [&>*]:row-start-1", isRenaming && "invisible")}>
+					<span className="pointer-events-none text-[10px] font-normal tabular-nums transition-opacity duration-150 group-hover:opacity-0">
+						({section.workspaces.length})
+					</span>
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							onStartRename();
+						}}
+						className="flex items-center justify-center opacity-0 text-muted-foreground transition-[opacity,color] duration-150 group-hover:opacity-100 hover:text-foreground"
+						aria-label="Rename section"
+					>
+						<LuPencil className="size-3.5" />
+					</button>
+				</div>
 
 				<div className="h-px flex-1 bg-border" />
 
