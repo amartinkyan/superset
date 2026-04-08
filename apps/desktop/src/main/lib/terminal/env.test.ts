@@ -743,6 +743,69 @@ describe("env", () => {
 			});
 		});
 
+		describe("macOS git credential helper fallback", () => {
+			it("should configure file-based credential store on macOS to avoid Keychain warnings", () => {
+				// On macOS, Electron child processes can't access the Keychain,
+				// causing "security: SecKeychainSearchCreateFromAttributes" warnings
+				// when git-credential-osxkeychain runs. buildTerminalEnv should
+				// override credential.helper via GIT_CONFIG_* env vars.
+				const result = buildTerminalEnv(baseParams);
+				if (process.platform === "darwin") {
+					expect(result.GIT_CONFIG_COUNT).toBe("2");
+					// First entry clears all credential helpers from lower config levels
+					expect(result.GIT_CONFIG_KEY_0).toBe("credential.helper");
+					expect(result.GIT_CONFIG_VALUE_0).toBe("");
+					// Second entry sets file-based store
+					expect(result.GIT_CONFIG_KEY_1).toBe("credential.helper");
+					expect(result.GIT_CONFIG_VALUE_1).toBe("store");
+				}
+			});
+
+			it("should not set git credential config on non-macOS platforms", () => {
+				// The Keychain issue is macOS-specific; Linux/Windows should not be affected
+				if (process.platform !== "darwin") {
+					const result = buildTerminalEnv(baseParams);
+					expect(result.GIT_CONFIG_COUNT).toBeUndefined();
+					expect(result.GIT_CONFIG_KEY_0).toBeUndefined();
+				}
+			});
+
+			it("should append to existing GIT_CONFIG_COUNT when user has config", () => {
+				// If the user already has GIT_CONFIG_* vars, we should append, not overwrite
+				process.env.GIT_CONFIG_COUNT = "1";
+				process.env.GIT_CONFIG_KEY_0 = "user.name";
+				process.env.GIT_CONFIG_VALUE_0 = "Test User";
+				const result = buildTerminalEnv(baseParams);
+				if (process.platform === "darwin") {
+					// User's entry (index 0) is preserved via allowlist, our entries appended at 1,2
+					expect(result.GIT_CONFIG_COUNT).toBe("3");
+					expect(result.GIT_CONFIG_KEY_1).toBe("credential.helper");
+					expect(result.GIT_CONFIG_VALUE_1).toBe("");
+					expect(result.GIT_CONFIG_KEY_2).toBe("credential.helper");
+					expect(result.GIT_CONFIG_VALUE_2).toBe("store");
+				}
+				// Cleanup
+				delete process.env.GIT_CONFIG_COUNT;
+				delete process.env.GIT_CONFIG_KEY_0;
+				delete process.env.GIT_CONFIG_VALUE_0;
+			});
+		});
+
+		describe("buildSafeEnv passes through GIT_CONFIG_ prefix vars", () => {
+			it("should include GIT_CONFIG_COUNT and keyed vars in safe env", () => {
+				const env = {
+					GIT_CONFIG_COUNT: "1",
+					GIT_CONFIG_KEY_0: "credential.helper",
+					GIT_CONFIG_VALUE_0: "store",
+					PATH: "/usr/bin",
+				};
+				const result = buildSafeEnv(env);
+				expect(result.GIT_CONFIG_COUNT).toBe("1");
+				expect(result.GIT_CONFIG_KEY_0).toBe("credential.helper");
+				expect(result.GIT_CONFIG_VALUE_0).toBe("store");
+			});
+		});
+
 		describe("COLORFGBG for light mode detection", () => {
 			it("should set COLORFGBG to dark mode by default", () => {
 				const result = buildTerminalEnv(baseParams);

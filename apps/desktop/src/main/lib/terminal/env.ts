@@ -350,6 +350,7 @@ const ALLOWED_ENV_VARS = new Set([
 const ALLOWED_PREFIXES = [
 	"SUPERSET_", // Our own metadata vars
 	"LC_", // Locale settings
+	"GIT_CONFIG_", // Git runtime config overrides (GIT_CONFIG_COUNT, GIT_CONFIG_KEY_N, GIT_CONFIG_VALUE_N)
 ];
 
 /**
@@ -492,6 +493,22 @@ export function buildTerminalEnv(params: {
 		hasMacosSystemCertBundle()
 	) {
 		terminalEnv.SSL_CERT_FILE = MACOS_SYSTEM_CERT_FILE;
+	}
+
+	// Electron child processes can't access macOS Keychain for git credential storage,
+	// causing "security: SecKeychainSearchCreateFromAttributes" warnings and broken
+	// HTTPS auth when git-credential-osxkeychain is configured. Override with the
+	// file-based credential store (~/.git-credentials) so credentials persist across
+	// sessions without requiring Keychain access.
+	if (os.platform() === "darwin") {
+		const n = Number.parseInt(terminalEnv.GIT_CONFIG_COUNT || "0", 10);
+		terminalEnv.GIT_CONFIG_COUNT = String(n + 2);
+		// First entry clears all credential helpers from lower config levels
+		terminalEnv[`GIT_CONFIG_KEY_${n}`] = "credential.helper";
+		terminalEnv[`GIT_CONFIG_VALUE_${n}`] = "";
+		// Second entry sets the file-based store as the active helper
+		terminalEnv[`GIT_CONFIG_KEY_${n + 1}`] = "credential.helper";
+		terminalEnv[`GIT_CONFIG_VALUE_${n + 1}`] = "store";
 	}
 
 	return terminalEnv;
