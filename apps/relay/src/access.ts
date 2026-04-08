@@ -1,10 +1,12 @@
 import { db } from "@superset/db/client";
 import { v2UsersHosts } from "@superset/db/schema";
 import { and, eq } from "drizzle-orm";
+import { LRUCache } from "lru-cache";
 
-const TTL_MS = 5 * 60 * 1000;
-
-const cache = new Map<string, { allowed: boolean; expiresAt: number }>();
+const cache = new LRUCache<string, boolean>({
+	max: 10_000,
+	ttl: 5 * 60 * 1000,
+});
 
 export async function checkHostAccess(
 	userId: string,
@@ -12,9 +14,7 @@ export async function checkHostAccess(
 ): Promise<boolean> {
 	const key = `${userId}:${hostId}`;
 	const cached = cache.get(key);
-	if (cached && cached.expiresAt > Date.now()) {
-		return cached.allowed;
-	}
+	if (cached !== undefined) return cached;
 
 	const row = await db.query.v2UsersHosts.findFirst({
 		where: and(
@@ -25,6 +25,6 @@ export async function checkHostAccess(
 	});
 
 	const allowed = !!row;
-	cache.set(key, { allowed, expiresAt: Date.now() + TTL_MS });
+	cache.set(key, allowed);
 	return allowed;
 }
