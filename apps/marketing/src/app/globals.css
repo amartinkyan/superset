@@ -2,8 +2,118 @@
 @import "@superset/ui/globals.css";
 
 @theme {
-	--font-family-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+	--font-family-sans:
+		var(--font-geist-pixel-square), var(--font-inter), ui-sans-serif, system-ui,
+		sans-serif;
 	--font-family-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
+}
+
+/* ── Minecraft Earth-Tone Theme Overrides ── */
+.dark {
+	--background: #2c1a0e;
+	--foreground: #f5e6d0;
+	--card: #3d2817;
+	--card-foreground: #f5e6d0;
+	--border: #6b4d30;
+	--muted: #4a3525;
+	--muted-foreground: #b89b7a;
+	--primary: #5db65d;
+	--primary-foreground: #1a0e06;
+	--accent: #5d8a3c;
+	--destructive: #c13b3b;
+	--ring: #fcdc5f;
+
+	/* Minecraft accent palette */
+	--mc-grass: #5d8a3c;
+	--mc-stone: #8b8b8b;
+	--mc-gold: #fcdc5f;
+	--mc-diamond: #4aedd9;
+	--mc-redstone: #c13b3b;
+	--mc-dirt-light: #8b6542;
+
+	--radius: 0px;
+}
+
+/* ── Pixel Textures ── */
+.mc-dirt-bg {
+	background-color: #2c1a0e;
+	background-image:
+		repeating-linear-gradient(
+			0deg,
+			transparent,
+			transparent 7px,
+			rgba(139, 101, 66, 0.06) 7px,
+			rgba(139, 101, 66, 0.06) 8px
+		),
+		repeating-linear-gradient(
+			90deg,
+			transparent,
+			transparent 7px,
+			rgba(139, 101, 66, 0.06) 7px,
+			rgba(139, 101, 66, 0.06) 8px
+		);
+}
+
+.mc-stone-bg {
+	background-color: #4a3525;
+	background-image:
+		repeating-linear-gradient(
+			0deg,
+			transparent,
+			transparent 15px,
+			rgba(139, 139, 139, 0.05) 15px,
+			rgba(139, 139, 139, 0.05) 16px
+		),
+		repeating-linear-gradient(
+			90deg,
+			transparent,
+			transparent 15px,
+			rgba(139, 139, 139, 0.05) 15px,
+			rgba(139, 139, 139, 0.05) 16px
+		);
+}
+
+.mc-grass-border {
+	border-top: 4px solid var(--mc-grass);
+}
+
+/* ── Minecraft Button ── */
+.mc-button {
+	background-color: var(--mc-stone);
+	color: #f5e6d0;
+	border: 2px solid;
+	border-color: #b0b0b0 #5a5a5a #5a5a5a #b0b0b0;
+	padding: 8px 20px;
+	font-family: var(--font-geist-pixel-square), monospace;
+	cursor: pointer;
+	image-rendering: pixelated;
+	transition: none;
+}
+
+.mc-button:hover {
+	border-color: #5a5a5a #b0b0b0 #b0b0b0 #5a5a5a;
+	background-color: #7a7a7a;
+}
+
+.mc-button-primary {
+	background-color: var(--mc-grass);
+	border-color: #7dce7d #3a6b20 #3a6b20 #7dce7d;
+}
+
+.mc-button-primary:hover {
+	border-color: #3a6b20 #7dce7d #7dce7d #3a6b20;
+	background-color: #4a7a2e;
+}
+
+/* ── Pixel Border Utility ── */
+.mc-border {
+	border: 2px solid var(--border);
+	border-color: #8b6542 #4a3525 #4a3525 #8b6542;
+}
+
+/* ── Pixelated rendering for decorative elements ── */
+.mc-pixelated {
+	image-rendering: pixelated;
 }
 
 @utility scrollbar-hide {

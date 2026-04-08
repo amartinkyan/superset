@@ -74,8 +74,11 @@ export function ProductDemo({ scrollYProgress }: ProductDemoProps) {
 				}}
 			>
 				<div className="relative">
-					{/* Large diffuse back-shadow */}
-					<div className="absolute inset-[10%] top-[20%] rounded-3xl bg-white/[0.07] blur-[60px] pointer-events-none" />
+					{/* Pixel-art item frame border */}
+					<div
+						className="absolute inset-[-4px] border-4 border-[#6B4D30] pointer-events-none"
+						style={{ borderColor: "#8B6542 #3D2817 #3D2817 #8B6542" }}
+					/>
 					<div className="relative overflow-x-auto scrollbar-hide">
 						<AppMockup activeDemo={activeOption} />
 					</div>

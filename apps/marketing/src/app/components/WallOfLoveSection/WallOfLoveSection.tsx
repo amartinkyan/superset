@@ -21,13 +21,13 @@ function Avatar({ src, name }: { src?: string; name: string }) {
 				alt={name}
 				width={40}
 				height={40}
-				className="size-10 rounded-full object-cover"
+				className="size-10 object-cover"
 			/>
 		);
 	}
 
 	return (
-		<div className="size-10 rounded-full bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground">
+		<div className="size-10 bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground">
 			{getInitials(name)}
 		</div>
 	);
@@ -42,7 +42,8 @@ function TestimonialCard({ testimonial }: { testimonial: Testimonial }) {
 			href={testimonial.url}
 			target="_blank"
 			rel="noopener noreferrer"
-			className="block p-4 bg-card border border-border rounded-xl hover:border-muted-foreground/50 transition-colors"
+			className="block p-4 bg-card border-2 hover:border-[#FCDC5F]"
+			style={{ borderColor: "#8B6542 #2C1A0E #2C1A0E #8B6542" }}
 		>
 			<div className="flex items-start gap-3">
 				<Avatar src={testimonial.avatar} name={testimonial.author} />
@@ -91,7 +92,10 @@ export function WallOfLoveSection() {
 		<section className="relative py-24 px-8 lg:px-[30px]">
 			<div className="max-w-6xl mx-auto">
 				<div className="text-center mb-12">
-					<h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-foreground">
+					<h2
+						className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-foreground"
+						style={{ fontFamily: "var(--font-geist-pixel-square)" }}
+					>
 						What builders say about Superset
 					</h2>
 				</div>

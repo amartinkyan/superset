@@ -27,7 +27,10 @@ function SupersetLogo() {
 
 export function Footer() {
 	return (
-		<footer className="border-t border-border bg-background">
+		<footer
+			className="border-t-4 bg-[#1A0E06]"
+			style={{ borderColor: "#8B8B8B" }}
+		>
 			<motion.div
 				initial={{ opacity: 0 }}
 				whileInView={{ opacity: 1 }}
@@ -41,32 +44,36 @@ export function Footer() {
 					<div className="space-y-5">
 						<Link
 							href="/"
-							className="text-muted-foreground hover:text-foreground transition-colors inline-block"
+							className="text-muted-foreground hover:text-[#FCDC5F] inline-block"
 						>
 							<SupersetLogo />
 						</Link>
 						<nav className="flex items-center gap-6 text-sm">
 							<a
 								href={COMPANY.DOCS_URL}
-								className="text-muted-foreground hover:text-foreground transition-colors"
+								className="text-muted-foreground hover:text-[#FCDC5F]"
+								style={{ fontFamily: "var(--font-geist-pixel-square)" }}
 							>
 								Docs
 							</a>
 							<Link
 								href="/team"
-								className="text-muted-foreground hover:text-foreground transition-colors"
+								className="text-muted-foreground hover:text-[#FCDC5F]"
+								style={{ fontFamily: "var(--font-geist-pixel-square)" }}
 							>
 								About
 							</Link>
 							<Link
 								href="/privacy"
-								className="text-muted-foreground hover:text-foreground transition-colors"
+								className="text-muted-foreground hover:text-[#FCDC5F]"
+								style={{ fontFamily: "var(--font-geist-pixel-square)" }}
 							>
 								Privacy
 							</Link>
 							<Link
 								href="/terms"
-								className="text-muted-foreground hover:text-foreground transition-colors"
+								className="text-muted-foreground hover:text-[#FCDC5F]"
+								style={{ fontFamily: "var(--font-geist-pixel-square)" }}
 							>
 								Terms
 							</Link>
@@ -74,7 +81,8 @@ export function Footer() {
 								href="https://statuspage.incident.io/superset"
 								target="_blank"
 								rel="noopener noreferrer"
-								className="text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1 group"
+								className="text-muted-foreground hover:text-[#FCDC5F] inline-flex items-center gap-1 group"
+								style={{ fontFamily: "var(--font-geist-pixel-square)" }}
 							>
 								Status
 								<ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -87,8 +95,8 @@ export function Footer() {
 				</div>
 
 				{/* Bottom - Copyright */}
-				<div className="mt-10 pt-6 border-t border-border/60">
-					<p className="text-muted-foreground text-sm">
+				<div className="mt-10 pt-6 border-t-2 border-[#6B4D30]">
+					<p className="text-[#8B6542] text-sm">
 						© {new Date().getFullYear()} Superset Inc. All rights reserved.
 					</p>
 				</div>

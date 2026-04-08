@@ -11,27 +11,27 @@ export const FEATURES: Feature[] = [
 		title: "Run dozens of agents at once",
 		description:
 			"Launch multiple AI coding agents across different tasks. Work on features, fix bugs, and refactor code — all in parallel.",
-		colors: ["#7f1d1d", "#991b1b", "#450a0a", "#1a1a2e"],
+		colors: ["#8B2020", "#6B1515", "#4A0E0E", "#2C1A0E"],
 	},
 	{
 		tag: "Universal Compatibility",
 		title: "Works with any CLI agent",
 		description:
 			"Superset is agent-agnostic. Use Claude Code, OpenCode, Cursor, or any CLI-based coding tool. Switch between agents seamlessly.",
-		colors: ["#047857", "#065f46", "#064e3b", "#1a1a2e"],
+		colors: ["#3D7A3D", "#2D5E2D", "#1E4A1E", "#2C1A0E"],
 	},
 	{
 		tag: "Isolation",
 		title: "Changes are isolated",
 		description:
 			"Each agent runs in its own isolated Git worktree. No merge conflicts, no stepping on each other's changes. Review and merge work when you're ready.",
-		colors: ["#1e40af", "#1e3a8a", "#172554", "#1a1a2e"],
+		colors: ["#2A6B8A", "#1E4F6B", "#153A50", "#2C1A0E"],
 	},
 	{
 		tag: "Open Anywhere",
 		title: "Open in any IDE",
 		description:
 			"Jump into your favorite editor with one click. VS Code, Cursor, Xcode, JetBrains IDEs, or any terminal — open worktrees exactly where you need them.",
-		colors: ["#7c3aed", "#6d28d9", "#4c1d95", "#1a1a2e"],
+		colors: ["#6B3FA0", "#502D80", "#3A1F60", "#2C1A0E"],
 	},
 ];

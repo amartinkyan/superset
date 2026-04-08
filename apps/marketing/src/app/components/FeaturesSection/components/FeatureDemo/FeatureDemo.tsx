@@ -16,12 +16,13 @@ export function FeatureDemo({
 }: FeatureDemoProps) {
 	return (
 		<div
-			className={`relative w-full min-h-[300px] lg:aspect-4/3 rounded overflow-hidden ${className}`}
+			className={`relative w-full min-h-[300px] lg:aspect-4/3 overflow-hidden border-2 ${className}`}
+			style={{ borderColor: "#8B6542 #2C1A0E #2C1A0E #8B6542" }}
 		>
 			{/* Background gradient */}
 			<MeshGradient
 				colors={colors}
-				className="absolute inset-0 w-full h-full rounded"
+				className="absolute inset-0 w-full h-full"
 			/>
 
 			{/* Content overlay */}

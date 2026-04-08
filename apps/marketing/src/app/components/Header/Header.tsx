@@ -42,13 +42,13 @@ export function Header({ ctaButtons, starCounter }: HeaderProps) {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 
 	return (
-		<header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
+		<header className="sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur-sm mc-grass-border">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 				<div className="flex items-center justify-between h-14">
 					{/* Logo */}
 					<motion.a
 						href="/"
-						className="flex items-center text-foreground hover:text-foreground/80 transition-colors"
+						className="flex items-center text-foreground hover:text-foreground/80"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ duration: 0.3 }}
@@ -66,25 +66,27 @@ export function Header({ ctaButtons, starCounter }: HeaderProps) {
 						<nav className="flex items-center">
 							{NAV_LINKS.map((link, index) => (
 								<div key={link.href} className="flex items-center">
-									{index > 0 && <div className="h-4 w-px bg-border mx-1" />}
+									{index > 0 && <div className="h-4 w-[2px] bg-border mx-1" />}
 									{link.external ? (
 										<a
 											href={link.href}
-											className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+											className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+											style={{ fontFamily: "var(--font-geist-pixel-square)" }}
 										>
 											{link.label}
 										</a>
 									) : (
 										<Link
 											href={link.href}
-											className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+											className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+											style={{ fontFamily: "var(--font-geist-pixel-square)" }}
 										>
 											{link.label}
 										</Link>
 									)}
 								</div>
 							))}
-							<div className="h-4 w-px bg-border mx-1" />
+							<div className="h-4 w-[2px] bg-border mx-1" />
 							{starCounter}
 						</nav>
 						<div className="flex items-center gap-2 ml-4">{ctaButtons}</div>
