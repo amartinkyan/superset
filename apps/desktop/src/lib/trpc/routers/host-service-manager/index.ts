@@ -20,8 +20,11 @@ export const createHostServiceManagerRouter = () => {
 			.query(async ({ input }) => {
 				const manager = getHostServiceManager();
 				const { token } = await loadToken();
+				if (!token) {
+					throw new Error("No auth token available — user must be logged in");
+				}
 				return manager.start(input.organizationId, {
-					authToken: token ?? "",
+					authToken: token,
 					cloudApiUrl: env.NEXT_PUBLIC_API_URL,
 				});
 			}),
@@ -39,8 +42,11 @@ export const createHostServiceManagerRouter = () => {
 			.mutation(async ({ input }) => {
 				const manager = getHostServiceManager();
 				const { token } = await loadToken();
+				if (!token) {
+					throw new Error("No auth token available — user must be logged in");
+				}
 				return manager.restart(input.organizationId, {
-					authToken: token ?? "",
+					authToken: token,
 					cloudApiUrl: env.NEXT_PUBLIC_API_URL,
 				});
 			}),
