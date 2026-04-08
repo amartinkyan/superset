@@ -66,12 +66,14 @@ export function BranchesGroup({
 
 	const defaultBranch = data?.defaultBranch ?? "main";
 
-	const branches = (data?.branches ?? []).sort((a, b) => {
-		if (a.name === defaultBranch) return -1;
-		if (b.name === defaultBranch) return 1;
-		if (a.isLocal !== b.isLocal) return a.isLocal ? -1 : 1;
-		return a.name.localeCompare(b.name);
-	});
+	const branches = useMemo(() => {
+		return [...(data?.branches ?? [])].sort((a, b) => {
+			if (a.name === defaultBranch) return -1;
+			if (b.name === defaultBranch) return 1;
+			if (a.isLocal !== b.isLocal) return a.isLocal ? -1 : 1;
+			return a.name.localeCompare(b.name);
+		});
+	}, [data?.branches, defaultBranch]);
 
 	const branchRows = useMemo(() => {
 		return branches.map((branch) => ({
