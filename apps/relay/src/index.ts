@@ -1,16 +1,23 @@
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
-import type { Context, MiddlewareHandler } from "hono";
+import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { checkHostAccess } from "./access";
-import { verifyJWT } from "./auth";
+import { type AuthContext, verifyJWT } from "./auth";
 import { env } from "./env";
 import { TunnelManager } from "./tunnel";
 
-const app = new Hono();
-const tunnelManager = new TunnelManager(env.REQUEST_TIMEOUT_MS);
+type AppEnv = {
+	Variables: {
+		auth: AuthContext;
+		hostId: string;
+	};
+};
+
+const app = new Hono<AppEnv>();
+const tunnelManager = new TunnelManager();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 app.use("*", logger());
@@ -20,13 +27,18 @@ app.get("/health", (c) => c.json({ ok: true }));
 
 // ── Auth ────────────────────────────────────────────────────────────
 
-function extractToken(c: Context): string | null {
+function extractToken(c: {
+	req: {
+		header(name: string): string | undefined;
+		query(name: string): string | undefined;
+	};
+}): string | null {
 	const header = c.req.header("Authorization");
 	if (header?.startsWith("Bearer ")) return header.slice(7);
 	return c.req.query("token") ?? null;
 }
 
-const authMiddleware: MiddlewareHandler = async (c, next) => {
+const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
 	const token = extractToken(c);
 	if (!token) return c.json({ error: "Unauthorized" }, 401);
 
@@ -94,7 +106,7 @@ app.get(
 app.use("/hosts/:hostId/*", authMiddleware);
 
 app.all("/hosts/:hostId/trpc/*", async (c) => {
-	const hostId = c.req.param("hostId");
+	const hostId = c.get("hostId");
 	const path = c.req.path.replace(`/hosts/${hostId}`, "");
 	const body = (await c.req.text().catch(() => "")) || undefined;
 
@@ -125,7 +137,7 @@ app.all("/hosts/:hostId/trpc/*", async (c) => {
 app.get(
 	"/hosts/:hostId/*",
 	upgradeWebSocket((c) => {
-		const hostId = c.req.param("hostId")!;
+		const hostId = c.get("hostId");
 		const path = c.req.path.replace(`/hosts/${hostId}`, "");
 		const query = c.req.url.split("?")[1];
 		let channelId: string | null = null;
