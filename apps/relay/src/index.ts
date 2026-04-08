@@ -1,32 +1,59 @@
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
+import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { checkHostAccess } from "./access";
 import { verifyJWT } from "./auth";
 import { env } from "./env";
-import { registerProxyRoutes } from "./proxy";
 import { TunnelManager } from "./tunnel";
 
 const app = new Hono();
-const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 const tunnelManager = new TunnelManager(env.REQUEST_TIMEOUT_MS);
+const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 app.use("*", logger());
 app.use("*", cors());
 
 app.get("/health", (c) => c.json({ ok: true }));
 
-// Tunnel endpoint — host-services connect here
+// ── Auth ────────────────────────────────────────────────────────────
+
+function extractToken(c: Context): string | null {
+	const header = c.req.header("Authorization");
+	if (header?.startsWith("Bearer ")) return header.slice(7);
+	return c.req.query("token") ?? null;
+}
+
+const authMiddleware: MiddlewareHandler = async (c, next) => {
+	const token = extractToken(c);
+	if (!token) return c.json({ error: "Unauthorized" }, 401);
+
+	const auth = await verifyJWT(token, env.NEXT_PUBLIC_API_URL);
+	if (!auth) return c.json({ error: "Unauthorized" }, 401);
+
+	const hostId = c.req.param("hostId");
+	if (!hostId) return c.json({ error: "Missing hostId" }, 400);
+
+	const hasAccess = await checkHostAccess(auth.sub, hostId);
+	if (!hasAccess) return c.json({ error: "Forbidden" }, 403);
+
+	if (!tunnelManager.hasTunnel(hostId))
+		return c.json({ error: "Host not connected" }, 503);
+
+	c.set("auth", auth);
+	c.set("hostId", hostId);
+	return next();
+};
+
+// ── Tunnel ──────────────────────────────────────────────────────────
+
 app.get(
 	"/tunnel",
 	upgradeWebSocket((c) => {
 		const hostId = c.req.query("hostId");
-		const token =
-			c.req.header("Authorization")?.replace("Bearer ", "") ??
-			c.req.query("token");
-
+		const token = extractToken(c);
 		let authorized = false;
 
 		return {
@@ -44,7 +71,6 @@ app.get(
 						return;
 					}
 				}
-				// Accept session tokens for now (TODO: verify against Better Auth)
 
 				authorized = true;
 				tunnelManager.register(hostId, ws);
@@ -63,13 +89,71 @@ app.get(
 	}),
 );
 
-// Client-facing proxy routes
-registerProxyRoutes({
-	app,
-	upgradeWebSocket,
-	tunnelManager,
-	authUrl: env.NEXT_PUBLIC_API_URL,
+// ── HTTP proxy ──────────────────────────────────────────────────────
+
+app.all("/hosts/:hostId/trpc/*", authMiddleware, async (c) => {
+	const hostId = c.req.param("hostId");
+	const path = c.req.path.replace(`/hosts/${hostId}`, "");
+	const body = (await c.req.text().catch(() => "")) || undefined;
+
+	const headers: Record<string, string> = {};
+	for (const [key, value] of c.req.raw.headers.entries()) {
+		if (key !== "host" && key !== "authorization") headers[key] = value;
+	}
+
+	try {
+		const res = await tunnelManager.sendHttpRequest(hostId, {
+			method: c.req.method,
+			path,
+			headers,
+			body,
+		});
+		return new Response(res.body ?? null, {
+			status: res.status,
+			headers: res.headers,
+		});
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : "Proxy error" },
+			502,
+		);
+	}
 });
+
+// ── WS proxy ────────────────────────────────────────────────────────
+
+app.get(
+	"/hosts/:hostId/*",
+	authMiddleware,
+	upgradeWebSocket((c) => {
+		const hostId = c.req.param("hostId")!;
+		const path = c.req.path.replace(`/hosts/${hostId}`, "");
+		const query = c.req.url.split("?")[1];
+		let channelId: string | null = null;
+
+		return {
+			onOpen: (_event, ws) => {
+				try {
+					channelId = tunnelManager.openWsChannel(hostId, path, query, ws);
+				} catch {
+					ws.close(1011, "Failed to open channel");
+				}
+			},
+			onMessage: (event) => {
+				if (channelId)
+					tunnelManager.sendWsFrame(hostId, channelId, String(event.data));
+			},
+			onClose: () => {
+				if (channelId) tunnelManager.closeWsChannel(hostId, channelId);
+			},
+			onError: () => {
+				if (channelId) tunnelManager.closeWsChannel(hostId, channelId);
+			},
+		};
+	}),
+);
+
+// ── Start ───────────────────────────────────────────────────────────
 
 const server = serve({ fetch: app.fetch, port: env.RELAY_PORT }, (info) => {
 	console.log(`[relay] listening on http://localhost:${info.port}`);
