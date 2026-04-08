@@ -32,6 +32,7 @@ async function main(): Promise<void> {
 		config: {
 			dbPath: env.HOST_DB_PATH,
 			cloudApiUrl: env.CLOUD_API_URL,
+			migrationsFolder: env.HOST_MIGRATIONS_FOLDER,
 			allowedOrigins: [
 				`http://localhost:${env.DESKTOP_VITE_PORT}`,
 				`http://127.0.0.1:${env.DESKTOP_VITE_PORT}`,

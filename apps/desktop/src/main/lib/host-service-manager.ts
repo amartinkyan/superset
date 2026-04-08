@@ -379,7 +379,7 @@ export class HostServiceManager extends EventEmitter {
 			HOST_MANIFEST_DIR: orgDir,
 			KEEP_ALIVE_AFTER_PARENT: "1",
 			HOST_DB_PATH: path.join(orgDir, "host.db"),
-			HOST_MIGRATIONS_PATH: app.isPackaged
+			HOST_MIGRATIONS_FOLDER: app.isPackaged
 				? path.join(process.resourcesPath, "resources/host-migrations")
 				: path.join(app.getAppPath(), "../../packages/host-service/drizzle"),
 			DESKTOP_VITE_PORT: String(sharedEnv.DESKTOP_VITE_PORT),

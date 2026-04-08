@@ -21,8 +21,9 @@ async function main(): Promise<void> {
 
 	const { app, injectWebSocket, api } = createApp({
 		config: {
-			dbPath: env.HOST_DB_PATH ?? `${process.env.HOME}/.superset/host.db`,
+			dbPath: env.HOST_DB_PATH,
 			cloudApiUrl,
+			migrationsFolder: env.HOST_MIGRATIONS_FOLDER,
 			allowedOrigins: env.CORS_ORIGINS ?? [],
 		},
 		providers: {

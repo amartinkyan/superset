@@ -23,7 +23,7 @@ export interface CreateAppOptions {
 	config: {
 		dbPath: string;
 		cloudApiUrl: string;
-		migrationsPath?: string;
+		migrationsFolder: string;
 		allowedOrigins: string[];
 	};
 	providers: {
@@ -44,7 +44,7 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 	const { config, providers } = options;
 
 	const api = createApiClient(config.cloudApiUrl, providers.auth);
-	const db = createDb(config.dbPath);
+	const db = createDb(config.dbPath, config.migrationsFolder);
 	const git = createGitFactory(providers.credentials);
 	const github = async () => {
 		const token = await providers.credentials.getToken("github.com");
