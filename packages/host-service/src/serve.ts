@@ -10,7 +10,7 @@ async function main(): Promise<void> {
 	initTerminalBaseEnv(terminalBaseEnv);
 
 	const hostAuth = new PskHostAuthProvider(env.HOST_SERVICE_SECRET);
-	const { app, injectWebSocket } = createApp({
+	const { app, injectWebSocket, api, deviceClientId, deviceName } = createApp({
 		dbPath: env.HOST_DB_PATH,
 		hostAuth,
 		allowedOrigins: env.CORS_ORIGINS ?? [],
@@ -19,21 +19,46 @@ async function main(): Promise<void> {
 	const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
 		console.log(`[host-service] listening on http://localhost:${info.port}`);
 
-		// Connect to relay if configured
+		// Register host and connect to relay if configured
 		const relayUrl = process.env.RELAY_URL;
-		const hostId = process.env.HOST_ID;
-		const authToken = process.env.AUTH_TOKEN;
-		if (relayUrl && hostId && authToken) {
-			const tunnel = new TunnelClient({
+		if (api && deviceClientId && deviceName && relayUrl) {
+			void registerAndConnect({
+				api,
+				deviceClientId,
+				deviceName,
 				relayUrl,
-				hostId,
-				getAuthToken: () => process.env.AUTH_TOKEN ?? authToken,
 				localPort: info.port,
 			});
-			tunnel.connect();
 		}
 	});
 	injectWebSocket(server);
+}
+
+async function registerAndConnect(options: {
+	api: NonNullable<ReturnType<typeof createApp>["api"]>;
+	deviceClientId: string;
+	deviceName: string;
+	relayUrl: string;
+	localPort: number;
+}): Promise<void> {
+	try {
+		const host = await options.api.device.ensureV2Host.mutate({
+			machineId: options.deviceClientId,
+			name: options.deviceName,
+		});
+
+		console.log(`[host-service] registered as host ${host.id}`);
+
+		const tunnel = new TunnelClient({
+			relayUrl: options.relayUrl,
+			hostId: host.id,
+			getAuthToken: () => process.env.AUTH_TOKEN ?? null,
+			localPort: options.localPort,
+		});
+		tunnel.connect();
+	} catch (error) {
+		console.error("[host-service] failed to register host:", error);
+	}
 }
 
 void main().catch((error) => {

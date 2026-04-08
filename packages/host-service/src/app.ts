@@ -41,6 +41,9 @@ export interface CreateAppOptions {
 export interface CreateAppResult {
 	app: Hono;
 	injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
+	api: ReturnType<typeof createApiClient> | null;
+	deviceClientId: string | null;
+	deviceName: string | null;
 }
 
 export function createApp(options?: CreateAppOptions): CreateAppResult {
@@ -142,5 +145,11 @@ export function createApp(options?: CreateAppOptions): CreateAppResult {
 		}),
 	);
 
-	return { app, injectWebSocket };
+	return {
+		app,
+		injectWebSocket,
+		api,
+		deviceClientId: options?.deviceClientId ?? null,
+		deviceName: options?.deviceName ?? null,
+	};
 }
