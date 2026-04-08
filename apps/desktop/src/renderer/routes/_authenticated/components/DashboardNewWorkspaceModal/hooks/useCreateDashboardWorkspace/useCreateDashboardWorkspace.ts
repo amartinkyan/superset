@@ -1,3 +1,4 @@
+import { toast } from "@superset/ui/sonner";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -180,6 +181,16 @@ export function useCreateDashboardWorkspace() {
 					ensureWorkspaceInSidebar(result.workspace.id, input.projectId);
 					void navigateToV2Workspace(result.workspace.id, navigate);
 				}
+
+				if (result.outcome === "opened_existing_workspace") {
+					toast.info("Opened existing workspace");
+				} else {
+					toast.success("Workspace created");
+				}
+			} catch (err) {
+				toast.error(
+					err instanceof Error ? err.message : "Failed to create workspace",
+				);
 			} finally {
 				clearPendingWorkspace(pendingId);
 				revokeDetachedFiles(input.attachmentFiles);
