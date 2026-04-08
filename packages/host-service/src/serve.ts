@@ -21,13 +21,13 @@ async function main(): Promise<void> {
 
 		// Connect to relay if configured
 		const relayUrl = process.env.RELAY_URL;
-		const tunnelSecret = process.env.RELAY_TUNNEL_SECRET;
 		const hostId = process.env.HOST_ID;
-		if (relayUrl && tunnelSecret && hostId) {
+		const authToken = process.env.AUTH_TOKEN;
+		if (relayUrl && hostId && authToken) {
 			const tunnel = new TunnelClient({
 				relayUrl,
 				hostId,
-				tunnelSecret,
+				getAuthToken: () => process.env.AUTH_TOKEN ?? authToken,
 				localPort: info.port,
 			});
 			tunnel.connect();

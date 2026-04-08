@@ -12,14 +12,14 @@ const RECONNECT_MAX_MS = 30_000;
 export interface TunnelClientOptions {
 	relayUrl: string;
 	hostId: string;
-	tunnelSecret: string;
+	getAuthToken: () => string | null;
 	localPort: number;
 }
 
 export class TunnelClient {
 	private readonly relayUrl: string;
 	private readonly hostId: string;
-	private readonly tunnelSecret: string;
+	private readonly getAuthToken: () => string | null;
 	private readonly localPort: number;
 	private socket: WebSocket | null = null;
 	private localChannels = new Map<string, WebSocket>();
@@ -30,17 +30,24 @@ export class TunnelClient {
 	constructor(options: TunnelClientOptions) {
 		this.relayUrl = options.relayUrl;
 		this.hostId = options.hostId;
-		this.tunnelSecret = options.tunnelSecret;
+		this.getAuthToken = options.getAuthToken;
 		this.localPort = options.localPort;
 	}
 
 	connect(): void {
 		if (this.closed) return;
 
+		const token = this.getAuthToken();
+		if (!token) {
+			console.warn("[host-service:tunnel] no auth token available, retrying");
+			this.scheduleReconnect();
+			return;
+		}
+
 		const url = new URL("/tunnel", this.relayUrl);
 		url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 		url.searchParams.set("hostId", this.hostId);
-		url.searchParams.set("token", this.tunnelSecret);
+		url.searchParams.set("token", token);
 
 		const socket = new WebSocket(url.toString());
 		this.socket = socket;
@@ -92,25 +99,38 @@ export class TunnelClient {
 	}
 
 	private async handleMessage(data: unknown): Promise<void> {
-		let message:
-			| TunnelHttpRequest
-			| TunnelWsOpen
-			| TunnelWsFrame
-			| TunnelWsClose;
+		let message: Record<string, unknown>;
 		try {
 			message = JSON.parse(String(data));
 		} catch {
 			return;
 		}
 
-		if (message.type === "http") {
-			await this.handleHttpRequest(message);
-		} else if (message.type === "ws:open") {
-			this.handleWsOpen(message);
-		} else if (message.type === "ws:frame") {
-			this.handleWsFrame(message);
-		} else if (message.type === "ws:close") {
-			this.handleWsClose(message);
+		// Handle keepalive
+		if (message.type === "ping") {
+			this.send({ type: "pong" } as unknown as TunnelResponse);
+			return;
+		}
+
+		// Handle hello:ok (handshake complete)
+		if (message.type === "hello:ok") {
+			return;
+		}
+
+		const typed = message as unknown as
+			| TunnelHttpRequest
+			| TunnelWsOpen
+			| TunnelWsFrame
+			| TunnelWsClose;
+
+		if (typed.type === "http") {
+			await this.handleHttpRequest(typed);
+		} else if (typed.type === "ws:open") {
+			this.handleWsOpen(typed);
+		} else if (typed.type === "ws:frame") {
+			this.handleWsFrame(typed);
+		} else if (typed.type === "ws:close") {
+			this.handleWsClose(typed);
 		}
 	}
 

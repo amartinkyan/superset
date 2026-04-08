@@ -18,7 +18,7 @@ registerTunnelRoute({
 	app,
 	upgradeWebSocket,
 	tunnelManager,
-	tunnelSecret: env.RELAY_TUNNEL_SECRET,
+	authUrl: env.AUTH_URL,
 });
 
 registerProxyRoutes({
