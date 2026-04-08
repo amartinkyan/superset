@@ -89,3 +89,4 @@ superset-dev-data/
 
 # MCP config (contains per-user server URLs/tokens)
 .mcp.json
+.cursor/mcp.json
