@@ -78,16 +78,19 @@ app.get(
 				}
 
 				const auth = await verifyJWT(token, env.NEXT_PUBLIC_API_URL);
-				if (auth) {
-					const hasAccess = await checkHostAccess(token, hostId);
-					if (!hasAccess) {
-						ws.close(1008, "Forbidden");
-						return;
-					}
+				if (!auth) {
+					ws.close(1008, "Unauthorized");
+					return;
 				}
 
-				authorized = true;
+				const hasAccess = await checkHostAccess(token, hostId);
+				if (!hasAccess) {
+					ws.close(1008, "Forbidden");
+					return;
+				}
+
 				tunnelManager.register(hostId, token, ws);
+				authorized = true;
 			},
 			onMessage: (event) => {
 				if (authorized && hostId)
