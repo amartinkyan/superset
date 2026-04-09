@@ -10,7 +10,7 @@ import {
 import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { protectedProcedure } from "../../trpc";
+import { jwtProcedure, protectedProcedure } from "../../trpc";
 
 export const deviceRouter = {
 	ensureV2Host: protectedProcedure
@@ -217,12 +217,12 @@ export const deviceRouter = {
 
 			return { device, timestamp: now };
 		}),
-	checkHostAccess: protectedProcedure
+	checkHostAccess: jwtProcedure
 		.input(z.object({ hostId: z.string().uuid() }))
 		.query(async ({ ctx, input }) => {
 			const row = await db.query.v2UsersHosts.findFirst({
 				where: and(
-					eq(v2UsersHosts.userId, ctx.session.user.id),
+					eq(v2UsersHosts.userId, ctx.userId),
 					eq(v2UsersHosts.hostId, input.hostId),
 				),
 				columns: { id: true },
@@ -230,12 +230,12 @@ export const deviceRouter = {
 			return { allowed: !!row };
 		}),
 
-	setHostOnline: protectedProcedure
+	setHostOnline: jwtProcedure
 		.input(z.object({ hostId: z.string().uuid(), isOnline: z.boolean() }))
 		.mutation(async ({ ctx, input }) => {
 			const access = await db.query.v2UsersHosts.findFirst({
 				where: and(
-					eq(v2UsersHosts.userId, ctx.session.user.id),
+					eq(v2UsersHosts.userId, ctx.userId),
 					eq(v2UsersHosts.hostId, input.hostId),
 				),
 				columns: { id: true },
