@@ -104,14 +104,6 @@ export class EventBus {
 		}
 	}
 
-	/** Broadcast a workspace init state change to all connected clients. */
-	emitInitChanged(
-		workspaceId: string,
-		init: { phase: string; progress: number | null },
-	): void {
-		this.broadcast({ type: "workspace:init:changed", workspaceId, init });
-	}
-
 	handleClose(socket: WsSocket): void {
 		const state = this.clients.get(socket);
 		if (state) {

@@ -18,16 +18,9 @@ export interface EventBusErrorMessage {
 	message: string;
 }
 
-export interface WorkspaceInitChangedMessage {
-	type: "workspace:init:changed";
-	workspaceId: string;
-	init: { phase: string; progress: number | null };
-}
-
 export type ServerMessage =
 	| FsEventsMessage
 	| GitChangedMessage
-	| WorkspaceInitChangedMessage
 	| EventBusErrorMessage;
 
 // ── Client → Server ────────────────────────────────────────────────

@@ -7,5 +7,4 @@ export type {
 	FsWatchCommand,
 	GitChangedMessage,
 	ServerMessage,
-	WorkspaceInitChangedMessage,
 } from "./types";

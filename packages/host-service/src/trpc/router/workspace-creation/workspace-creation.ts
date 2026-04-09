@@ -331,10 +331,6 @@ export const workspaceCreationRouter = router({
 				return {
 					outcome: "opened_existing_workspace" as const,
 					workspace: existingWorkspace,
-					init: {
-						phase: "ready" as const,
-						progress: null as number | null,
-					},
 					warnings: [] as string[],
 				};
 			}
@@ -434,10 +430,6 @@ export const workspaceCreationRouter = router({
 				return {
 					outcome: "adopted_external_worktree" as const,
 					workspace: cloudRow,
-					init: {
-						phase: "ready" as const,
-						progress: null as number | null,
-					},
 					warnings: [] as string[],
 				};
 			}
@@ -491,10 +483,6 @@ export const workspaceCreationRouter = router({
 					throw err;
 				});
 
-			const initPhase = input.composer.runSetupScript
-				? "pending_setup"
-				: "ready";
-
 			if (cloudRow) {
 				ctx.db
 					.insert(workspaces)
@@ -503,7 +491,6 @@ export const workspaceCreationRouter = router({
 						projectId: input.projectId,
 						worktreePath,
 						branch: branchName,
-						initPhase,
 					})
 					.run();
 			}
@@ -511,10 +498,6 @@ export const workspaceCreationRouter = router({
 			return {
 				outcome: "created_workspace" as const,
 				workspace: cloudRow,
-				init: {
-					phase: initPhase,
-					progress: null as number | null,
-				},
 				warnings: [] as string[],
 			};
 		}),

@@ -4,24 +4,17 @@ import type {
 } from "@superset/host-service/events";
 import type { FsWatchEvent } from "@superset/workspace-fs/host";
 
-type EventType = "fs:events" | "git:changed" | "workspace:init:changed";
+type EventType = "fs:events" | "git:changed";
 
 interface FsEventsPayload {
 	events: FsWatchEvent[];
-}
-
-interface WorkspaceInitPayload {
-	phase: string;
-	progress: number | null;
 }
 
 type EventListener<T extends EventType> = T extends "fs:events"
 	? (workspaceId: string, payload: FsEventsPayload) => void
 	: T extends "git:changed"
 		? (workspaceId: string) => void
-		: T extends "workspace:init:changed"
-			? (workspaceId: string, payload: WorkspaceInitPayload) => void
-			: never;
+		: never;
 
 interface ListenerEntry {
 	type: EventType;
@@ -76,9 +69,7 @@ function handleMessage(state: ConnectionState, data: unknown): void {
 		if (entry.type !== message.type) continue;
 
 		const workspaceId =
-			message.type === "fs:events" ||
-			message.type === "git:changed" ||
-			message.type === "workspace:init:changed"
+			message.type === "fs:events" || message.type === "git:changed"
 				? message.workspaceId
 				: null;
 
@@ -96,11 +87,6 @@ function handleMessage(state: ConnectionState, data: unknown): void {
 			});
 		} else if (message.type === "git:changed") {
 			(entry.callback as EventListener<"git:changed">)(message.workspaceId);
-		} else if (message.type === "workspace:init:changed") {
-			(entry.callback as EventListener<"workspace:init:changed">)(
-				message.workspaceId,
-				message.init,
-			);
 		}
 	}
 }

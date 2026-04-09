@@ -55,7 +55,6 @@ Owns:
 5. open vs create vs adopt behavior
 6. setup/init execution
 7. agent launch handoff
-8. lifecycle events on `/events`
 
 ### Cloud/shared APIs
 
@@ -99,7 +98,6 @@ workspaceCreation.commitAttachmentUpload(...)
 workspaceCreation.create(...)
 
 workspace.get({ id })
-workspace.getInitState({ workspaceId })
 workspace.gitStatus({ id })
 workspace.delete({ id })
 ```
@@ -127,30 +125,18 @@ Create returns:
 
 1. outcome: `created_workspace | opened_existing_workspace | opened_worktree | adopted_external_worktree`
 2. workspace row
-3. initial init state
-4. warnings
+3. warnings
+
+The call blocks until the worktree and cloud row are fully created. The renderer awaits it and shows a loading state via the pending-workspace store. No event bus extension or init-state polling needed — worktree creation is fast (<60s) and setup-script progress is visible once the workspace opens.
 
 ## Event Bus
 
-Use the existing host `/events` bus.
+Use the existing host `/events` bus. No new event types for Phase 1.
 
 Keep:
 
 1. `git:changed`
 2. `fs:events`
-
-Add:
-
-```ts
-workspace:init:changed { workspaceId, init }
-```
-
-Rules:
-
-1. `workspaceCreation.create` returns the initial init snapshot
-2. `workspace.getInitState` hydrates on reload
-3. `/events` pushes later setup/agent progress
-4. no separate create-status polling flow
 
 ## Phases
 
@@ -161,8 +147,6 @@ Rules:
 3. Add `workspaceCreation.getContext`
 4. Add `workspaceCreation.searchBranches`
 5. Add semantic `workspaceCreation.create` with full V1 outcome resolution (`created_workspace`, `opened_existing_workspace`, `opened_worktree`, `adopted_external_worktree`)
-6. Add `workspace.getInitState`
-7. Add `workspace:init:changed`
 
 ### Phase 2
 
@@ -175,6 +159,6 @@ Rules:
 1. V1 composer UX and semantics win over preserving the current V2 modal structure.
 2. Host-service is the only semantic backend boundary for modal behavior.
 3. `@superset/workspace-client` is the only host transport boundary.
-4. Live init/setup state should extend the unified event bus.
+4. Create blocks until done; renderer shows loading via pending-workspace store. No event bus extension needed for Phase 1.
 5. Visible host selection is intentionally part of the first-pass UX.
 6. Phase 1 `workspaceCreation.create` includes full V1 create/open/adopt semantics.

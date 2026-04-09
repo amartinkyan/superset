@@ -105,8 +105,6 @@ export const workspaces = sqliteTable(
 		pullRequestId: text("pull_request_id").references(() => pullRequests.id, {
 			onDelete: "set null",
 		}),
-		initPhase: text("init_phase").notNull().default("ready"),
-		initProgress: integer("init_progress"),
 		createdAt: integer("created_at")
 			.notNull()
 			.$defaultFn(() => Date.now()),
