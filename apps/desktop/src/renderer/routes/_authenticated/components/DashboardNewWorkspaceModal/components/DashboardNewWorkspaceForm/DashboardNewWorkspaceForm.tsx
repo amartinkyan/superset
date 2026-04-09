@@ -306,6 +306,7 @@ export function DashboardNewWorkspaceForm({
 			linkedPR,
 			linkedIssues,
 			attachmentFiles: detachedFiles,
+			agentId: selectedAgent === "none" ? undefined : selectedAgent,
 		});
 	}, [
 		attachments,
@@ -320,6 +321,7 @@ export function DashboardNewWorkspaceForm({
 		linkedPR,
 		prompt,
 		runSetupScript,
+		selectedAgent,
 		workspaceName,
 		workspaceNameEdited,
 	]);

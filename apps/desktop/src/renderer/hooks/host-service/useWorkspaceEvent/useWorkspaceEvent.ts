@@ -4,6 +4,11 @@ import { useEffect, useEffectEvent } from "react";
 import { getHostServiceWsToken } from "renderer/lib/host-service-auth";
 import { useWorkspaceHostUrl } from "../useWorkspaceHostUrl";
 
+export interface WorkspaceInitPayload {
+	phase: string;
+	progress: number | null;
+}
+
 /**
  * Subscribe to an event bus event for a workspace.
  * Resolves the workspace's host and connects to the correct event bus automatically.
@@ -21,9 +26,18 @@ export function useWorkspaceEvent(
 	enabled?: boolean,
 ): void;
 export function useWorkspaceEvent(
-	type: "git:changed" | "fs:events",
+	type: "workspace:init:changed",
 	workspaceId: string,
-	callback: ((event: FsWatchEvent) => void) | (() => void),
+	callback: (payload: WorkspaceInitPayload) => void,
+	enabled?: boolean,
+): void;
+export function useWorkspaceEvent(
+	type: "git:changed" | "fs:events" | "workspace:init:changed",
+	workspaceId: string,
+	callback:
+		| ((event: FsWatchEvent) => void)
+		| ((payload: WorkspaceInitPayload) => void)
+		| (() => void),
 	enabled = true,
 ): void {
 	const hostUrl = useWorkspaceHostUrl(workspaceId);
@@ -47,6 +61,15 @@ export function useWorkspaceEvent(
 				},
 			);
 			cleanups.push(removeListener, () => bus.unwatchFs(workspaceId));
+		} else if (type === "workspace:init:changed") {
+			const removeListener = bus.on(
+				"workspace:init:changed",
+				workspaceId,
+				(_wid, payload) => {
+					(handler as (payload: WorkspaceInitPayload) => void)(payload);
+				},
+			);
+			cleanups.push(removeListener);
 		} else {
 			const removeListener = bus.on("git:changed", workspaceId, () => {
 				(handler as () => void)();

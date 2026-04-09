@@ -63,6 +63,7 @@ export interface CreateWorkspaceInput {
 	linkedPR?: LinkedPR | null;
 	linkedIssues: LinkedIssue[];
 	attachmentFiles: Array<{ url: string; mediaType: string; filename?: string }>;
+	agentId?: string;
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────
@@ -158,6 +159,14 @@ export function useCreateDashboardWorkspace() {
 						? localHostService.client
 						: getHostServiceClientByUrl(hostUrl);
 
+				// Map linked issues into typed ID arrays
+				const internalIssueIds = input.linkedIssues
+					.filter((i) => i.source === "internal" && i.taskId)
+					.map((i) => i.taskId as string);
+				const githubIssueUrls = input.linkedIssues
+					.filter((i) => i.source === "github" && i.url)
+					.map((i) => i.url as string);
+
 				const result = await client.workspaceCreation.create.mutate({
 					projectId: input.projectId,
 					source: input.linkedPR ? "pull-request" : "prompt",
@@ -171,8 +180,19 @@ export function useCreateDashboardWorkspace() {
 						runSetupScript: input.runSetupScript,
 					},
 					linkedContext: {
+						internalIssueIds:
+							internalIssueIds.length > 0 ? internalIssueIds : undefined,
+						githubIssueUrls:
+							githubIssueUrls.length > 0 ? githubIssueUrls : undefined,
 						linkedPrUrl: input.linkedPR?.url,
 						attachments,
+					},
+					launch: input.agentId
+						? { agentId: input.agentId, autoRun: true }
+						: undefined,
+					behavior: {
+						onExistingWorkspace: "open",
+						onExistingWorktree: "adopt",
 					},
 				});
 

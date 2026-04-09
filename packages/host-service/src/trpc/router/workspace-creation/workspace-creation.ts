@@ -339,7 +339,7 @@ export const workspaceCreationRouter = router({
 				};
 			}
 
-			// 3. Check for existing worktree
+			// 3. Check for existing worktree on disk
 			const worktreePath = join(
 				localProject.repoPath,
 				".worktrees",
@@ -354,7 +354,52 @@ export const workspaceCreationRouter = router({
 					});
 				}
 
-				// Adopt the existing worktree
+				// Check if this worktree is already tracked in our local DB
+				// (has a workspace row but no cloud counterpart — e.g. leftover
+				// from a previous session that wasn't fully synced).
+				const trackedWorktree = ctx.db.query.workspaces
+					.findFirst({
+						where: (ws, { and, eq: eqFn }) =>
+							and(
+								eqFn(ws.projectId, input.projectId),
+								eqFn(ws.worktreePath, worktreePath),
+							),
+					})
+					.sync();
+
+				if (trackedWorktree) {
+					// Tracked worktree — re-open it, ensure it has a cloud row
+					if (!ctx.deviceClientId || !ctx.deviceName) {
+						throw new TRPCError({
+							code: "PRECONDITION_FAILED",
+							message: "Host device metadata not configured",
+						});
+					}
+
+					const host = await ctx.api.device.ensureV2Host.mutate({
+						machineId: ctx.deviceClientId,
+						name: ctx.deviceName,
+					});
+
+					const cloudRow = await ctx.api.v2Workspace.create.mutate({
+						projectId: input.projectId,
+						name: workspaceName,
+						branch: branchName,
+						hostId: host.id,
+					});
+
+					return {
+						outcome: "opened_worktree" as const,
+						workspace: cloudRow ?? trackedWorktree,
+						init: {
+							phase: "ready" as const,
+							progress: null as number | null,
+						},
+						warnings: [] as string[],
+					};
+				}
+
+				// External worktree — adopt it (create cloud + local rows)
 				if (!ctx.deviceClientId || !ctx.deviceName) {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
@@ -446,6 +491,10 @@ export const workspaceCreationRouter = router({
 					throw err;
 				});
 
+			const initPhase = input.composer.runSetupScript
+				? "pending_setup"
+				: "ready";
+
 			if (cloudRow) {
 				ctx.db
 					.insert(workspaces)
@@ -454,6 +503,7 @@ export const workspaceCreationRouter = router({
 						projectId: input.projectId,
 						worktreePath,
 						branch: branchName,
+						initPhase,
 					})
 					.run();
 			}
@@ -462,9 +512,7 @@ export const workspaceCreationRouter = router({
 				outcome: "created_workspace" as const,
 				workspace: cloudRow,
 				init: {
-					phase: input.composer.runSetupScript
-						? ("pending_setup" as const)
-						: ("ready" as const),
+					phase: initPhase,
 					progress: null as number | null,
 				},
 				warnings: [] as string[],

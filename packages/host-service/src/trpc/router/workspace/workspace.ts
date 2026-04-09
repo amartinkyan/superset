@@ -148,8 +148,8 @@ export const workspaceRouter = router({
 
 			return {
 				workspaceId: input.workspaceId,
-				phase: "ready" as const,
-				progress: null as number | null,
+				phase: localWorkspace.initPhase,
+				progress: localWorkspace.initProgress ?? null,
 			};
 		}),
 
