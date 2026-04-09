@@ -63,7 +63,6 @@ export interface CreateWorkspaceInput {
 	linkedPR?: LinkedPR | null;
 	linkedIssues: LinkedIssue[];
 	attachmentFiles: Array<{ url: string; mediaType: string; filename?: string }>;
-	agentId?: string;
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────
@@ -112,8 +111,13 @@ export function useCreateDashboardWorkspace() {
 							),
 						]);
 						aiBranchName = result.branchName;
-					} catch {
-						// Fall through — host-service will generate a name if none provided
+					} catch (err) {
+						// Non-fatal: fall through to branch name derived from
+						// workspace name or prompt. Log so failures are observable.
+						console.warn(
+							"[useCreateDashboardWorkspace] AI branch name generation failed, falling back",
+							err,
+						);
 					} finally {
 						setPendingWorkspaceStatus(pendingId, "preparing");
 					}
@@ -187,9 +191,6 @@ export function useCreateDashboardWorkspace() {
 						linkedPrUrl: input.linkedPR?.url,
 						attachments,
 					},
-					launch: input.agentId
-						? { agentId: input.agentId, autoRun: true }
-						: undefined,
 					behavior: {
 						onExistingWorkspace: "open",
 						onExistingWorktree: "adopt",

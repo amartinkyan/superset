@@ -306,7 +306,6 @@ export function DashboardNewWorkspaceForm({
 			linkedPR,
 			linkedIssues,
 			attachmentFiles: detachedFiles,
-			agentId: selectedAgent === "none" ? undefined : selectedAgent,
 		});
 	}, [
 		attachments,
@@ -321,7 +320,6 @@ export function DashboardNewWorkspaceForm({
 		linkedPR,
 		prompt,
 		runSetupScript,
-		selectedAgent,
 		workspaceName,
 		workspaceNameEdited,
 	]);
@@ -561,7 +559,7 @@ export function DashboardNewWorkspaceForm({
 				<div className="flex items-center gap-2 min-w-0 flex-1">
 					<ProjectSelector
 						selectedProjectId={draft.selectedProjectId}
-						onSelectProject={(id) => updateDraft({ selectedProjectId: id })}
+						onSelectProject={handleSelectProject}
 					/>
 					<AnimatePresence mode="wait" initial={false}>
 						{linkedPR ? (

@@ -1,11 +1,31 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import simpleGit from "simple-git";
 import { z } from "zod";
 import { projects, workspaces } from "../../../db/schema";
 import { protectedProcedure, router } from "../../index";
+
+/**
+ * Validates that a worktree path stays within the expected parent directory
+ * after path resolution. Prevents path-traversal via `..` segments in branch
+ * names. Returns the resolved absolute path on success.
+ */
+function safeResolveWorktreePath(repoPath: string, branchName: string): string {
+	const worktreesRoot = resolve(repoPath, ".worktrees");
+	const worktreePath = resolve(worktreesRoot, branchName);
+	if (
+		worktreePath !== worktreesRoot &&
+		!worktreePath.startsWith(worktreesRoot + sep)
+	) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: `Invalid branch name: path traversal detected (${branchName})`,
+		});
+	}
+	return worktreePath;
+}
 
 const createOutcome = z.enum([
 	"created_workspace",
@@ -242,12 +262,9 @@ export const workspaceCreationRouter = router({
 							.optional(),
 					})
 					.optional(),
-				launch: z
-					.object({
-						agentId: z.string().optional(),
-						autoRun: z.boolean().optional(),
-					})
-					.optional(),
+				// `launch` (agentId/autoRun) intentionally omitted — agent
+				// handoff is a Phase 2 concern. Re-add when the host-service
+				// actually schedules the launch.
 				behavior: z
 					.object({
 						onExistingWorkspace: z
@@ -336,9 +353,8 @@ export const workspaceCreationRouter = router({
 			}
 
 			// 3. Check for existing worktree on disk
-			const worktreePath = join(
+			const worktreePath = safeResolveWorktreePath(
 				localProject.repoPath,
-				".worktrees",
 				branchName,
 			);
 
@@ -364,33 +380,14 @@ export const workspaceCreationRouter = router({
 					.sync();
 
 				if (trackedWorktree) {
-					// Tracked worktree — re-open it, ensure it has a cloud row
-					if (!ctx.deviceClientId || !ctx.deviceName) {
-						throw new TRPCError({
-							code: "PRECONDITION_FAILED",
-							message: "Host device metadata not configured",
-						});
-					}
-
-					const host = await ctx.api.device.ensureV2Host.mutate({
-						machineId: ctx.deviceClientId,
-						name: ctx.deviceName,
-					});
-
-					const cloudRow = await ctx.api.v2Workspace.create.mutate({
-						projectId: input.projectId,
-						name: workspaceName,
-						branch: branchName,
-						hostId: host.id,
-					});
-
+					// Tracked worktree — the local row's id *is* the cloud
+					// workspace id (both adopted_external_worktree and
+					// created_workspace paths insert with `id = cloudRow.id`).
+					// So the cloud row already exists; just return the tracked
+					// row without a duplicate cloud create.
 					return {
 						outcome: "opened_worktree" as const,
-						workspace: cloudRow ?? trackedWorktree,
-						init: {
-							phase: "ready" as const,
-							progress: null as number | null,
-						},
+						workspace: trackedWorktree,
 						warnings: [] as string[],
 					};
 				}
@@ -415,17 +412,22 @@ export const workspaceCreationRouter = router({
 					hostId: host.id,
 				});
 
-				if (cloudRow) {
-					ctx.db
-						.insert(workspaces)
-						.values({
-							id: cloudRow.id,
-							projectId: input.projectId,
-							worktreePath,
-							branch: branchName,
-						})
-						.run();
+				if (!cloudRow) {
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message: "Cloud workspace create returned no row",
+					});
 				}
+
+				ctx.db
+					.insert(workspaces)
+					.values({
+						id: cloudRow.id,
+						projectId: input.projectId,
+						worktreePath,
+						branch: branchName,
+					})
+					.run();
 
 				return {
 					outcome: "adopted_external_worktree" as const,
@@ -444,10 +446,17 @@ export const workspaceCreationRouter = router({
 
 			const git = await ctx.git(localProject.repoPath);
 
-			// Create worktree - try existing branch first, then create new
+			// Create worktree — first try adding for an existing branch; if
+			// that fails, fall back to creating a new branch from baseBranch.
+			// We log the original error so disk/permission/corruption issues
+			// aren't silently hidden behind the fallback attempt.
 			try {
 				await git.raw(["worktree", "add", worktreePath, branchName]);
-			} catch {
+			} catch (existingBranchErr) {
+				console.warn(
+					"[workspaceCreation.create] worktree add for existing branch failed, trying new branch",
+					{ branchName, worktreePath, existingBranchErr },
+				);
 				const baseBranch = input.composer.compareBaseBranch || "HEAD";
 				await git.raw([
 					"worktree",
@@ -464,6 +473,17 @@ export const workspaceCreationRouter = router({
 				name: ctx.deviceName,
 			});
 
+			const rollbackWorktree = async () => {
+				try {
+					await git.raw(["worktree", "remove", worktreePath]);
+				} catch (cleanupErr) {
+					console.warn(
+						"[workspaceCreation.create] failed to rollback worktree",
+						{ worktreePath, cleanupErr },
+					);
+				}
+			};
+
 			const cloudRow = await ctx.api.v2Workspace.create
 				.mutate({
 					projectId: input.projectId,
@@ -472,28 +492,27 @@ export const workspaceCreationRouter = router({
 					hostId: host.id,
 				})
 				.catch(async (err) => {
-					try {
-						await git.raw(["worktree", "remove", worktreePath]);
-					} catch (cleanupErr) {
-						console.warn(
-							"[workspaceCreation.create] failed to rollback worktree",
-							{ worktreePath, cleanupErr },
-						);
-					}
+					await rollbackWorktree();
 					throw err;
 				});
 
-			if (cloudRow) {
-				ctx.db
-					.insert(workspaces)
-					.values({
-						id: cloudRow.id,
-						projectId: input.projectId,
-						worktreePath,
-						branch: branchName,
-					})
-					.run();
+			if (!cloudRow) {
+				await rollbackWorktree();
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Cloud workspace create returned no row",
+				});
 			}
+
+			ctx.db
+				.insert(workspaces)
+				.values({
+					id: cloudRow.id,
+					projectId: input.projectId,
+					worktreePath,
+					branch: branchName,
+				})
+				.run();
 
 			return {
 				outcome: "created_workspace" as const,
