@@ -1,5 +1,6 @@
 import type {
 	TunnelHttpRequest,
+	TunnelRequest,
 	TunnelResponse,
 	TunnelWsClose,
 	TunnelWsFrame,
@@ -47,9 +48,10 @@ export class TunnelClient {
 		const url = new URL("/tunnel", this.relayUrl);
 		url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 		url.searchParams.set("hostId", this.hostId);
-		url.searchParams.set("token", token);
 
-		const socket = new WebSocket(url.toString());
+		const socket = new WebSocket(url.toString(), {
+			headers: { Authorization: `Bearer ${token}` },
+		});
 		this.socket = socket;
 
 		socket.onopen = () => {
@@ -71,8 +73,8 @@ export class TunnelClient {
 			}
 		};
 
-		socket.onerror = () => {
-			// onclose fires after onerror
+		socket.onerror = (event) => {
+			console.error("[host-service:tunnel] socket error:", event);
 		};
 	}
 
@@ -99,48 +101,39 @@ export class TunnelClient {
 	}
 
 	private async handleMessage(data: unknown): Promise<void> {
-		let message: Record<string, unknown>;
+		let message: TunnelRequest;
 		try {
-			message = JSON.parse(String(data));
+			message = JSON.parse(String(data)) as TunnelRequest;
 		} catch {
 			return;
 		}
 
-		// Handle keepalive
-		if (message.type === "ping") {
-			this.send({ type: "pong" });
-			return;
-		}
-
-		// Handle hello:ok (handshake complete)
-		if (message.type === "hello:ok") {
-			return;
-		}
-
-		const typed = message as unknown as
-			| TunnelHttpRequest
-			| TunnelWsOpen
-			| TunnelWsFrame
-			| TunnelWsClose;
-
-		if (typed.type === "http") {
-			await this.handleHttpRequest(typed);
-		} else if (typed.type === "ws:open") {
-			this.handleWsOpen(typed);
-		} else if (typed.type === "ws:frame") {
-			this.handleWsFrame(typed);
-		} else if (typed.type === "ws:close") {
-			this.handleWsClose(typed);
+		switch (message.type) {
+			case "ping":
+				this.send({ type: "pong" });
+				break;
+			case "http":
+				await this.handleHttpRequest(message);
+				break;
+			case "ws:open":
+				this.handleWsOpen(message);
+				break;
+			case "ws:frame":
+				this.handleWsFrame(message);
+				break;
+			case "ws:close":
+				this.handleWsClose(message);
+				break;
 		}
 	}
 
-	private async handleHttpRequest(req: TunnelHttpRequest): Promise<void> {
+	private async handleHttpRequest(request: TunnelHttpRequest): Promise<void> {
 		try {
-			const url = `http://127.0.0.1:${this.localPort}${req.path}`;
+			const url = `http://127.0.0.1:${this.localPort}${request.path}`;
 			const response = await fetch(url, {
-				method: req.method,
-				headers: req.headers,
-				body: req.body ?? undefined,
+				method: request.method,
+				headers: request.headers,
+				body: request.body ?? undefined,
 			});
 
 			const body = await response.text();
@@ -151,7 +144,7 @@ export class TunnelClient {
 
 			this.send({
 				type: "http:response",
-				id: req.id,
+				id: request.id,
 				status: response.status,
 				headers,
 				body,
@@ -159,7 +152,7 @@ export class TunnelClient {
 		} catch {
 			this.send({
 				type: "http:response",
-				id: req.id,
+				id: request.id,
 				status: 502,
 				headers: {},
 				body: "Failed to reach local host-service",
@@ -167,66 +160,54 @@ export class TunnelClient {
 		}
 	}
 
-	private handleWsOpen(req: TunnelWsOpen): void {
-		const wsUrl = new URL(req.path, `ws://127.0.0.1:${this.localPort}`);
-		if (req.query) {
-			for (const param of req.query.split("&")) {
-				const [key, value] = param.split("=");
-				if (key) wsUrl.searchParams.set(key, decodeURIComponent(value ?? ""));
+	private handleWsOpen(request: TunnelWsOpen): void {
+		const wsUrl = new URL(request.path, `ws://127.0.0.1:${this.localPort}`);
+		if (request.query) {
+			const params = new URLSearchParams(request.query);
+			for (const [key, value] of params) {
+				wsUrl.searchParams.set(key, value);
 			}
 		}
 
 		const localWs = new WebSocket(wsUrl.toString());
 
 		localWs.onmessage = (event) => {
-			this.send({
-				type: "ws:frame",
-				id: req.id,
-				data: String(event.data),
-			});
+			this.send({ type: "ws:frame", id: request.id, data: String(event.data) });
 		};
 
 		localWs.onclose = (event) => {
-			this.localChannels.delete(req.id);
-			this.send({
-				type: "ws:close",
-				id: req.id,
-				code: event.code,
-			});
+			this.localChannels.delete(request.id);
+			this.send({ type: "ws:close", id: request.id, code: event.code });
 		};
 
 		localWs.onerror = () => {
-			this.localChannels.delete(req.id);
-			this.send({
-				type: "ws:close",
-				id: req.id,
-				code: 1011,
-			});
+			this.localChannels.delete(request.id);
+			this.send({ type: "ws:close", id: request.id, code: 1011 });
 		};
 
-		this.localChannels.set(req.id, localWs);
+		this.localChannels.set(request.id, localWs);
 	}
 
-	private handleWsFrame(msg: TunnelWsFrame): void {
-		const localWs = this.localChannels.get(msg.id);
+	private handleWsFrame(message: TunnelWsFrame): void {
+		const localWs = this.localChannels.get(message.id);
 		if (localWs?.readyState === WebSocket.OPEN) {
-			localWs.send(msg.data);
+			localWs.send(message.data);
 		}
 	}
 
-	private handleWsClose(msg: TunnelWsClose): void {
-		const localWs = this.localChannels.get(msg.id);
+	private handleWsClose(message: TunnelWsClose): void {
+		const localWs = this.localChannels.get(message.id);
 		if (localWs) {
-			this.localChannels.delete(msg.id);
-			localWs.close(msg.code ?? 1000);
+			this.localChannels.delete(message.id);
+			localWs.close(message.code ?? 1000);
 		}
 	}
 
 	private cleanupChannels(): void {
-		for (const [id, ws] of this.localChannels) {
+		for (const ws of this.localChannels.values()) {
 			ws.close(1001, "Tunnel disconnected");
-			this.localChannels.delete(id);
 		}
+		this.localChannels.clear();
 	}
 
 	private scheduleReconnect(): void {
@@ -239,7 +220,7 @@ export class TunnelClient {
 		this.reconnectAttempts++;
 
 		console.log(
-			`[host-service:tunnel] reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`,
+			`[host-service:tunnel] reconnecting in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts})`,
 		);
 
 		this.reconnectTimer = setTimeout(() => {
