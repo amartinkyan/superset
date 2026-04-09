@@ -59,6 +59,10 @@
 		"./tunnel-protocol": {
 			"types": "./src/tunnel-protocol.ts",
 			"default": "./src/tunnel-protocol.ts"
+		},
+		"./device-info": {
+			"types": "./src/device-info.ts",
+			"default": "./src/device-info.ts"
 		}
 	},
 	"scripts": {

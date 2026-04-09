@@ -1,4 +1,4 @@
-import { getDeviceName, getHashedDeviceId } from "../device-info";
+import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import type { ApiClient } from "../types";
 import { TunnelClient } from "./tunnel-client";
 

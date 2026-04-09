@@ -48,10 +48,9 @@ export class TunnelClient {
 		const url = new URL("/tunnel", this.relayUrl);
 		url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 		url.searchParams.set("hostId", this.hostId);
+		url.searchParams.set("token", token);
 
-		const socket = new WebSocket(url.toString(), {
-			headers: { Authorization: `Bearer ${token}` },
-		});
+		const socket = new WebSocket(url.toString());
 		this.socket = socket;
 
 		socket.onopen = () => {

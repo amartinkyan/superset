@@ -3,11 +3,11 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { createServer } from "node:net";
 import path from "node:path";
+import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { app } from "electron";
 import { env as sharedEnv } from "shared/env.shared";
 import { getProcessEnvWithShellPath } from "../../lib/trpc/routers/workspaces/utils/shell-env";
 import { SUPERSET_HOME_DIR } from "./app-environment";
-import { getDeviceName, getHashedDeviceId } from "./device-info";
 import {
 	type HostServiceManifest,
 	isProcessAlive,

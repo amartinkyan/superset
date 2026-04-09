@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import simpleGit from "simple-git";
 import { z } from "zod";
-import { getDeviceName, getHashedDeviceId } from "../../../device-info";
 import { projects, workspaces } from "../../../db/schema";
 import { protectedProcedure, router } from "../../index";
 
