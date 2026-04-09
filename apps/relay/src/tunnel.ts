@@ -1,6 +1,4 @@
-import { db } from "@superset/db/client";
-import { v2Hosts } from "@superset/db/schema";
-import { eq } from "drizzle-orm";
+import { createApiClient } from "./api-client";
 import type { TunnelHttpResponse, TunnelRequest } from "./types";
 
 type WsSocket = {
@@ -20,6 +18,7 @@ interface PendingRequest {
 
 interface TunnelState {
 	hostId: string;
+	token: string;
 	ws: WsSocket;
 	pendingRequests: Map<string, PendingRequest>;
 	activeChannels: Map<string, WsSocket>;
@@ -35,7 +34,7 @@ export class TunnelManager {
 		this.requestTimeoutMs = requestTimeoutMs;
 	}
 
-	register(hostId: string, ws: WsSocket): void {
+	register(hostId: string, token: string, ws: WsSocket): void {
 		if (this.tunnels.has(hostId)) {
 			ws.close(1000, "Tunnel already registered");
 			return;
@@ -43,6 +42,7 @@ export class TunnelManager {
 
 		const tunnel: TunnelState = {
 			hostId,
+			token,
 			ws,
 			pendingRequests: new Map(),
 			activeChannels: new Map(),
@@ -61,12 +61,9 @@ export class TunnelManager {
 			this.send(ws, { type: "ping" });
 		}, PING_INTERVAL_MS);
 
-		void db
-			.update(v2Hosts)
-			.set({ lastSeenAt: new Date() })
-			.where(eq(v2Hosts.id, hostId))
+		void createApiClient(token)
+			.device.setHostOnline.mutate({ hostId, isOnline: true })
 			.catch(() => {});
-
 		console.log(`[relay] tunnel registered: ${hostId}`);
 	}
 
@@ -85,6 +82,9 @@ export class TunnelManager {
 			clientWs.close(1001, "Tunnel disconnected");
 		}
 
+		void createApiClient(tunnel.token)
+			.device.setHostOnline.mutate({ hostId, isOnline: false })
+			.catch(() => {});
 		this.tunnels.delete(hostId);
 		console.log(`[relay] tunnel unregistered: ${hostId}`);
 	}

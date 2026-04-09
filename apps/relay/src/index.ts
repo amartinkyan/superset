@@ -9,14 +9,15 @@ import { type AuthContext, verifyJWT } from "./auth";
 import { env } from "./env";
 import { TunnelManager } from "./tunnel";
 
-type AppEnv = {
+type AppContext = {
 	Variables: {
 		auth: AuthContext;
+		token: string;
 		hostId: string;
 	};
 };
 
-const app = new Hono<AppEnv>();
+const app = new Hono<AppContext>();
 const tunnelManager = new TunnelManager();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
@@ -38,7 +39,7 @@ function extractToken(c: {
 	return c.req.query("token") ?? null;
 }
 
-const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
+const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
 	const token = extractToken(c);
 	if (!token) return c.json({ error: "Unauthorized" }, 401);
 
@@ -48,13 +49,14 @@ const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
 	const hostId = c.req.param("hostId");
 	if (!hostId) return c.json({ error: "Missing hostId" }, 400);
 
-	const hasAccess = await checkHostAccess(auth.sub, hostId);
+	const hasAccess = await checkHostAccess(token, hostId);
 	if (!hasAccess) return c.json({ error: "Forbidden" }, 403);
 
 	if (!tunnelManager.hasTunnel(hostId))
 		return c.json({ error: "Host not connected" }, 503);
 
 	c.set("auth", auth);
+	c.set("token", token);
 	c.set("hostId", hostId);
 	return next();
 };
@@ -77,7 +79,7 @@ app.get(
 
 				const auth = await verifyJWT(token, env.NEXT_PUBLIC_API_URL);
 				if (auth) {
-					const hasAccess = await checkHostAccess(auth.sub, hostId);
+					const hasAccess = await checkHostAccess(token, hostId);
 					if (!hasAccess) {
 						ws.close(1008, "Forbidden");
 						return;
@@ -85,7 +87,7 @@ app.get(
 				}
 
 				authorized = true;
-				tunnelManager.register(hostId, ws);
+				tunnelManager.register(hostId, token, ws);
 			},
 			onMessage: (event) => {
 				if (authorized && hostId)

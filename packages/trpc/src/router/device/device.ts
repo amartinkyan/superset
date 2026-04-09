@@ -8,6 +8,7 @@ import {
 	v2UsersHosts,
 } from "@superset/db/schema";
 import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { protectedProcedure } from "../../trpc";
 
@@ -29,7 +30,6 @@ export const deviceRouter = {
 			}
 
 			const userId = ctx.session.user.id;
-			const now = new Date();
 
 			const [host] = await dbWs
 				.insert(v2Hosts)
@@ -37,14 +37,12 @@ export const deviceRouter = {
 					organizationId,
 					machineId: input.machineId,
 					name: input.name,
-					lastSeenAt: now,
 					createdByUserId: userId,
 				})
 				.onConflictDoUpdate({
 					target: [v2Hosts.organizationId, v2Hosts.machineId],
 					set: {
 						name: input.name,
-						lastSeenAt: now,
 					},
 				})
 				.returning();
@@ -218,5 +216,27 @@ export const deviceRouter = {
 				.returning();
 
 			return { device, timestamp: now };
+		}),
+	checkHostAccess: protectedProcedure
+		.input(z.object({ hostId: z.string().uuid() }))
+		.query(async ({ ctx, input }) => {
+			const row = await db.query.v2UsersHosts.findFirst({
+				where: and(
+					eq(v2UsersHosts.userId, ctx.session.user.id),
+					eq(v2UsersHosts.hostId, input.hostId),
+				),
+				columns: { id: true },
+			});
+			return { allowed: !!row };
+		}),
+
+	setHostOnline: protectedProcedure
+		.input(z.object({ hostId: z.string().uuid(), isOnline: z.boolean() }))
+		.mutation(async ({ input }) => {
+			await db
+				.update(v2Hosts)
+				.set({ isOnline: input.isOnline })
+				.where(eq(v2Hosts.id, input.hostId));
+			return { success: true };
 		}),
 } satisfies TRPCRouterRecord;
