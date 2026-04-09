@@ -7,6 +7,7 @@ import { githubRouter } from "./github";
 import { healthRouter } from "./health";
 import { projectRouter } from "./project";
 import { pullRequestsRouter } from "./pull-requests";
+import { terminalRouter } from "./terminal";
 import { workspaceRouter } from "./workspace";
 import { workspaceCreationRouter } from "./workspace-creation";
 
@@ -19,6 +20,7 @@ export const appRouter = router({
 	cloud: cloudRouter,
 	pullRequests: pullRequestsRouter,
 	project: projectRouter,
+	terminal: terminalRouter,
 	workspace: workspaceRouter,
 	workspaceCreation: workspaceCreationRouter,
 });
