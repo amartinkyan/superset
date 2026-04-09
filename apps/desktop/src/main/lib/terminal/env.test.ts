@@ -9,6 +9,7 @@ import {
 	resetTerminalEnvCachesForTests,
 	SHELL_CRASH_THRESHOLD_MS,
 	sanitizeEnv,
+	wrapShellForMacOS,
 } from "./env";
 
 describe("env", () => {
@@ -763,6 +764,109 @@ describe("env", () => {
 					themeType: "light",
 				});
 				expect(result.COLORFGBG).toBe("0;15");
+			});
+		});
+	});
+
+	describe("wrapShellForMacOS", () => {
+		describe("on macOS (darwin)", () => {
+			it("wraps shell with /usr/bin/login -fpl to restore Mach bootstrap port", () => {
+				const result = wrapShellForMacOS("/bin/zsh", ["-l"], {
+					platform: "darwin",
+					username: "scott",
+				});
+				expect(result.shell).toBe("/usr/bin/login");
+				expect(result.args).toEqual(["-fpl", "scott", "/bin/zsh", "-l"]);
+			});
+
+			it("preserves all original shell args", () => {
+				const result = wrapShellForMacOS(
+					"/bin/bash",
+					["--rcfile", "/path/to/rcfile"],
+					{ platform: "darwin", username: "scott" },
+				);
+				expect(result.shell).toBe("/usr/bin/login");
+				expect(result.args).toEqual([
+					"-fpl",
+					"scott",
+					"/bin/bash",
+					"--rcfile",
+					"/path/to/rcfile",
+				]);
+			});
+
+			it("handles empty shell args", () => {
+				const result = wrapShellForMacOS("/bin/sh", [], {
+					platform: "darwin",
+					username: "scott",
+				});
+				expect(result.shell).toBe("/usr/bin/login");
+				expect(result.args).toEqual(["-fpl", "scott", "/bin/sh"]);
+			});
+
+			it("returns shell unchanged when username is unavailable", () => {
+				const originalUser = process.env.USER;
+				const originalLogname = process.env.LOGNAME;
+				delete process.env.USER;
+				delete process.env.LOGNAME;
+
+				try {
+					const result = wrapShellForMacOS("/bin/zsh", ["-l"], {
+						platform: "darwin",
+					});
+					expect(result.shell).toBe("/bin/zsh");
+					expect(result.args).toEqual(["-l"]);
+				} finally {
+					if (originalUser !== undefined) process.env.USER = originalUser;
+					if (originalLogname !== undefined)
+						process.env.LOGNAME = originalLogname;
+				}
+			});
+
+			it("falls back to LOGNAME when USER is not set", () => {
+				const originalUser = process.env.USER;
+				const originalLogname = process.env.LOGNAME;
+				delete process.env.USER;
+				process.env.LOGNAME = "fallback_user";
+
+				try {
+					const result = wrapShellForMacOS("/bin/zsh", ["-l"], {
+						platform: "darwin",
+					});
+					expect(result.shell).toBe("/usr/bin/login");
+					expect(result.args).toEqual([
+						"-fpl",
+						"fallback_user",
+						"/bin/zsh",
+						"-l",
+					]);
+				} finally {
+					if (originalUser !== undefined) process.env.USER = originalUser;
+					else delete process.env.USER;
+					if (originalLogname !== undefined)
+						process.env.LOGNAME = originalLogname;
+					else delete process.env.LOGNAME;
+				}
+			});
+		});
+
+		describe("on non-macOS platforms", () => {
+			it("returns shell unchanged on Linux", () => {
+				const result = wrapShellForMacOS("/bin/zsh", ["-l"], {
+					platform: "linux",
+					username: "scott",
+				});
+				expect(result.shell).toBe("/bin/zsh");
+				expect(result.args).toEqual(["-l"]);
+			});
+
+			it("returns shell unchanged on Windows", () => {
+				const result = wrapShellForMacOS("powershell.exe", [], {
+					platform: "win32",
+					username: "scott",
+				});
+				expect(result.shell).toBe("powershell.exe");
+				expect(result.args).toEqual([]);
 			});
 		});
 	});

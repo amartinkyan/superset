@@ -428,6 +428,38 @@ export function removeAppEnvVars(
 	return buildSafeEnv(env);
 }
 
+/**
+ * On macOS, wrap the shell spawn with `/usr/bin/login` to re-establish the
+ * Mach bootstrap port. Without this, PTY processes spawned under
+ * ELECTRON_RUN_AS_NODE lose their connection to opendirectoryd, breaking
+ * getpwuid() and commands like whoami, git, and ssh.
+ *
+ * login flags:
+ * -f  Skip password authentication (allowed when user logs in as themselves)
+ * -p  Preserve the calling environment
+ * -l  Do NOT prepend "-" to argv[0] (let shell args control login-shell behavior)
+ */
+export function wrapShellForMacOS(
+	shell: string,
+	args: string[],
+	options?: { platform?: NodeJS.Platform; username?: string },
+): { shell: string; args: string[] } {
+	const platform = options?.platform ?? os.platform();
+	if (platform !== "darwin") {
+		return { shell, args };
+	}
+
+	const username = options?.username ?? process.env.USER ?? process.env.LOGNAME;
+	if (!username) {
+		return { shell, args };
+	}
+
+	return {
+		shell: "/usr/bin/login",
+		args: ["-fpl", username, shell, ...args],
+	};
+}
+
 export function buildTerminalEnv(params: {
 	shell: string;
 	paneId: string;

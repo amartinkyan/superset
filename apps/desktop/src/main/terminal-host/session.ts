@@ -17,7 +17,7 @@ import {
 	getShellArgs,
 } from "../lib/agent-setup/shell-wrappers";
 import { raceWithAbort, throwIfAborted } from "../lib/terminal/abort";
-import { buildSafeEnv } from "../lib/terminal/env";
+import { buildSafeEnv, wrapShellForMacOS } from "../lib/terminal/env";
 import { isTerminalAttachCanceledError } from "../lib/terminal/errors";
 import { HeadlessEmulator } from "../lib/terminal-host/headless-emulator";
 import type {
@@ -266,6 +266,14 @@ export class Session {
 			: getShellArgs(this.shell);
 		const subprocessPath = path.join(__dirname, "pty-subprocess.js");
 
+		// On macOS, wrap the shell with /usr/bin/login to re-establish the Mach
+		// bootstrap port that ELECTRON_RUN_AS_NODE strips. Without this,
+		// directory services are unreachable and getpwuid() fails.
+		const { shell: spawnShell, args: spawnArgs } = wrapShellForMacOS(
+			this.shell,
+			shellArgs,
+		);
+
 		// Spawn subprocess with filtered env to prevent leaking NODE_ENV etc.
 		const electronPath = process.execPath;
 		this.subprocess = this.spawnProcess(electronPath, [subprocessPath], {
@@ -314,8 +322,8 @@ export class Session {
 
 		// Store pending spawn config
 		this.pendingSpawn = {
-			shell: this.shell,
-			args: shellArgs,
+			shell: spawnShell,
+			args: spawnArgs,
 			cwd,
 			cols,
 			rows,
