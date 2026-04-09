@@ -17,7 +17,7 @@ CREATE TABLE "v2_hosts" (
 	"organization_id" uuid NOT NULL,
 	"machine_id" text NOT NULL,
 	"name" text NOT NULL,
-	"is_online" boolean DEFAULT false NOT NULL,
+	"last_seen_at" timestamp with time zone,
 	"created_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -41,9 +41,7 @@ ALTER TABLE "v2_users_devices" DISABLE ROW LEVEL SECURITY;--> statement-breakpoi
 DROP TABLE "v2_device_presence" CASCADE;--> statement-breakpoint
 DROP TABLE "v2_devices" CASCADE;--> statement-breakpoint
 DROP TABLE "v2_users_devices" CASCADE;--> statement-breakpoint
-ALTER TABLE "v2_workspaces" DROP CONSTRAINT "v2_workspaces_device_id_v2_devices_id_fk";
---> statement-breakpoint
-DROP INDEX "v2_workspaces_device_id_idx";--> statement-breakpoint
+DROP INDEX IF EXISTS "v2_workspaces_device_id_idx";--> statement-breakpoint
 ALTER TABLE "v2_workspaces" ADD COLUMN "host_id" uuid NOT NULL;--> statement-breakpoint
 ALTER TABLE "v2_clients" ADD CONSTRAINT "v2_clients_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "auth"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "v2_clients" ADD CONSTRAINT "v2_clients_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
