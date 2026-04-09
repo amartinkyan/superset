@@ -70,7 +70,10 @@ export const jwtProcedure = t.procedure.use(async ({ ctx, next }) => {
 		});
 	} catch (error) {
 		if (error instanceof TRPCError) throw error;
-		throw new TRPCError({ code: "UNAUTHORIZED", message: "JWT verification failed" });
+		throw new TRPCError({
+			code: "UNAUTHORIZED",
+			message: "JWT verification failed",
+		});
 	}
 });
 
