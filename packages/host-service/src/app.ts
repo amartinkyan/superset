@@ -117,10 +117,6 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 					api,
 					db,
 					runtime,
-					deviceClientId: null,
-					deviceName: null,
-					serviceVersion: null,
-					protocolVersion: null,
 					isAuthenticated,
 				} as Record<string, unknown>;
 			},

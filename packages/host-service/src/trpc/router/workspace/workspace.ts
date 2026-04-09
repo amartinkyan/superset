@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import simpleGit from "simple-git";
 import { z } from "zod";
+import { getDeviceName, getHashedDeviceId } from "../../../device-info";
 import { projects, workspaces } from "../../../db/schema";
 import { protectedProcedure, router } from "../../index";
 
@@ -79,12 +80,8 @@ export const workspaceRouter = router({
 				".worktrees",
 				input.branch,
 			);
-			if (!ctx.deviceClientId || !ctx.deviceName) {
-				throw new TRPCError({
-					code: "PRECONDITION_FAILED",
-					message: "Host device metadata not configured",
-				});
-			}
+			const deviceClientId = getHashedDeviceId();
+			const deviceName = getDeviceName();
 
 			const git = await ctx.git(localProject.repoPath);
 			try {
@@ -94,8 +91,8 @@ export const workspaceRouter = router({
 			}
 
 			const host = await ctx.api.device.ensureV2Host.mutate({
-				machineId: ctx.deviceClientId,
-				name: ctx.deviceName,
+				machineId: deviceClientId,
+				name: deviceName,
 			});
 
 			const cloudRow = await ctx.api.v2Workspace.create
