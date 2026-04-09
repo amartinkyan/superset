@@ -44,6 +44,18 @@ import { formatPrice, getOrganizationOwners } from "./utils";
 const qstash = new Client({ token: env.QSTASH_TOKEN });
 
 const NOTIFY_SLACK_URL = `${env.NEXT_PUBLIC_API_URL}/api/integrations/stripe/jobs/notify-slack`;
+
+/**
+ * Audiences accepted by the OAuth provider when MCP clients send a `resource`
+ * parameter during the token exchange (RFC 8707). The MCP resource URL
+ * (e.g. `<apiUrl>/api/agent/mcp`) MUST be included, otherwise better-auth
+ * rejects the token request with "requested resource invalid".
+ *
+ * See: https://github.com/nicepkg/superset/issues/3293
+ */
+export function getOAuthValidAudiences(apiUrl: string): string[] {
+	return [apiUrl, `${apiUrl}/`, `${apiUrl}/api/agent/mcp`];
+}
 const desktopDevPort = process.env.DESKTOP_VITE_PORT || "5173";
 const desktopDevOrigins =
 	process.env.NODE_ENV === "development"
@@ -207,7 +219,7 @@ export const auth = betterAuth({
 			consentPage: `${env.NEXT_PUBLIC_WEB_URL}/oauth/consent`,
 			allowDynamicClientRegistration: true,
 			allowUnauthenticatedClientRegistration: true,
-			validAudiences: [env.NEXT_PUBLIC_API_URL, `${env.NEXT_PUBLIC_API_URL}/`],
+			validAudiences: getOAuthValidAudiences(env.NEXT_PUBLIC_API_URL),
 			silenceWarnings: {
 				oauthAuthServerConfig: true,
 				openidConfig: true,
