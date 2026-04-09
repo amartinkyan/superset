@@ -282,7 +282,15 @@ export function createTerminalInstance(
 	xterm.registerLinkProvider(filePathLinkProvider);
 
 	xterm.unicode.activeVersion = "11";
-	fitAddon.fit();
+
+	// Defer initial fit to next animation frame so the container has its final
+	// dimensions from React layout. Fitting synchronously measures a container
+	// that may still be at zero or partial width, causing the terminal to render
+	// at half width (issue #3281).
+	let fitRafId: number | null = requestAnimationFrame(() => {
+		fitRafId = null;
+		if (!isDisposed) fitAddon.fit();
+	});
 
 	return {
 		xterm,
@@ -292,6 +300,9 @@ export function createTerminalInstance(
 			isDisposed = true;
 			if (rafId !== null) {
 				cancelAnimationFrame(rafId);
+			}
+			if (fitRafId !== null) {
+				cancelAnimationFrame(fitRafId);
 			}
 			cleanupQuerySuppression();
 			rendererRef.current.dispose();
