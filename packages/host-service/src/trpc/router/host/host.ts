@@ -22,7 +22,7 @@ async function getOrganization(
 		return cachedOrganization.data;
 	}
 
-	const organization = await api.organization.getActive.query();
+	const organization = await api.organization.getActiveFromJwt.query();
 	if (!organization) {
 		throw new TRPCError({
 			code: "PRECONDITION_FAILED",
