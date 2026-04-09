@@ -8,6 +8,7 @@ import { healthRouter } from "./health";
 import { hostRouter } from "./host";
 import { projectRouter } from "./project";
 import { pullRequestsRouter } from "./pull-requests";
+import { terminalRouter } from "./terminal";
 import { workspaceRouter } from "./workspace";
 
 export const appRouter = router({
@@ -20,6 +21,7 @@ export const appRouter = router({
 	cloud: cloudRouter,
 	pullRequests: pullRequestsRouter,
 	project: projectRouter,
+	terminal: terminalRouter,
 	workspace: workspaceRouter,
 });
 

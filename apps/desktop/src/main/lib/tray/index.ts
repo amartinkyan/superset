@@ -9,7 +9,7 @@ import {
 } from "electron";
 import { loadToken } from "lib/trpc/routers/auth/utils/auth-functions";
 import { env } from "main/env.main";
-import { focusMainWindow, requestQuit } from "main/index";
+import { focusMainWindow, quitApp } from "main/index";
 import {
 	getHostServiceCoordinator,
 	type HostServiceStatusEvent,
@@ -221,23 +221,10 @@ function updateTrayMenu(): void {
 			},
 		},
 		{ type: "separator" },
-		...(hasActive
-			? [
-					{
-						label: "Quit (Keep Services Running)",
-						click: () => requestQuit("release"),
-					},
-					{
-						label: "Quit & Stop Services",
-						click: () => requestQuit("stop"),
-					},
-				]
-			: [
-					{
-						label: "Quit",
-						click: () => requestQuit("release"),
-					},
-				]),
+		{
+			label: "Quit Superset",
+			click: () => quitApp(),
+		},
 	]);
 
 	tray.setContextMenu(menu);
