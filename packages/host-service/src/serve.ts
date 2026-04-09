@@ -12,6 +12,11 @@ async function main(): Promise<void> {
 	const terminalBaseEnv = await resolveTerminalBaseEnv();
 	initTerminalBaseEnv(terminalBaseEnv);
 
+	const authProvider = new JwtApiAuthProvider(
+		env.AUTH_TOKEN,
+		env.CLOUD_API_URL,
+	);
+
 	const { app, injectWebSocket, api } = createApp({
 		config: {
 			dbPath: env.HOST_DB_PATH,
@@ -20,7 +25,7 @@ async function main(): Promise<void> {
 			allowedOrigins: env.CORS_ORIGINS ?? [],
 		},
 		providers: {
-			auth: new JwtApiAuthProvider(env.AUTH_TOKEN),
+			auth: authProvider,
 			hostAuth: new PskHostAuthProvider(env.HOST_SERVICE_SECRET),
 			credentials: new LocalGitCredentialProvider(),
 			modelResolver: new LocalModelProvider(),
@@ -35,7 +40,8 @@ async function main(): Promise<void> {
 				api,
 				relayUrl: env.RELAY_URL,
 				localPort: info.port,
-				getAuthToken: () => env.AUTH_TOKEN,
+				authProvider,
+				hostServiceSecret: env.HOST_SERVICE_SECRET,
 			});
 		}
 	});
