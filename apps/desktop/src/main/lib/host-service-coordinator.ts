@@ -5,6 +5,7 @@ import { createServer } from "node:net";
 import path from "node:path";
 import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { app } from "electron";
+import { env } from "main/env.main";
 import { env as sharedEnv } from "shared/env.shared";
 import { getProcessEnvWithShellPath } from "../../lib/trpc/routers/workspaces/utils/shell-env";
 import { SUPERSET_HOME_DIR } from "./app-environment";
@@ -380,6 +381,7 @@ export class HostServiceCoordinator extends EventEmitter {
 			SUPERSET_AGENT_HOOK_VERSION: HOOK_PROTOCOL_VERSION,
 			AUTH_TOKEN: config.authToken,
 			CLOUD_API_URL: config.cloudApiUrl,
+			RELAY_URL: env.RELAY_URL,
 		});
 	}
 
