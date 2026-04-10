@@ -81,7 +81,7 @@ function WorkspaceFilesTreeItemComponent({
 					data-filepath={node.absolutePath}
 					aria-expanded={isFolder ? node.isExpanded : undefined}
 					className={cn(
-						"flex w-full cursor-pointer select-none items-center gap-1 pr-2 text-left transition-colors",
+						"flex w-full cursor-pointer select-none items-center gap-1 pr-4 text-left transition-colors",
 						isFolder ? "bg-background" : undefined,
 						isHovered && !isSelected
 							? isFolder
