@@ -1,7 +1,7 @@
 import { ContextMenu, ContextMenuTrigger } from "@superset/ui/context-menu";
 import { cn } from "@superset/ui/utils";
 import { memo } from "react";
-import { LuChevronDown, LuChevronRight } from "react-icons/lu";
+import { LuChevronDown, LuChevronRight, LuCircle } from "react-icons/lu";
 import type { FileTreeNode } from "renderer/hooks/host-service/useFileTree";
 import type { FileStatus } from "renderer/hooks/host-service/useGitStatusMap";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
@@ -97,12 +97,12 @@ function WorkspaceFilesTreeItemComponent({
 					}
 					style={{
 						height: rowHeight,
-						paddingLeft: 4 + depth * indent,
+						paddingLeft: 8 + (depth - 1) * indent,
 						...(isFolder
 							? {
 									position: "sticky" as const,
-									top: depth * rowHeight,
-									zIndex: 10 - depth,
+									top: (depth - 1) * rowHeight,
+									zIndex: 50 - depth,
 								}
 							: {}),
 					}}
@@ -138,7 +138,11 @@ function WorkspaceFilesTreeItemComponent({
 								STATUS_TEXT_CLASS[decoration],
 							)}
 						>
-							{isFolder ? "•" : STATUS_LETTER[decoration]}
+							{isFolder ? (
+								<LuCircle className="size-2 fill-current opacity-50" />
+							) : (
+								STATUS_LETTER[decoration]
+							)}
 						</span>
 					)}
 				</button>

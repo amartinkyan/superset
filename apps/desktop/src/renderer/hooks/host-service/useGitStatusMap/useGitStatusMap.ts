@@ -85,6 +85,11 @@ export function useGitStatusMap({
 		const changedAncestors = new Set<string>();
 		const worstStatusByFolder = new Map<string, FileStatus>();
 		for (const [path, fileStatus] of merged) {
+			// Deleted files don't appear in the tree, so propagating a
+			// dot to ancestor folders is misleading — users expand the
+			// folder expecting to find something but there's nothing there.
+			if (fileStatus === "deleted") continue;
+
 			const segments = path.split("/");
 			for (let i = 1; i < segments.length; i++) {
 				const ancestor = segments.slice(0, i).join("/");
