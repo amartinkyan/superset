@@ -62,13 +62,6 @@ which republishes assets from every new `desktop-v*` release):
 - **macOS installer**: `https://github.com/superset-sh/superset/releases/download/desktop/Superset-arm64.dmg`
 - **Linux installer**: `https://github.com/superset-sh/superset/releases/download/desktop/Superset-x64.AppImage`
 
-Canary follows the same pattern with the `desktop-canary` tag.
-
-**Do not** point consumers at `/releases/latest/download/`. That URL resolves
-to the repo-wide "Latest" release and can be hijacked by releases from
-other products in the monorepo (e.g. `cli-v*`). The `desktop` tag is
-owned exclusively by the promote workflow and is the only safe endpoint.
-
 ## Code Signing
 
 macOS code signing uses these repository secrets:
