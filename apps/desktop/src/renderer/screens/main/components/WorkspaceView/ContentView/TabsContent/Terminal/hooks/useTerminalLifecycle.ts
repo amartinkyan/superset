@@ -566,6 +566,9 @@ export function useTerminalLifecycle({
 											scheduleScrollToBottom,
 										);
 									}
+									// Rebuild the WebGL texture atlas after cold restore to
+									// prevent glyph corruption when switching workspaces (#3313).
+									scheduleReattachRecovery(true);
 									didFirstRenderRef.current = true;
 									return;
 								}
@@ -583,6 +586,9 @@ export function useTerminalLifecycle({
 									if (scrollback && xterm) {
 										xterm.write(scrollback, scheduleScrollToBottom);
 									}
+									// Rebuild the WebGL texture atlas after cold restore to
+									// prevent glyph corruption when switching workspaces (#3313).
+									scheduleReattachRecovery(true);
 									didFirstRenderRef.current = true;
 									return;
 								}

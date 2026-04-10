@@ -168,3 +168,168 @@ describe("scheduleReattachRecovery throttle — issue #1873", () => {
 		expect(calls).toBe(1);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Reproduction tests for issue #3313:
+// "OpenCode terminal screen glitch and temporary recovery issue when
+//  switching between Superset multi-workspaces"
+//
+// Root cause: both cold restore paths in useTerminalLifecycle.ts (cached
+// restore and fresh server restore) return early without scheduling a
+// WebGL texture atlas recovery via scheduleReattachRecovery.
+//
+// When a user switches from Workspace 1 → Workspace 2 → back to Workspace 1,
+// the terminal unmounts and remounts through cold restore. The restored
+// content renders through the WebGL renderer but `clearTextureAtlas()` +
+// `refresh()` + `fit()` never run, leaving the glyph cache stale. TUI apps
+// like OpenCode that use the alternate screen buffer are particularly affected
+// because their complex glyph combinations aren't properly rebuilt in the new
+// texture atlas.
+//
+// The user observes corrupted/garbled terminal output that temporarily recovers
+// when OpenCode redraws (e.g., opening preferences with Ctrl+P).
+//
+// Fix: after cold restore scrollback is written, call scheduleReattachRecovery
+// so the WebGL texture atlas is rebuilt and a full repaint is forced.
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal model of the cold restore → recovery flow.
+ * Mirrors the relevant interaction between the cold restore paths in
+ * useTerminalLifecycle.ts and the scheduleReattachRecovery mechanism.
+ */
+type ColdRestoreModel = {
+	/** Simulate a cold restore that writes scrollback and optionally triggers recovery */
+	coldRestore: (scrollback: string) => void;
+	/** Flush pending rAFs (simulates browser animation frame) */
+	flushRafs: () => void;
+	/** Number of times clearTextureAtlas was called */
+	clearTextureAtlasCalls: number;
+	/** Number of times xterm.refresh was called */
+	refreshCalls: number;
+	/** Number of times fitAddon.fit was called */
+	fitCalls: number;
+	/** Data written to xterm */
+	writtenData: string[];
+};
+
+function makeColdRestoreModel(opts: {
+	triggerRecoveryAfterRestore: boolean;
+}): ColdRestoreModel {
+	const pendingRafs: Array<() => void> = [];
+	const mockRaf = (cb: () => void): number => {
+		pendingRafs.push(cb);
+		return pendingRafs.length;
+	};
+
+	const model: ColdRestoreModel = {
+		coldRestore: () => {},
+		flushRafs: () => {
+			while (pendingRafs.length > 0) {
+				const cb = pendingRafs.shift();
+				cb?.();
+			}
+		},
+		clearTextureAtlasCalls: 0,
+		refreshCalls: 0,
+		fitCalls: 0,
+		writtenData: [],
+	};
+
+	// --- scheduleReattachRecovery (mirrors useTerminalLifecycle.ts:807-832) ---
+	const reattachRecovery = {
+		throttleMs: 120,
+		pendingFrame: null as number | null,
+		lastRunAt: 0,
+		pendingForceResize: false,
+	};
+
+	const runReattachRecovery = () => {
+		model.clearTextureAtlasCalls++;
+		model.fitCalls++;
+		model.refreshCalls++;
+	};
+
+	const scheduleReattachRecovery = (forceResize: boolean) => {
+		reattachRecovery.pendingForceResize ||= forceResize;
+		if (reattachRecovery.pendingFrame !== null) return;
+
+		reattachRecovery.pendingFrame = mockRaf(() => {
+			reattachRecovery.pendingFrame = null;
+			const now = Date.now();
+			if (now - reattachRecovery.lastRunAt < reattachRecovery.throttleMs) {
+				return;
+			}
+			reattachRecovery.lastRunAt = now;
+			reattachRecovery.pendingForceResize = false;
+			runReattachRecovery();
+		}) as unknown as number;
+	};
+
+	// --- Cold restore path (mirrors useTerminalLifecycle.ts:559-570) ---
+	model.coldRestore = (scrollback: string) => {
+		// Simulate xterm.write(scrollback, callback)
+		model.writtenData.push(scrollback);
+
+		if (opts.triggerRecoveryAfterRestore) {
+			// FIX: schedule recovery after cold restore write
+			scheduleReattachRecovery(true);
+		}
+		// Without the fix, no recovery is scheduled here — early return
+	};
+
+	return model;
+}
+
+describe("cold restore WebGL recovery — issue #3313", () => {
+	it("cold restore without recovery fix does NOT rebuild texture atlas", () => {
+		const model = makeColdRestoreModel({
+			triggerRecoveryAfterRestore: false,
+		});
+
+		// Simulate workspace switch: terminal remounts, cold restore fires
+		model.coldRestore("\x1b[?1049h\x1b[H\x1b[2JOpenCode TUI content...");
+		model.flushRafs();
+
+		// BUG: no recovery was triggered — texture atlas is stale
+		expect(model.writtenData).toEqual([
+			"\x1b[?1049h\x1b[H\x1b[2JOpenCode TUI content...",
+		]);
+		expect(model.clearTextureAtlasCalls).toBe(0);
+		expect(model.refreshCalls).toBe(0);
+		expect(model.fitCalls).toBe(0);
+	});
+
+	it("cold restore WITH recovery fix rebuilds texture atlas", () => {
+		const model = makeColdRestoreModel({
+			triggerRecoveryAfterRestore: true,
+		});
+
+		// Simulate workspace switch: terminal remounts, cold restore fires
+		model.coldRestore("\x1b[?1049h\x1b[H\x1b[2JOpenCode TUI content...");
+		model.flushRafs();
+
+		// FIX: recovery was scheduled and executed
+		expect(model.writtenData).toEqual([
+			"\x1b[?1049h\x1b[H\x1b[2JOpenCode TUI content...",
+		]);
+		expect(model.clearTextureAtlasCalls).toBe(1);
+		expect(model.refreshCalls).toBe(1);
+		expect(model.fitCalls).toBe(1);
+	});
+
+	it("recovery runs only once even if cold restore fires twice rapidly", () => {
+		const model = makeColdRestoreModel({
+			triggerRecoveryAfterRestore: true,
+		});
+
+		// Two rapid cold restores (e.g., fast workspace switch back and forth)
+		model.coldRestore("first restore");
+		model.coldRestore("second restore");
+		model.flushRafs();
+
+		// Both scrollbacks written, but recovery runs only once (throttled)
+		expect(model.writtenData).toEqual(["first restore", "second restore"]);
+		expect(model.clearTextureAtlasCalls).toBe(1);
+	});
+});
