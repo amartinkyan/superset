@@ -70,71 +70,82 @@ export function V2WorkspaceRow({
 		? "you"
 		: (workspace.createdByName ?? "unknown");
 
+	const handleRowKeyDown = useCallback(
+		(event: React.KeyboardEvent<HTMLDivElement>) => {
+			if (event.key === "Enter" || event.key === " ") {
+				event.preventDefault();
+				handleOpen();
+			}
+		},
+		[handleOpen],
+	);
+
 	return (
 		<Item
-			asChild
 			variant="outline"
 			size="sm"
-			className="cursor-pointer border-border/60 hover:bg-accent/50"
+			role="button"
+			tabIndex={0}
+			onClick={handleOpen}
+			onKeyDown={handleRowKeyDown}
+			className="cursor-pointer border-border/60 outline-none hover:bg-accent/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
 		>
-			<button type="button" onClick={handleOpen}>
-				<ItemMedia variant="icon">
-					<HostIcon className="size-4" />
-				</ItemMedia>
+			<ItemMedia variant="icon">
+				<HostIcon className="size-4" />
+			</ItemMedia>
 
-				<ItemContent>
-					<ItemTitle>
-						<span className="truncate">{workspace.name}</span>
-					</ItemTitle>
-					<ItemDescription className="flex flex-wrap items-center gap-2">
-						{showProjectName ? (
-							<span className="font-medium text-foreground/70">
-								{workspace.projectName}
-							</span>
-						) : null}
-						<Badge variant="secondary" className="gap-1 font-normal">
-							<LuGitBranch className="size-3" />
-							<span className="max-w-[16rem] truncate">{workspace.branch}</span>
-						</Badge>
-						<V2WorkspaceDeviceBadge
-							hostType={workspace.hostType}
-							hostName={workspace.hostName}
-							isOnline={workspace.hostIsOnline}
-						/>
-						<span className="text-xs text-muted-foreground">
-							{getRelativeTime(workspace.createdAt.getTime(), {
-								format: "compact",
-							})}{" "}
-							by {creatorLabel}
+			<ItemContent>
+				<ItemTitle>
+					<span className="truncate">{workspace.name}</span>
+				</ItemTitle>
+				<ItemDescription className="flex flex-wrap items-center gap-2">
+					{showProjectName ? (
+						<span className="font-medium text-foreground/70">
+							{workspace.projectName}
 						</span>
-					</ItemDescription>
-				</ItemContent>
+					) : null}
+					<Badge variant="secondary" className="gap-1 font-normal">
+						<LuGitBranch className="size-3" />
+						<span className="max-w-[16rem] truncate">{workspace.branch}</span>
+					</Badge>
+					<V2WorkspaceDeviceBadge
+						hostType={workspace.hostType}
+						hostName={workspace.hostName}
+						isOnline={workspace.hostIsOnline}
+					/>
+					<span className="text-xs text-muted-foreground">
+						{getRelativeTime(workspace.createdAt.getTime(), {
+							format: "compact",
+						})}{" "}
+						by {creatorLabel}
+					</span>
+				</ItemDescription>
+			</ItemContent>
 
-				<ItemActions>
-					{workspace.isInSidebar ? (
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={handleRemoveFromSidebar}
-							disabled={isCurrentRoute}
-							className="gap-1.5"
-						>
-							<LuMinus className="size-3.5" />
-							Remove from sidebar
-						</Button>
-					) : (
-						<Button
-							size="sm"
-							variant="default"
-							onClick={handleAddToSidebar}
-							className="gap-1.5"
-						>
-							<LuPlus className="size-3.5" />
-							Add to sidebar
-						</Button>
-					)}
-				</ItemActions>
-			</button>
+			<ItemActions>
+				{workspace.isInSidebar ? (
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={handleRemoveFromSidebar}
+						disabled={isCurrentRoute}
+						className="gap-1.5"
+					>
+						<LuMinus className="size-3.5" />
+						Remove from sidebar
+					</Button>
+				) : (
+					<Button
+						size="sm"
+						variant="default"
+						onClick={handleAddToSidebar}
+						className="gap-1.5"
+					>
+						<LuPlus className="size-3.5" />
+						Add to sidebar
+					</Button>
+				)}
+			</ItemActions>
 		</Item>
 	);
 }

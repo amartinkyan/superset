@@ -48,7 +48,29 @@ export interface UseAccessibleV2WorkspacesResult {
 	counts: V2WorkspaceDeviceCounts;
 }
 
-export function useAccessibleV2Workspaces(): UseAccessibleV2WorkspacesResult {
+interface UseAccessibleV2WorkspacesOptions {
+	searchQuery?: string;
+}
+
+function workspaceMatchesSearch(
+	workspace: AccessibleV2Workspace,
+	searchQuery: string,
+): boolean {
+	if (!searchQuery.trim()) return true;
+	const query = searchQuery.trim().toLowerCase();
+	return (
+		workspace.name.toLowerCase().includes(query) ||
+		workspace.projectName.toLowerCase().includes(query) ||
+		workspace.branch.toLowerCase().includes(query) ||
+		workspace.hostName.toLowerCase().includes(query) ||
+		(workspace.createdByName ?? "").toLowerCase().includes(query)
+	);
+}
+
+export function useAccessibleV2Workspaces(
+	options: UseAccessibleV2WorkspacesOptions = {},
+): UseAccessibleV2WorkspacesResult {
+	const searchQuery = options.searchQuery ?? "";
 	const { data: session } = authClient.useSession();
 	const collections = useCollections();
 	const { machineId } = useLocalHostService();
@@ -141,35 +163,43 @@ export function useAccessibleV2Workspaces(): UseAccessibleV2WorkspacesResult {
 		);
 	}, [rows, machineId, currentUserId]);
 
+	const searchFiltered = useMemo(
+		() =>
+			enriched.filter((workspace) =>
+				workspaceMatchesSearch(workspace, searchQuery),
+			),
+		[enriched, searchQuery],
+	);
+
 	const pinned = useMemo(
-		() => enriched.filter((workspace) => workspace.isInSidebar),
-		[enriched],
+		() => searchFiltered.filter((workspace) => workspace.isInSidebar),
+		[searchFiltered],
 	);
 
 	const others = useMemo(
-		() => enriched.filter((workspace) => !workspace.isInSidebar),
-		[enriched],
+		() => searchFiltered.filter((workspace) => !workspace.isInSidebar),
+		[searchFiltered],
 	);
 
 	const counts = useMemo<V2WorkspaceDeviceCounts>(() => {
 		let thisDevice = 0;
 		let otherDevices = 0;
 		let cloud = 0;
-		for (const workspace of enriched) {
+		for (const workspace of searchFiltered) {
 			if (workspace.hostType === "local-device") thisDevice += 1;
 			else if (workspace.hostType === "remote-device") otherDevices += 1;
 			else cloud += 1;
 		}
 		return {
-			all: enriched.length,
+			all: searchFiltered.length,
 			thisDevice,
 			otherDevices,
 			cloud,
 		};
-	}, [enriched]);
+	}, [searchFiltered]);
 
 	return {
-		all: enriched,
+		all: searchFiltered,
 		pinned,
 		others,
 		counts,

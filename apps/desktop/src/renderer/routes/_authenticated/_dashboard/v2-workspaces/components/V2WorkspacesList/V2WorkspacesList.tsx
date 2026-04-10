@@ -50,21 +50,6 @@ function matchesDeviceFilter(
 	}
 }
 
-function matchesSearch(
-	workspace: AccessibleV2Workspace,
-	searchQuery: string,
-): boolean {
-	if (!searchQuery.trim()) return true;
-	const query = searchQuery.trim().toLowerCase();
-	return (
-		workspace.name.toLowerCase().includes(query) ||
-		workspace.projectName.toLowerCase().includes(query) ||
-		workspace.branch.toLowerCase().includes(query) ||
-		workspace.hostName.toLowerCase().includes(query) ||
-		(workspace.createdByName ?? "").toLowerCase().includes(query)
-	);
-}
-
 function groupByProject(workspaces: AccessibleV2Workspace[]): ProjectGroup[] {
 	const groupsById = new Map<string, ProjectGroup>();
 	for (const workspace of workspaces) {
@@ -108,23 +93,21 @@ export function V2WorkspacesList({
 	);
 	const resetFilters = useV2WorkspacesFilterStore((state) => state.reset);
 
+	// `pinned` / `others` already have the search filter applied upstream in
+	// useAccessibleV2Workspaces, so here we only narrow by device filter.
 	const filteredPinnedGroups = useMemo(() => {
-		const filtered = pinned.filter(
-			(workspace) =>
-				matchesDeviceFilter(workspace.hostType, deviceFilter) &&
-				matchesSearch(workspace, searchQuery),
+		const filtered = pinned.filter((workspace) =>
+			matchesDeviceFilter(workspace.hostType, deviceFilter),
 		);
 		return groupByProject(filtered);
-	}, [pinned, deviceFilter, searchQuery]);
+	}, [pinned, deviceFilter]);
 
 	const filteredOtherGroups = useMemo(() => {
-		const filtered = others.filter(
-			(workspace) =>
-				matchesDeviceFilter(workspace.hostType, deviceFilter) &&
-				matchesSearch(workspace, searchQuery),
+		const filtered = others.filter((workspace) =>
+			matchesDeviceFilter(workspace.hostType, deviceFilter),
 		);
 		return groupByProject(filtered);
-	}, [others, deviceFilter, searchQuery]);
+	}, [others, deviceFilter]);
 
 	const pinnedCount = filteredPinnedGroups.reduce(
 		(total, group) => total + group.workspaces.length,
