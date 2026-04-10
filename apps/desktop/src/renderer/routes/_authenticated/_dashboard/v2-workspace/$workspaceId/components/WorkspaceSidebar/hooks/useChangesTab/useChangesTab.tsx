@@ -1,6 +1,6 @@
 import { toast } from "@superset/ui/sonner";
 import { workspaceTrpc } from "@superset/workspace-client";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { useWorkspaceEvent } from "renderer/hooks/host-service/useWorkspaceEvent";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import type { ChangesFilter } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
@@ -71,25 +71,12 @@ export function useChangesTab({
 		void statusUtils.git.listCommits.invalidate({ workspaceId });
 	}, [statusUtils, workspaceId]);
 
-	// Shared debounce for git:changed and fs:events — batches rapid events
-	// from either source into a single git status refresh.
-	const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const debouncedInvalidate = useCallback(() => {
-		if (debounceRef.current) clearTimeout(debounceRef.current);
-		debounceRef.current = setTimeout(() => {
-			debounceRef.current = null;
-			invalidateGitQueries();
-		}, 300);
-	}, [invalidateGitQueries]);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: clear pending timer on workspace change
-	useEffect(() => {
-		return () => {
-			if (debounceRef.current) clearTimeout(debounceRef.current);
-		};
-	}, [workspaceId]);
-
-	useWorkspaceEvent("git:changed", workspaceId, debouncedInvalidate);
-	useWorkspaceEvent("fs:events", workspaceId, debouncedInvalidate);
+	// `git:changed` is the single source of truth for "something that affects
+	// git status just happened" — debounced server-side in `GitWatcher`,
+	// which coalesces both `.git/` metadata writes and worktree file edits
+	// into one emit per workspace per debounce window. No client debounce
+	// needed.
+	useWorkspaceEvent("git:changed", workspaceId, invalidateGitQueries);
 
 	const renameBranchMutation = workspaceTrpc.git.renameBranch.useMutation();
 

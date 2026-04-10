@@ -1,11 +1,36 @@
 import { ContextMenu, ContextMenuTrigger } from "@superset/ui/context-menu";
 import { cn } from "@superset/ui/utils";
+import { memo } from "react";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 import type { FileTreeNode } from "renderer/hooks/host-service/useFileTree";
+import type { FileStatus } from "renderer/hooks/host-service/useGitStatusMap";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
 
 import { FileContextMenu } from "./components/FileContextMenu";
 import { FolderContextMenu } from "./components/FolderContextMenu";
+
+// Tailwind classes mirroring ChangesFileList.tsx:19-27 so the tree and the
+// Changes tab stay visually consistent.
+const STATUS_TEXT_CLASS: Record<FileStatus, string> = {
+	added: "text-diff-added",
+	copied: "text-diff-copied",
+	changed: "text-diff-modified",
+	deleted: "text-diff-deleted",
+	modified: "text-diff-modified",
+	renamed: "text-diff-renamed",
+	untracked: "text-diff-added",
+};
+
+// Single-letter badge shown on the right of changed file rows, VS Code style.
+const STATUS_LETTER: Record<FileStatus, string> = {
+	added: "A",
+	copied: "C",
+	changed: "M",
+	deleted: "D",
+	modified: "M",
+	renamed: "R",
+	untracked: "U",
+};
 
 interface WorkspaceFilesTreeItemProps {
 	node: FileTreeNode;
@@ -14,6 +39,8 @@ interface WorkspaceFilesTreeItemProps {
 	indent: number;
 	selectedFilePath?: string;
 	isHovered?: boolean;
+	decoration?: FileStatus;
+	isMuted?: boolean;
 	onSelectFile: (absolutePath: string) => void;
 	onToggleDirectory: (absolutePath: string) => void;
 	onNewFile: (parentPath: string) => void;
@@ -22,13 +49,15 @@ interface WorkspaceFilesTreeItemProps {
 	onDelete: (absolutePath: string, name: string, isDirectory: boolean) => void;
 }
 
-export function WorkspaceFilesTreeItem({
+function WorkspaceFilesTreeItemComponent({
 	node,
 	depth,
 	rowHeight,
 	indent,
 	selectedFilePath,
 	isHovered,
+	decoration,
+	isMuted,
 	onSelectFile,
 	onToggleDirectory,
 	onNewFile,
@@ -38,6 +67,12 @@ export function WorkspaceFilesTreeItem({
 }: WorkspaceFilesTreeItemProps) {
 	const isFolder = node.kind === "directory";
 	const isSelected = selectedFilePath === node.absolutePath;
+
+	const nameColorClass = isMuted
+		? "text-muted-foreground"
+		: decoration
+			? STATUS_TEXT_CLASS[decoration]
+			: undefined;
 
 	return (
 		<ContextMenu>
@@ -90,7 +125,22 @@ export function WorkspaceFilesTreeItem({
 						isOpen={node.isExpanded}
 					/>
 
-					<span className="min-w-0 flex-1 truncate text-xs">{node.name}</span>
+					<span
+						className={cn("min-w-0 flex-1 truncate text-xs", nameColorClass)}
+					>
+						{node.name}
+					</span>
+
+					{decoration && !isMuted && (
+						<span
+							className={cn(
+								"ml-auto shrink-0 text-[10px] font-semibold leading-none",
+								STATUS_TEXT_CLASS[decoration],
+							)}
+						>
+							{isFolder ? "•" : STATUS_LETTER[decoration]}
+						</span>
+					)}
 				</button>
 			</ContextMenuTrigger>
 			{isFolder ? (
@@ -113,3 +163,8 @@ export function WorkspaceFilesTreeItem({
 		</ContextMenu>
 	);
 }
+
+// Memoized so that after a git-status refresh, only rows whose `decoration`
+// or `isMuted` actually changed re-render. Other props (node, callbacks,
+// selectedFilePath) are stable across renders in practice.
+export const WorkspaceFilesTreeItem = memo(WorkspaceFilesTreeItemComponent);
