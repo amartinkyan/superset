@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { access } from "node:fs/promises";
 import nodePath from "node:path";
 import type { ExternalApp } from "@superset/local-db";
 
@@ -336,6 +337,18 @@ export function spawnAsync(command: string, args: string[]): Promise<void> {
 			}
 		});
 	});
+}
+
+/**
+ * Check whether a file or directory exists at the given path.
+ */
+export async function fileExists(filePath: string): Promise<boolean> {
+	try {
+		await access(filePath);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 export type { ExternalApp };

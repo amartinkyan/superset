@@ -12,6 +12,7 @@ import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import {
 	type ExternalApp,
+	fileExists,
 	getAppCommand,
 	resolvePath,
 	spawnAsync,
@@ -169,6 +170,14 @@ export const createExternalRouter = () => {
 			)
 			.mutation(async ({ input }) => {
 				const filePath = resolvePath(input.path, input.cwd);
+
+				if (!(await fileExists(filePath))) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: `File not found: ${filePath}`,
+					});
+				}
+
 				const app = resolveDefaultEditor(input.projectId);
 
 				if (!app) {

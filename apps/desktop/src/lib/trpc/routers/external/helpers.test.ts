@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getAppCommand, resolvePath, stripPathWrappers } from "./helpers";
+import {
+	fileExists,
+	getAppCommand,
+	resolvePath,
+	stripPathWrappers,
+} from "./helpers";
 
 describe("getAppCommand", () => {
 	const originalPlatform = process.platform;
@@ -511,7 +517,7 @@ describe("stripPathWrappers", () => {
 		});
 	});
 
-	describe("wrappers with trailing punctuation", () => {
+	describe("wrappers with trailing punctuation (#3327)", () => {
 		test("quoted path with trailing period", () => {
 			expect(stripPathWrappers('"./path/file.ts".')).toBe("./path/file.ts");
 		});
@@ -579,5 +585,91 @@ describe("stripPathWrappers", () => {
 		test("strips trailing period from dotfile with extension", () => {
 			expect(stripPathWrappers(".eslintrc.json.")).toBe(".eslintrc.json");
 		});
+	});
+});
+
+describe("fileExists", () => {
+	test("returns true for an existing file", async () => {
+		// This test file itself should exist
+		expect(await fileExists(__filename)).toBe(true);
+	});
+
+	test("returns true for an existing directory", async () => {
+		expect(await fileExists(__dirname)).toBe(true);
+	});
+
+	test("returns false for a non-existent path", async () => {
+		expect(await fileExists("/tmp/__this_path_does_not_exist_12345__")).toBe(
+			false,
+		);
+	});
+
+	test("returns false for non-existent file in existing directory", async () => {
+		expect(await fileExists(path.join(__dirname, "nonexistent-file.ts"))).toBe(
+			false,
+		);
+	});
+});
+
+/**
+ * Reproduction test for GitHub issue #3327:
+ * "Click on terminal file path is not opening default editor"
+ *
+ * The bug: when clicking a file path in the terminal, the app tried to open
+ * the path without checking if it exists on disk. Paths detected by the
+ * terminal link provider may not correspond to real files (e.g., they could
+ * be partial matches, version strings, or paths from a different machine).
+ *
+ * The fix: openFileInEditor now calls fileExists() before attempting to open,
+ * returning a clear "File not found" error instead of a cryptic spawn failure.
+ */
+describe("issue #3327: terminal file path open should validate existence", () => {
+	let tmpDir: string;
+	let existingFile: string;
+
+	beforeEach(() => {
+		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "issue-3327-"));
+		existingFile = path.join(tmpDir, "real-file.ts");
+		fs.writeFileSync(existingFile, "export const x = 1;\n");
+	});
+
+	afterEach(() => {
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	test("resolvePath returns a path even when file does not exist", () => {
+		// This demonstrates the pre-fix behavior: resolvePath happily resolves
+		// a non-existent path without any error, which was then passed to
+		// shell.openPath / spawnAsync causing the cryptic "path not exists" error.
+		const resolved = resolvePath("./nonexistent-file.ts", tmpDir);
+		expect(resolved).toBe(path.join(tmpDir, "nonexistent-file.ts"));
+		// resolvePath does NOT validate existence — that's by design.
+	});
+
+	test("fileExists rejects non-existent resolved paths", async () => {
+		const resolved = resolvePath("./nonexistent-file.ts", tmpDir);
+		// The fix: callers must check fileExists before attempting to open
+		expect(await fileExists(resolved)).toBe(false);
+	});
+
+	test("fileExists accepts real files that resolvePath returns", async () => {
+		const resolved = resolvePath("./real-file.ts", tmpDir);
+		expect(resolved).toBe(existingFile);
+		expect(await fileExists(resolved)).toBe(true);
+	});
+
+	test("full flow: resolve + validate catches non-existent terminal paths", async () => {
+		// Simulate the flow that openFileInEditor now performs:
+		// 1. Resolve the path from terminal text
+		const terminalPath = "src/components/Widget.tsx";
+		const resolved = resolvePath(terminalPath, tmpDir);
+
+		// 2. Validate existence BEFORE opening (this is the fix)
+		const exists = await fileExists(resolved);
+		expect(exists).toBe(false);
+
+		// Previously, the code would skip this check and call shell.openPath(resolved),
+		// which would fail with "Failed to open, path not exists".
+		// Now, openFileInEditor throws a TRPCError with code NOT_FOUND.
 	});
 });
