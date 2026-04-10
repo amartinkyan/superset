@@ -1,7 +1,7 @@
 import { toast } from "@superset/ui/sonner";
 import { workspaceTrpc } from "@superset/workspace-client";
 import { useCallback, useMemo } from "react";
-import { useWorkspaceEvent } from "renderer/hooks/host-service/useWorkspaceEvent";
+import type { useGitStatus } from "renderer/hooks/host-service/useGitStatus";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import type { ChangesFilter } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
 import type { SidebarTabDefinition } from "../../types";
@@ -11,6 +11,7 @@ export type { ChangesFilter };
 
 interface UseChangesTabParams {
 	workspaceId: string;
+	gitStatus: ReturnType<typeof useGitStatus>;
 	onSelectFile?: (
 		path: string,
 		category: "against-base" | "staged" | "unstaged",
@@ -19,6 +20,7 @@ interface UseChangesTabParams {
 
 export function useChangesTab({
 	workspaceId,
+	gitStatus: status,
 	onSelectFile,
 }: UseChangesTabParams): SidebarTabDefinition {
 	const collections = useCollections();
@@ -49,13 +51,6 @@ export function useChangesTab({
 		[collections, workspaceId],
 	);
 
-	const statusUtils = workspaceTrpc.useUtils();
-
-	const status = workspaceTrpc.git.getStatus.useQuery(
-		{ workspaceId, baseBranch: baseBranch ?? undefined },
-		{ refetchOnWindowFocus: true },
-	);
-
 	const commits = workspaceTrpc.git.listCommits.useQuery(
 		{ workspaceId, baseBranch: baseBranch ?? undefined },
 		{ refetchOnWindowFocus: true },
@@ -65,18 +60,6 @@ export function useChangesTab({
 		{ workspaceId },
 		{ refetchInterval: 30_000, refetchOnWindowFocus: true },
 	);
-
-	const invalidateGitQueries = useCallback(() => {
-		void statusUtils.git.getStatus.invalidate({ workspaceId });
-		void statusUtils.git.listCommits.invalidate({ workspaceId });
-	}, [statusUtils, workspaceId]);
-
-	// `git:changed` is the single source of truth for "something that affects
-	// git status just happened" — debounced server-side in `GitWatcher`,
-	// which coalesces both `.git/` metadata writes and worktree file edits
-	// into one emit per workspace per debounce window. No client debounce
-	// needed.
-	useWorkspaceEvent("git:changed", workspaceId, invalidateGitQueries);
 
 	const renameBranchMutation = workspaceTrpc.git.renameBranch.useMutation();
 

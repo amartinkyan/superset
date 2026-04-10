@@ -1,8 +1,10 @@
+import type { AppRouter } from "@superset/host-service";
 import { alert } from "@superset/ui/atoms/Alert";
 import { Button } from "@superset/ui/button";
 import { toast } from "@superset/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { workspaceTrpc } from "@superset/workspace-client";
+import type { inferRouterOutputs } from "@trpc/server";
 import { FilePlus, FolderPlus, FoldVertical, RefreshCw } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -21,6 +23,8 @@ import {
 import { NewItemInput } from "./components/NewItemInput";
 import { WorkspaceFilesTreeItem } from "./components/WorkspaceFilesTreeItem";
 
+type GitStatusData = inferRouterOutputs<AppRouter>["git"]["getStatus"];
+
 type InlineEditState =
 	| { kind: "create"; mode: "file" | "folder"; parentPath: string }
 	| { kind: "rename"; absolutePath: string; name: string; isDirectory: boolean }
@@ -31,6 +35,7 @@ interface FilesTabProps {
 	selectedFilePath?: string;
 	workspaceId: string;
 	workspaceName?: string;
+	gitStatus: GitStatusData | undefined;
 }
 
 function toPosix(path: string): string {
@@ -46,8 +51,8 @@ function TreeNode({
 	hoveredPath,
 	inlineEdit,
 	isMuted,
-	statusByPath,
-	worstStatusByFolder,
+	fileStatusByPath,
+	folderStatusByPath,
 	ignoredPaths,
 	onSelectFile,
 	onToggleDirectory,
@@ -66,8 +71,8 @@ function TreeNode({
 	hoveredPath?: string | null;
 	inlineEdit: InlineEditState;
 	isMuted: boolean;
-	statusByPath: Map<string, FileStatus>;
-	worstStatusByFolder: Map<string, FileStatus>;
+	fileStatusByPath: Map<string, FileStatus>;
+	folderStatusByPath: Map<string, FileStatus>;
 	ignoredPaths: Set<string>;
 	onSelectFile: (absolutePath: string) => void;
 	onToggleDirectory: (absolutePath: string) => void;
@@ -94,10 +99,10 @@ function TreeNode({
 	const posixRelativePath = toPosix(node.relativePath);
 	const isFolder = node.kind === "directory";
 	const fileStatus = !isFolder
-		? statusByPath.get(posixRelativePath)
+		? fileStatusByPath.get(posixRelativePath)
 		: undefined;
 	const folderStatus = isFolder
-		? worstStatusByFolder.get(posixRelativePath)
+		? folderStatusByPath.get(posixRelativePath)
 		: undefined;
 	const decoration = isMuted ? undefined : (fileStatus ?? folderStatus);
 
@@ -153,8 +158,8 @@ function TreeNode({
 									hoveredPath={hoveredPath}
 									inlineEdit={inlineEdit}
 									isMuted={childIsMuted}
-									statusByPath={statusByPath}
-									worstStatusByFolder={worstStatusByFolder}
+									fileStatusByPath={fileStatusByPath}
+									folderStatusByPath={folderStatusByPath}
 									ignoredPaths={ignoredPaths}
 									onSelectFile={onSelectFile}
 									onToggleDirectory={onToggleDirectory}
@@ -195,6 +200,7 @@ export function FilesTab({
 	selectedFilePath,
 	workspaceId,
 	workspaceName,
+	gitStatus,
 }: FilesTabProps) {
 	const [_isRefreshing, setIsRefreshing] = useState(false);
 	const [hoveredPath, setHoveredPath] = useState<string | null>(null);
@@ -212,9 +218,8 @@ export function FilesTab({
 
 	const fileTree = useFileTree({ workspaceId, rootPath });
 
-	const { statusByPath, worstStatusByFolder, ignoredPaths } = useGitStatusMap({
-		workspaceId,
-	});
+	const { fileStatusByPath, folderStatusByPath, ignoredPaths } =
+		useGitStatusMap(gitStatus);
 
 	useWorkspaceEvent(
 		"fs:events",
@@ -555,8 +560,8 @@ export function FilesTab({
 										hoveredPath={hoveredPath}
 										inlineEdit={inlineEdit}
 										isMuted={nodeIsMuted}
-										statusByPath={statusByPath}
-										worstStatusByFolder={worstStatusByFolder}
+										fileStatusByPath={fileStatusByPath}
+										folderStatusByPath={folderStatusByPath}
 										ignoredPaths={ignoredPaths}
 										onSelectFile={onSelectFile}
 										onToggleDirectory={(absolutePath) =>

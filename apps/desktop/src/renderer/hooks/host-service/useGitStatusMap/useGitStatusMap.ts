@@ -1,27 +1,28 @@
 import type { AppRouter } from "@superset/host-service";
-import { workspaceTrpc } from "@superset/workspace-client";
 import type { inferRouterOutputs } from "@trpc/server";
 import { useMemo } from "react";
-import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 
-type ChangedFile =
-	inferRouterOutputs<AppRouter>["git"]["getStatus"]["againstBase"][number];
+type GitStatusData = inferRouterOutputs<AppRouter>["git"]["getStatus"];
+type ChangedFile = GitStatusData["againstBase"][number];
 export type FileStatus = ChangedFile["status"];
 
-export interface UseGitStatusMapParams {
-	workspaceId: string;
-}
-
 export interface UseGitStatusMapResult {
-	statusByPath: Map<string, FileStatus>;
-	changedAncestors: Set<string>;
-	worstStatusByFolder: Map<string, FileStatus>;
+	/** Changed files keyed by repo-relative POSIX path. */
+	fileStatusByPath: Map<string, FileStatus>;
+	/**
+	 * Folder decoration status keyed by repo-relative POSIX path. For each
+	 * folder that (transitively) contains a changed file, the value is the
+	 * highest-severity status among its descendants — used to color the
+	 * roll-up dot in the file tree.
+	 */
+	folderStatusByPath: Map<string, FileStatus>;
+	/** Repo-relative POSIX paths reported as gitignored, normalized. */
 	ignoredPaths: Set<string>;
 }
 
 /**
- * Precedence used when a folder has descendants with multiple statuses — the
- * folder takes the "worst" (most severe) status for its dot color.
+ * Status severity used when rolling up a folder's decoration from its
+ * descendants — the folder takes the "worst" status under it.
  */
 const STATUS_SEVERITY: Record<FileStatus, number> = {
 	deleted: 5,
@@ -34,88 +35,65 @@ const STATUS_SEVERITY: Record<FileStatus, number> = {
 };
 
 const EMPTY_RESULT: UseGitStatusMapResult = {
-	statusByPath: new Map(),
-	changedAncestors: new Set(),
-	worstStatusByFolder: new Map(),
+	fileStatusByPath: new Map(),
+	folderStatusByPath: new Map(),
 	ignoredPaths: new Set(),
 };
 
 /**
- * Pure derivation hook over the existing `git.getStatus` query cache. Returns
- * lookup maps for decorating the file tree with git status + gitignored
- * muting.
- *
- * Deliberately does NOT subscribe to `git:changed` or `fs:events`:
- * `useChangesTab` is mounted unconditionally in `WorkspaceSidebar` and already
- * owns the debounced invalidate. Because this hook calls the query with the
- * same key, React Query shares one cache entry — when `useChangesTab`
- * invalidates, our `useMemo` re-derives automatically. Adding another
- * subscription here would cause duplicate event handlers and duplicate
- * refetches.
+ * Pure derivation over `git.getStatus` data. Returns lookup maps for
+ * decorating the file tree with git status + gitignored muting.
  */
-export function useGitStatusMap({
-	workspaceId,
-}: UseGitStatusMapParams): UseGitStatusMapResult {
-	const collections = useCollections();
-	const localState = collections.v2WorkspaceLocalState.get(workspaceId);
-	const baseBranch: string | null =
-		localState?.sidebarState?.baseBranch ?? null;
-
-	const status = workspaceTrpc.git.getStatus.useQuery(
-		{ workspaceId, baseBranch: baseBranch ?? undefined },
-		{ refetchOnWindowFocus: true, enabled: Boolean(workspaceId) },
-	);
-
+export function useGitStatusMap(
+	status: GitStatusData | undefined,
+): UseGitStatusMapResult {
 	return useMemo(() => {
-		if (!status.data) return EMPTY_RESULT;
+		if (!status) return EMPTY_RESULT;
 
 		// Union of all changes — later writes win so uncommitted state
 		// overrides committed state. Same pattern as useChangesTab's "all" filter.
-		const merged = new Map<string, FileStatus>();
-		for (const file of status.data.againstBase) {
-			merged.set(normalizePath(file.path), file.status);
+		const fileStatusByPath = new Map<string, FileStatus>();
+		for (const file of status.againstBase) {
+			fileStatusByPath.set(normalizePath(file.path), file.status);
 		}
-		for (const file of status.data.staged) {
-			merged.set(normalizePath(file.path), file.status);
+		for (const file of status.staged) {
+			fileStatusByPath.set(normalizePath(file.path), file.status);
 		}
-		for (const file of status.data.unstaged) {
-			merged.set(normalizePath(file.path), file.status);
+		for (const file of status.unstaged) {
+			fileStatusByPath.set(normalizePath(file.path), file.status);
 		}
 
-		const changedAncestors = new Set<string>();
-		const worstStatusByFolder = new Map<string, FileStatus>();
-		for (const [path, fileStatus] of merged) {
-			// Deleted files don't appear in the tree, so propagating a
-			// dot to ancestor folders is misleading — users expand the
-			// folder expecting to find something but there's nothing there.
+		const folderStatusByPath = new Map<string, FileStatus>();
+		for (const [path, fileStatus] of fileStatusByPath) {
+			// Deleted files don't appear in the tree, so propagating a dot to
+			// ancestor folders is misleading — users expand the folder expecting
+			// to find something but there's nothing there.
 			if (fileStatus === "deleted") continue;
 
 			const segments = path.split("/");
 			for (let i = 1; i < segments.length; i++) {
 				const ancestor = segments.slice(0, i).join("/");
-				changedAncestors.add(ancestor);
-				const existing = worstStatusByFolder.get(ancestor);
+				const existing = folderStatusByPath.get(ancestor);
 				if (
 					!existing ||
 					STATUS_SEVERITY[fileStatus] > STATUS_SEVERITY[existing]
 				) {
-					worstStatusByFolder.set(ancestor, fileStatus);
+					folderStatusByPath.set(ancestor, fileStatus);
 				}
 			}
 		}
 
 		const ignoredPaths = new Set<string>();
-		for (const entry of status.data.ignoredPaths) {
+		for (const entry of status.ignoredPaths) {
 			ignoredPaths.add(normalizePath(entry).replace(/\/$/, ""));
 		}
 
 		return {
-			statusByPath: merged,
-			changedAncestors,
-			worstStatusByFolder,
+			fileStatusByPath,
+			folderStatusByPath,
 			ignoredPaths,
 		};
-	}, [status.data]);
+	}, [status]);
 }
 
 function normalizePath(path: string): string {
