@@ -13,9 +13,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@superset/ui/select";
-import { useLiveQuery } from "@tanstack/react-db";
 import { useMemo, useState } from "react";
-import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
+import { useV2ProjectList } from "renderer/routes/_authenticated/hooks/useV2ProjectList";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import {
 	useAddRepositoryDialogOpen,
@@ -26,49 +25,21 @@ import { ProjectSetupStep } from "../ProjectSetupStep";
 export function AddRepositoryDialog() {
 	const isOpen = useAddRepositoryDialogOpen();
 	const closeDialog = useCloseAddRepositoryDialog();
-	const collections = useCollections();
 	const { activeHostUrl } = useLocalHostService();
 	const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
 		null,
 	);
 
-	const { data: v2Projects } = useLiveQuery(
-		(q) =>
-			q.from({ projects: collections.v2Projects }).select(({ projects }) => ({
-				id: projects.id,
-				name: projects.name,
-				githubRepositoryId: projects.githubRepositoryId,
-			})),
-		[collections],
+	const v2Projects = useV2ProjectList();
+
+	const projectsWithRepo = useMemo(
+		() => (v2Projects ?? []).filter((p) => p.githubOwner && p.githubRepoName),
+		[v2Projects],
 	);
 
-	const { data: githubRepositories } = useLiveQuery(
-		(q) =>
-			q.from({ repos: collections.githubRepositories }).select(({ repos }) => ({
-				id: repos.id,
-				owner: repos.owner,
-				name: repos.name,
-			})),
-		[collections],
+	const selectedProject = projectsWithRepo.find(
+		(p) => p.id === selectedProjectId,
 	);
-
-	const projects = useMemo(() => {
-		const repoById = new Map((githubRepositories ?? []).map((r) => [r.id, r]));
-		return (v2Projects ?? [])
-			.filter((p) => p.githubRepositoryId)
-			.map((p) => {
-				const repo = p.githubRepositoryId
-					? repoById.get(p.githubRepositoryId)
-					: null;
-				return {
-					id: p.id,
-					name: p.name,
-					repoSlug: repo ? `${repo.owner}/${repo.name}` : null,
-				};
-			});
-	}, [v2Projects, githubRepositories]);
-
-	const selectedProject = projects.find((p) => p.id === selectedProjectId);
 
 	const handleOpenChange = (open: boolean) => {
 		if (!open) {
@@ -109,12 +80,12 @@ export function AddRepositoryDialog() {
 								<SelectValue placeholder="Select a project..." />
 							</SelectTrigger>
 							<SelectContent>
-								{projects.map((p) => (
+								{projectsWithRepo.map((p) => (
 									<SelectItem key={p.id} value={p.id}>
 										<span>{p.name}</span>
-										{p.repoSlug && (
+										{p.githubOwner && p.githubRepoName && (
 											<span className="ml-2 text-muted-foreground text-xs">
-												{p.repoSlug}
+												{p.githubOwner}/{p.githubRepoName}
 											</span>
 										)}
 									</SelectItem>
