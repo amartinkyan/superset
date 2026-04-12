@@ -6,10 +6,12 @@ import {
 	CommandList,
 } from "@superset/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
+import { Tabs, TabsList, TabsTrigger } from "@superset/ui/tabs";
 import { useEffect, useRef, useState } from "react";
 import { GoGitBranch } from "react-icons/go";
 import { HiCheck, HiChevronUpDown } from "react-icons/hi2";
 import { formatRelativeTime } from "renderer/lib/formatRelativeTime";
+import type { BranchFilter } from "../../../hooks/useBranchContext";
 
 interface BranchRow {
 	name: string;
@@ -28,6 +30,8 @@ interface CompareBaseBranchPickerProps {
 	branches: BranchRow[];
 	branchSearch: string;
 	onBranchSearchChange: (value: string) => void;
+	branchFilter: BranchFilter;
+	onBranchFilterChange: (filter: BranchFilter) => void;
 	isFetchingNextPage: boolean;
 	hasNextPage: boolean;
 	onLoadMore: () => void;
@@ -42,6 +46,8 @@ export function CompareBaseBranchPicker({
 	branches,
 	branchSearch,
 	onBranchSearchChange,
+	branchFilter,
+	onBranchFilterChange,
 	isFetchingNextPage,
 	hasNextPage,
 	onLoadMore,
@@ -109,6 +115,23 @@ export function CompareBaseBranchPicker({
 						value={branchSearch}
 						onValueChange={onBranchSearchChange}
 					/>
+					<Tabs
+						value={branchFilter}
+						onValueChange={(v) => onBranchFilterChange(v as BranchFilter)}
+						className="px-2 pt-2"
+					>
+						<TabsList className="grid w-full grid-cols-3 h-7">
+							<TabsTrigger value="local" className="text-[11px]">
+								Local
+							</TabsTrigger>
+							<TabsTrigger value="remote" className="text-[11px]">
+								Remote
+							</TabsTrigger>
+							<TabsTrigger value="worktree" className="text-[11px]">
+								Worktree
+							</TabsTrigger>
+						</TabsList>
+					</Tabs>
 					<CommandList className="max-h-[400px]">
 						{!isBranchesLoading && branches.length === 0 && (
 							<CommandEmpty>No branches found</CommandEmpty>

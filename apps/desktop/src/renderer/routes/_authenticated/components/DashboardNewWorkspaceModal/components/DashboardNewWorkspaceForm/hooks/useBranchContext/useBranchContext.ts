@@ -22,15 +22,18 @@ type BranchPage = {
 	nextCursor: string | null;
 };
 
+export type BranchFilter = "local" | "remote" | "worktree";
+
 /**
- * Paginated branch search via host-service. First page of a (projectId, host,
- * query) tuple asks to refresh remote refs; the host-service enforces a TTL so
- * rapid typing doesn't thrash `git fetch`.
+ * Paginated branch search via host-service. First page of a
+ * (projectId, host, query, filter) tuple asks to refresh remote refs;
+ * the host-service enforces a TTL so rapid typing doesn't thrash `git fetch`.
  */
 export function useBranchContext(
 	projectId: string | null,
 	hostTarget: WorkspaceHostTarget,
 	query: string,
+	filter: BranchFilter = "remote",
 ) {
 	const { activeHostUrl } = useLocalHostService();
 	const hostUrl =
@@ -45,6 +48,7 @@ export function useBranchContext(
 			projectId,
 			hostUrl,
 			query,
+			filter,
 		],
 		enabled: !!projectId && !!hostUrl,
 		initialPageParam: undefined as string | undefined,
@@ -60,6 +64,7 @@ export function useBranchContext(
 				cursor: pageParam,
 				limit: PAGE_SIZE,
 				refresh: pageParam === undefined,
+				filter,
 			});
 		},
 	});

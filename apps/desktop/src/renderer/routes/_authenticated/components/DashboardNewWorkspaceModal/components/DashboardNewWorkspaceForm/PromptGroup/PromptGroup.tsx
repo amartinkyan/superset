@@ -26,7 +26,7 @@ import { sanitizeUserBranchName, slugifyForBranch } from "shared/utils/branch";
 import type { LinkedPR } from "../../../DashboardNewWorkspaceDraftContext";
 import { useDashboardNewWorkspaceDraft } from "../../../DashboardNewWorkspaceDraftContext";
 import { DevicePicker } from "../components/DevicePicker";
-import { useBranchContext } from "../hooks/useBranchContext";
+import { type BranchFilter, useBranchContext } from "../hooks/useBranchContext";
 import { AttachmentButtons } from "./components/AttachmentButtons";
 import { CompareBaseBranchPicker } from "./components/CompareBaseBranchPicker";
 import { GitHubIssueLinkCommand } from "./components/GitHubIssueLinkCommand";
@@ -102,6 +102,7 @@ function PromptGroupInner({
 
 	// ── Branch data ──────────────────────────────────────────────────
 	const [branchSearch, setBranchSearch] = useState("");
+	const [branchFilter, setBranchFilter] = useState<BranchFilter>("remote");
 	const {
 		branches,
 		defaultBranch,
@@ -110,7 +111,7 @@ function PromptGroupInner({
 		isFetchingNextPage,
 		hasNextPage,
 		fetchNextPage,
-	} = useBranchContext(projectId, hostTarget, branchSearch);
+	} = useBranchContext(projectId, hostTarget, branchSearch, branchFilter);
 
 	const effectiveCompareBaseBranch = baseBranch || defaultBranch || null;
 
@@ -418,6 +419,8 @@ function PromptGroupInner({
 									branches={branches}
 									branchSearch={branchSearch}
 									onBranchSearchChange={setBranchSearch}
+									branchFilter={branchFilter}
+									onBranchFilterChange={setBranchFilter}
 									isFetchingNextPage={isFetchingNextPage}
 									hasNextPage={hasNextPage ?? false}
 									onLoadMore={() => {

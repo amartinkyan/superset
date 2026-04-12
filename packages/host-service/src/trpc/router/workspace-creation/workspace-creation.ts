@@ -267,6 +267,7 @@ export const workspaceCreationRouter = router({
 				cursor: z.string().optional(),
 				limit: z.number().min(1).max(200).optional(),
 				refresh: z.boolean().optional(),
+				filter: z.enum(["local", "remote", "worktree"]).optional(),
 			}),
 		)
 		.query(async ({ ctx, input }) => {
@@ -360,6 +361,15 @@ export const workspaceCreationRouter = router({
 			}
 
 			let branches = Array.from(branchMap.values());
+
+			if (input.filter === "local") {
+				branches = branches.filter((b) => b.isLocal);
+			} else if (input.filter === "worktree") {
+				branches = branches.filter((b) => worktreeMap.has(b.name));
+			} else {
+				// default + explicit "remote"
+				branches = branches.filter((b) => b.isRemote);
+			}
 
 			if (input.query) {
 				const q = input.query.toLowerCase();

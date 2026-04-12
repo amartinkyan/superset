@@ -1,1 +1,1 @@
-export { useBranchContext } from "./useBranchContext";
+export { type BranchFilter, useBranchContext } from "./useBranchContext";
