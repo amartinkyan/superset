@@ -1,11 +1,12 @@
 import type {
 	ContextMenuActionConfig,
+	Pane,
 	PaneRegistry,
 	RendererContext,
 } from "@superset/panes";
 import { alert } from "@superset/ui/atoms/Alert";
 import { Circle, Globe, MessageSquare, TerminalSquare } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
 	LuArrowDownToLine,
 	LuClipboard,
@@ -13,8 +14,11 @@ import {
 	LuEraser,
 } from "react-icons/lu";
 import { useHotkeyDisplay } from "renderer/hotkeys";
+import { getHostServiceHeaders } from "renderer/lib/host-service-auth";
 import { terminalRuntimeRegistry } from "renderer/lib/terminal/terminal-runtime-registry";
+import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { FileIcon } from "renderer/screens/main/components/WorkspaceView/RightSidebar/FilesView/utils";
+import superjson from "superjson";
 import type {
 	BrowserPaneData,
 	ChatPaneData,
@@ -24,8 +28,29 @@ import type {
 	TerminalPaneData,
 } from "../../types";
 import { ChatPane } from "./components/ChatPane";
-import { FilePane } from "./components/FilePane";
+import { FilePane, saveAllFilePanes } from "./components/FilePane";
 import { TerminalPane } from "./components/TerminalPane";
+
+function releaseChatRuntime(
+	hostUrl: string,
+	sessionId: string,
+	workspaceId: string,
+): void {
+	const headers = getHostServiceHeaders(hostUrl);
+	const body = {
+		0: superjson.serialize({ sessionId, workspaceId }),
+	};
+	fetch(`${hostUrl}/trpc/chat.releaseSession?batch=1`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			...headers,
+		},
+		body: JSON.stringify(body),
+	}).catch((error) => {
+		console.warn("Failed to release chat runtime:", error);
+	});
+}
 
 function getFileName(filePath: string): string {
 	return filePath.split("/").pop() ?? filePath;
@@ -40,6 +65,9 @@ export function usePaneRegistry(
 ): PaneRegistry<PaneViewerData> {
 	const clearShortcut = useHotkeyDisplay("CLEAR_TERMINAL").text;
 	const scrollToBottomShortcut = useHotkeyDisplay("SCROLL_TO_BOTTOM").text;
+	const { activeHostUrl } = useLocalHostService();
+	const hostUrlRef = useRef(activeHostUrl);
+	hostUrlRef.current = activeHostUrl;
 
 	return useMemo<PaneRegistry<PaneViewerData>>(
 		() => ({
@@ -79,8 +107,8 @@ export function usePaneRegistry(
 							actions: [
 								{
 									label: "Save",
-									onClick: () => {
-										// TODO: wire up save via editor ref
+									onClick: async () => {
+										await saveAllFilePanes();
 										resolve(true);
 									},
 								},
@@ -212,8 +240,30 @@ export function usePaneRegistry(
 							}
 							sessionId={data.sessionId}
 							workspaceId={workspaceId}
+							isFocused={ctx.isActive}
+							initialDraft={data.draft}
+							onDraftChange={(draft) =>
+								ctx.actions.updateData({
+									...data,
+									draft,
+								} as PaneViewerData)
+							}
+							initialLaunchConfig={data.launchConfig ?? null}
+							onConsumeLaunchConfig={() =>
+								ctx.actions.updateData({
+									...data,
+									launchConfig: null,
+								} as PaneViewerData)
+							}
 						/>
 					);
+				},
+				onBeforeClose: (pane: Pane<PaneViewerData>) => {
+					const data = pane.data as ChatPaneData;
+					if (data.sessionId && hostUrlRef.current) {
+						releaseChatRuntime(hostUrlRef.current, data.sessionId, workspaceId);
+					}
+					return true;
 				},
 				contextMenuActions: (_ctx, defaults) =>
 					defaults.map((d) =>

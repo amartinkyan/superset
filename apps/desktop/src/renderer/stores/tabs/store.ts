@@ -51,6 +51,7 @@ import {
 	resolveActiveTabIdForWorkspace,
 	resolveFileViewerMode,
 } from "./utils";
+import { releaseChatSessionForPane } from "./utils/chat-cleanup";
 import { killTerminalForPane } from "./utils/terminal-cleanup";
 
 /**
@@ -1064,10 +1065,17 @@ export const useTabsStore = create<TabsStore>()(
 					// Must get adjacent pane BEFORE removing from layout
 					const adjacentPaneId = getAdjacentPaneId(tab.layout, paneId);
 
-					// Kill terminal sessions for terminal panes
+					// Kill terminal sessions and release chat runtimes for removed panes
 					for (const id of paneIdsToRemove) {
-						if (state.panes[id]?.type === "terminal") {
+						const paneToRemove = state.panes[id];
+						if (paneToRemove?.type === "terminal") {
 							killTerminalForPane(id);
+						}
+						if (paneToRemove?.type === "chat") {
+							const chatSessionId = paneToRemove.chat?.sessionId;
+							if (chatSessionId) {
+								releaseChatSessionForPane(chatSessionId);
+							}
 						}
 
 						cleanupEditorPaneState(id);

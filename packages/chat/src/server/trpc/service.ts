@@ -63,12 +63,15 @@ export interface ChatRuntimeServiceOptions {
 	onLifecycleEvent?: (event: LifecycleEvent) => void;
 }
 
+const IDLE_EVICTION_MS = 10 * 60 * 1_000; // 10 minutes
+
 export class ChatRuntimeService {
 	private readonly runtimes = new Map<string, RuntimeSession>();
 	private readonly runtimeCreations = new Map<
 		string,
 		Promise<RuntimeSession>
 	>();
+	private readonly lastPolledAt = new Map<string, number>();
 	private readonly apiClient: ReturnType<typeof createTRPCClient<AppRouter>>;
 
 	constructor(readonly opts: ChatRuntimeServiceOptions) {
@@ -83,6 +86,32 @@ export class ChatRuntimeService {
 				}),
 			],
 		});
+		this.startIdleEviction();
+	}
+
+	private startIdleEviction(): void {
+		setInterval(() => {
+			const now = Date.now();
+			for (const [sessionId, lastPoll] of this.lastPolledAt) {
+				if (now - lastPoll > IDLE_EVICTION_MS) {
+					this.destroySessionRuntime(sessionId);
+				}
+			}
+		}, 60_000);
+	}
+
+	private touchSession(sessionId: string): void {
+		this.lastPolledAt.set(sessionId, Date.now());
+	}
+
+	destroySessionRuntime(sessionId: string): void {
+		const runtime = this.runtimes.get(sessionId);
+		if (runtime) {
+			destroyRuntime(runtime).catch(() => {});
+			this.runtimes.delete(sessionId);
+		}
+		this.lastPolledAt.delete(sessionId);
+		this.runtimeCreations.delete(sessionId);
 	}
 
 	private async getOrCreateRuntime(
@@ -141,6 +170,7 @@ export class ChatRuntimeService {
 					mcpManualStatuses: new Map(),
 					lastErrorMessage: null,
 					pendingSandboxQuestion: null,
+					lastKnownMessageCount: 0,
 					cwd: runtimeCwd,
 				};
 				syncRuntimeHookSessionId(sessionRuntime);
@@ -205,6 +235,7 @@ export class ChatRuntimeService {
 				getDisplayState: t.procedure
 					.input(displayStateInput)
 					.query(async ({ input }) => {
+						this.touchSession(input.sessionId);
 						const runtime = await this.getOrCreateRuntime(
 							input.sessionId,
 							input.cwd,
@@ -242,17 +273,21 @@ export class ChatRuntimeService {
 							pendingQuestion:
 								displayState.pendingQuestion ?? sandboxPendingQuestion,
 							errorMessage: currentMessageError ?? runtime.lastErrorMessage,
+							messageCount: (await runtime.harness.listMessages()).length,
 						};
 					}),
 
 				listMessages: t.procedure
 					.input(listMessagesInput)
 					.query(async ({ input }) => {
+						this.touchSession(input.sessionId);
 						const runtime = await this.getOrCreateRuntime(
 							input.sessionId,
 							input.cwd,
 						);
-						return runtime.harness.listMessages();
+						const messages = await runtime.harness.listMessages();
+						runtime.lastKnownMessageCount = messages.length;
+						return messages;
 					}),
 
 				sendMessage: t.procedure
@@ -369,6 +404,12 @@ export class ChatRuntimeService {
 							return runtime.harness.respondToPlanApproval(input.payload);
 						}),
 				}),
+
+				releaseSession: t.procedure
+					.input(sessionIdInput)
+					.mutation(async ({ input }) => {
+						this.destroySessionRuntime(input.sessionId);
+					}),
 			}),
 		});
 	}

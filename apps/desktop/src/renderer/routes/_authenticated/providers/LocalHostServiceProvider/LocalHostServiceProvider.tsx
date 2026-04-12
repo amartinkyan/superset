@@ -13,9 +13,12 @@ import { setHostServiceSecret } from "renderer/lib/host-service-auth";
 import { MOCK_ORG_ID } from "shared/constants";
 import { useCollections } from "../CollectionsProvider";
 
+export type HostServiceStatus = "starting" | "running" | "stopped";
+
 interface LocalHostServiceContextValue {
 	machineId: string | null;
 	activeHostUrl: string | null;
+	status: HostServiceStatus;
 }
 
 const LocalHostServiceContext =
@@ -51,15 +54,28 @@ export function LocalHostServiceProvider({
 		}
 	}, [organizationIds, startHostService]);
 
+	const { data: machineIdData } =
+		electronTrpc.hostServiceCoordinator.getMachineId.useQuery();
+
 	const { data: activeConnection } =
 		electronTrpc.hostServiceCoordinator.getConnection.useQuery(
 			{ organizationId: activeOrganizationId as string },
 			{ enabled: !!activeOrganizationId, refetchInterval: 5_000 },
 		);
 
+	const { data: processStatusData } =
+		electronTrpc.hostServiceCoordinator.getProcessStatus.useQuery(
+			{ organizationId: activeOrganizationId as string },
+			{ enabled: !!activeOrganizationId, refetchInterval: 5_000 },
+		);
+
 	const value = useMemo(() => {
+		const status: HostServiceStatus =
+			(processStatusData?.status as HostServiceStatus) ?? "stopped";
+		const resolvedMachineId = machineIdData?.machineId ?? null;
+
 		if (!activeConnection?.port) {
-			return { machineId: null, activeHostUrl: null };
+			return { machineId: resolvedMachineId, activeHostUrl: null, status };
 		}
 
 		const activeHostUrl = `http://127.0.0.1:${activeConnection.port}`;
@@ -68,10 +84,11 @@ export function LocalHostServiceProvider({
 		}
 
 		return {
-			machineId: activeConnection.machineId ?? null,
+			machineId: resolvedMachineId,
 			activeHostUrl,
+			status,
 		};
-	}, [activeConnection]);
+	}, [activeConnection, processStatusData, machineIdData]);
 
 	return (
 		<LocalHostServiceContext.Provider value={value}>

@@ -6,10 +6,29 @@ export function ChatPane({
 	onSessionIdChange,
 	sessionId,
 	workspaceId,
+	isFocused = false,
+	initialDraft,
+	onDraftChange,
+	initialLaunchConfig = null,
+	onConsumeLaunchConfig,
 }: {
 	onSessionIdChange: (sessionId: string | null) => void;
 	sessionId: string | null;
 	workspaceId: string;
+	isFocused?: boolean;
+	initialDraft?: string;
+	onDraftChange?: (draft: string) => void;
+	initialLaunchConfig?: {
+		initialPrompt?: string;
+		draftInput?: string;
+		initialFiles?: Array<{
+			data: string;
+			mediaType: string;
+			filename?: string;
+		}>;
+		metadata?: { model?: string };
+	} | null;
+	onConsumeLaunchConfig?: () => void;
 }) {
 	const {
 		organizationId,
@@ -41,13 +60,16 @@ export function ChatPane({
 			<div className="min-h-0 flex-1">
 				<WorkspaceChatInterface
 					getOrCreateSession={getOrCreateSession}
-					initialLaunchConfig={null}
-					isFocused
+					initialLaunchConfig={initialLaunchConfig}
+					onConsumeLaunchConfig={onConsumeLaunchConfig}
+					isFocused={isFocused}
 					onResetSession={handleNewChat}
 					sessionId={sessionId}
 					workspaceId={workspaceId}
 					organizationId={organizationId}
 					cwd={workspacePath}
+					initialDraft={initialDraft}
+					onDraftChange={onDraftChange}
 				/>
 			</div>
 		</div>

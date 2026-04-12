@@ -22,6 +22,7 @@ import { WorkspaceNotFoundState } from "./components/WorkspaceNotFoundState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
+import { saveAllFilePanes } from "./hooks/usePaneRegistry/components/FilePane";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
 import type {
@@ -255,8 +256,8 @@ function WorkspaceContent({
 										actions: [
 											{
 												label: "Save All",
-												onClick: () => {
-													// TODO: wire up save via editor refs
+												onClick: async () => {
+													await saveAllFilePanes();
 													resolve(true);
 												},
 											},

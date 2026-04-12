@@ -106,21 +106,29 @@ function getLegacyImagePayload(
 	});
 }
 
+const IDLE_POLL_INTERVAL_MS = 3_000;
+
 export function useChatDisplay(options: UseChatDisplayOptions) {
 	const { sessionId, workspaceId, enabled = true, fps = 60 } = options;
 	const utils = workspaceTrpc.useUtils();
 	const [commandError, setCommandError] = useState<unknown>(null);
-	const queryInput =
-		sessionId === null ? undefined : { sessionId, workspaceId };
+	const queryInput = useMemo(
+		() => (sessionId === null ? undefined : { sessionId, workspaceId }),
+		[sessionId, workspaceId],
+	);
 	const isQueryEnabled = enabled && Boolean(sessionId);
-	const refetchIntervalMs = toRefetchIntervalMs(fps);
+	const activePollIntervalMs = toRefetchIntervalMs(fps);
+	const [isRunningForPoll, setIsRunningForPoll] = useState(false);
+	const refetchIntervalMs = isRunningForPoll
+		? activePollIntervalMs
+		: IDLE_POLL_INTERVAL_MS;
 	const queryOptions = {
 		enabled: isQueryEnabled && queryInput !== undefined,
 		refetchInterval: refetchIntervalMs,
-		refetchIntervalInBackground: true,
+		refetchIntervalInBackground: false,
 		refetchOnWindowFocus: false,
 		staleTime: 0,
-		gcTime: 0,
+		gcTime: 30_000,
 	} as const;
 
 	const displayQuery = workspaceTrpc.chat.getDisplayState.useQuery(
@@ -128,13 +136,26 @@ export function useChatDisplay(options: UseChatDisplayOptions) {
 		queryOptions,
 	);
 
+	const serverMessageCount =
+		(displayQuery.data as { messageCount?: number } | null)?.messageCount ?? -1;
+	const knownMessageCountRef = useRef(-1);
+	const shouldRefetchMessages =
+		serverMessageCount !== knownMessageCountRef.current;
+	if (shouldRefetchMessages) {
+		knownMessageCountRef.current = serverMessageCount;
+	}
+
 	const messagesQuery = workspaceTrpc.chat.listMessages.useQuery(
 		queryInput as { sessionId: string; workspaceId: string },
-		queryOptions,
+		{
+			...queryOptions,
+			refetchInterval: shouldRefetchMessages ? refetchIntervalMs : false,
+		},
 	);
 
 	const sendMessageMutation = workspaceTrpc.chat.sendMessage.useMutation();
 	const stopMutation = workspaceTrpc.chat.stop.useMutation();
+	const abortMutation = workspaceTrpc.chat.abort.useMutation();
 	const respondToApprovalMutation =
 		workspaceTrpc.chat.respondToApproval.useMutation();
 	const respondToQuestionMutation =
@@ -149,6 +170,11 @@ export function useChatDisplay(options: UseChatDisplayOptions) {
 			: null;
 	const currentMessage = displayState?.currentMessage ?? null;
 	const isRunning = displayState?.isRunning ?? false;
+
+	useEffect(() => {
+		setIsRunningForPoll(isRunning);
+	}, [isRunning]);
+
 	const isConversationLoading =
 		isQueryEnabled &&
 		messagesQuery.data === undefined &&
@@ -288,7 +314,16 @@ export function useChatDisplay(options: UseChatDisplayOptions) {
 					return;
 				}
 			},
-			abort: async () => undefined,
+			abort: async () => {
+				if (!queryInput) return;
+				setCommandError(null);
+				try {
+					return await abortMutation.mutateAsync(queryInput);
+				} catch (error) {
+					setCommandError(error);
+					return;
+				}
+			},
 			respondToApproval: async (input: {
 				payload: { decision: "approve" | "decline" | "always_allow_category" };
 			}) => {
@@ -339,6 +374,7 @@ export function useChatDisplay(options: UseChatDisplayOptions) {
 			},
 		}),
 		[
+			abortMutation,
 			historicalMessages,
 			queryInput,
 			respondToApprovalMutation,
@@ -351,9 +387,12 @@ export function useChatDisplay(options: UseChatDisplayOptions) {
 		],
 	);
 
+	const prevIsRunningRef = useRef(false);
 	useEffect(() => {
+		const wasRunning = prevIsRunningRef.current;
+		prevIsRunningRef.current = isRunning;
 		if (!queryInput) return;
-		if (!isRunning) return;
+		if (!isRunning || wasRunning) return;
 		void Promise.all([
 			utils.chat.getDisplayState.invalidate(queryInput),
 			utils.chat.listMessages.invalidate(queryInput),

@@ -117,7 +117,8 @@ export interface OrgCollections {
 	>;
 }
 
-// Per-org collections cache
+// Per-org collections cache (LRU, max 3 entries)
+const MAX_COLLECTIONS_CACHE_SIZE = 3;
 const collectionsCache = new Map<string, OrgCollections>();
 
 function getCollectionsCacheKey(organizationId: string): string {
@@ -595,8 +596,17 @@ export async function preloadCollections(
 export function getCollections(organizationId: string) {
 	const cacheKey = getCollectionsCacheKey(organizationId);
 
-	// Get or create org-specific collections
-	if (!collectionsCache.has(cacheKey)) {
+	// Get or create org-specific collections (LRU: re-insert to move to end)
+	const existing = collectionsCache.get(cacheKey);
+	if (existing) {
+		collectionsCache.delete(cacheKey);
+		collectionsCache.set(cacheKey, existing);
+	} else {
+		// Evict oldest if at capacity
+		if (collectionsCache.size >= MAX_COLLECTIONS_CACHE_SIZE) {
+			const oldestKey = collectionsCache.keys().next().value;
+			if (oldestKey) collectionsCache.delete(oldestKey);
+		}
 		collectionsCache.set(cacheKey, createOrgCollections(organizationId));
 	}
 

@@ -189,7 +189,8 @@ export function ChatMessageList({
 									<UserMessage
 										key={message.id}
 										message={message}
-										prefixMessages={renderedMessages.slice(0, messageIndex)}
+										allMessages={renderedMessages}
+										messageIndex={messageIndex}
 										workspaceId={workspaceId}
 										workspaceCwd={workspaceCwd}
 										isEditing={editingUserMessageId === message.id}

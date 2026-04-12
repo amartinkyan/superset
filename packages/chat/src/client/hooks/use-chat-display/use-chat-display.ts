@@ -112,6 +112,8 @@ function getLegacyImagePayload(
 	});
 }
 
+const IDLE_POLL_INTERVAL_MS = 3_000;
+
 export function useChatDisplay(options: UseChatDisplayOptions) {
 	const { sessionId, cwd, enabled = true, fps = 60 } = options;
 	const utils = chatRuntimeServiceTrpc.useUtils();
@@ -120,14 +122,18 @@ export function useChatDisplay(options: UseChatDisplayOptions) {
 		sessionId === null ? null : { sessionId, ...(cwd ? { cwd } : {}) };
 	const queryInput = sessionCommandInput ?? skipToken;
 	const isQueryEnabled = enabled && Boolean(sessionId);
-	const refetchIntervalMs = toRefetchIntervalMs(fps);
+	const activePollIntervalMs = toRefetchIntervalMs(fps);
+	const [isRunningForPoll, setIsRunningForPoll] = useState(false);
+	const refetchIntervalMs = isRunningForPoll
+		? activePollIntervalMs
+		: IDLE_POLL_INTERVAL_MS;
 	const queryOptions = {
 		enabled: isQueryEnabled,
 		refetchInterval: refetchIntervalMs,
-		refetchIntervalInBackground: true,
+		refetchIntervalInBackground: false,
 		refetchOnWindowFocus: false,
 		staleTime: 0,
-		gcTime: 0,
+		gcTime: 30_000,
 	} as const;
 
 	const displayQuery = chatRuntimeServiceTrpc.session.getDisplayState.useQuery(
@@ -135,9 +141,21 @@ export function useChatDisplay(options: UseChatDisplayOptions) {
 		queryOptions,
 	);
 
+	const serverMessageCount =
+		(displayQuery.data as { messageCount?: number } | null)?.messageCount ?? -1;
+	const knownMessageCountRef = useRef(-1);
+	const shouldRefetchMessages =
+		serverMessageCount !== knownMessageCountRef.current;
+	if (shouldRefetchMessages) {
+		knownMessageCountRef.current = serverMessageCount;
+	}
+
 	const messagesQuery = chatRuntimeServiceTrpc.session.listMessages.useQuery(
 		queryInput,
-		queryOptions,
+		{
+			...queryOptions,
+			refetchInterval: shouldRefetchMessages ? refetchIntervalMs : false,
+		},
 	);
 
 	const displayState = displayQuery.data ?? null;
@@ -148,6 +166,11 @@ export function useChatDisplay(options: UseChatDisplayOptions) {
 			: null;
 	const currentMessage = displayState?.currentMessage ?? null;
 	const isRunning = displayState?.isRunning ?? false;
+
+	useEffect(() => {
+		setIsRunningForPoll(isRunning);
+	}, [isRunning]);
+
 	const isConversationLoading =
 		isQueryEnabled &&
 		messagesQuery.data === undefined &&

@@ -1,8 +1,13 @@
+import {
+	getSlashCommands as getSlashCommandsFromCwd,
+	resolveSlashCommand as resolveSlashCommandFromCwd,
+} from "@superset/chat/server/slash-commands";
 import { eq } from "drizzle-orm";
 import { createMastraCode } from "mastracode";
 import type { HostDb } from "../../db";
 import { workspaces } from "../../db/schema";
 import type { ModelProviderRuntimeResolver } from "../../providers/model-providers";
+import type { ApiClient } from "../../types";
 
 type RuntimeHarness = Awaited<ReturnType<typeof createMastraCode>>["harness"];
 type RuntimeMcpManager = Awaited<
@@ -71,6 +76,7 @@ export type ChatDisplayState = RuntimeDisplayState & {
 		| ChatPendingQuestion
 		| null;
 	errorMessage: string | null;
+	messageCount: number;
 };
 
 interface ChatApprovalPayload {
@@ -97,8 +103,10 @@ interface RuntimeSession {
 	harness: RuntimeHarness;
 	mcpManager: RuntimeMcpManager;
 	hookManager: RuntimeHookManager;
+	mcpManualStatuses: Map<string, string>;
 	lastErrorMessage: string | null;
 	pendingSandboxQuestion: PendingSandboxQuestion | null;
+	lastKnownMessageCount: number;
 }
 
 interface RuntimeStoredMessage {
@@ -144,6 +152,7 @@ interface HarnessWithConfig {
 export interface ChatRuntimeManagerOptions {
 	db: HostDb;
 	runtimeResolver: ModelProviderRuntimeResolver;
+	apiClient: ApiClient;
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -306,18 +315,60 @@ async function restartRuntimeFromUserMessage(
 	await runtime.harness.sendMessage(input.payload);
 }
 
+const IDLE_EVICTION_MS = 10 * 60 * 1_000; // 10 minutes
+
 export class ChatRuntimeManager {
 	private readonly db: HostDb;
 	private readonly runtimeResolver: ModelProviderRuntimeResolver;
+	private readonly apiClient: ApiClient;
 	private readonly runtimes = new Map<string, RuntimeSession>();
 	private readonly runtimeCreations = new Map<
 		string,
 		Promise<RuntimeSession>
 	>();
+	private readonly lastPolledAt = new Map<string, number>();
 
 	constructor(options: ChatRuntimeManagerOptions) {
 		this.db = options.db;
 		this.runtimeResolver = options.runtimeResolver;
+		this.apiClient = options.apiClient;
+		this.startIdleEviction();
+	}
+
+	private startIdleEviction(): void {
+		setInterval(() => {
+			const now = Date.now();
+			for (const [sessionId, lastPoll] of this.lastPolledAt) {
+				if (now - lastPoll > IDLE_EVICTION_MS) {
+					this.destroySession(sessionId);
+				}
+			}
+		}, 60_000);
+	}
+
+	private touchSession(sessionId: string): void {
+		this.lastPolledAt.set(sessionId, Date.now());
+	}
+
+	destroySession(sessionId: string): void {
+		const runtime = this.runtimes.get(sessionId);
+		if (runtime) {
+			try {
+				runtime.harness.abort();
+			} catch {
+				// best-effort
+			}
+			if (runtime.hookManager) {
+				runtime.hookManager.runSessionEnd().catch(() => {});
+			}
+			const harnessWithDestroy = runtime.harness as RuntimeHarness & {
+				destroy?: () => Promise<void>;
+			};
+			harnessWithDestroy.destroy?.().catch(() => {});
+			this.runtimes.delete(sessionId);
+		}
+		this.lastPolledAt.delete(sessionId);
+		this.runtimeCreations.delete(sessionId);
 	}
 
 	private subscribeToSessionEvents(runtime: RuntimeSession): void {
@@ -344,8 +395,39 @@ export class ChatRuntimeManager {
 
 			if (isObjectRecord(event) && event.type === "agent_end") {
 				runtime.pendingSandboxQuestion = null;
+				if (runtime.hookManager) {
+					const raw = (event as { reason?: string }).reason;
+					const reason =
+						raw === "aborted" || raw === "error" ? raw : "complete";
+					void runtime.hookManager.runStop(undefined, reason).catch(() => {});
+				}
 			}
 		});
+	}
+
+	private reloadHookConfig(runtime: RuntimeSession): void {
+		if (!runtime.hookManager) return;
+		try {
+			runtime.hookManager.reload();
+		} catch {
+			// Best-effort — swallow reload failures
+		}
+	}
+
+	private async runSessionStartHook(runtime: RuntimeSession): Promise<void> {
+		if (!runtime.hookManager) return;
+		await runtime.hookManager.runSessionStart();
+	}
+
+	private async onUserPromptSubmit(
+		runtime: RuntimeSession,
+		userMessage: string,
+	): Promise<void> {
+		if (!runtime.hookManager) return;
+		const result = await runtime.hookManager.runUserPromptSubmit(userMessage);
+		if (!result.allowed) {
+			throw new Error(result.blockReason ?? "Blocked by UserPromptSubmit hook");
+		}
 	}
 
 	private async createRuntime(
@@ -370,7 +452,6 @@ export class ChatRuntimeManager {
 
 		const runtime = await createMastraCode({
 			cwd,
-			disableMcp: true,
 		});
 		runtime.hookManager?.setSessionId(sessionId);
 		await runtime.harness.init();
@@ -384,10 +465,13 @@ export class ChatRuntimeManager {
 			harness: runtime.harness,
 			mcpManager: runtime.mcpManager,
 			hookManager: runtime.hookManager,
+			mcpManualStatuses: new Map(),
 			lastErrorMessage: null,
 			pendingSandboxQuestion: null,
+			lastKnownMessageCount: 0,
 		};
 		this.subscribeToSessionEvents(sessionRuntime);
+		await this.runSessionStartHook(sessionRuntime).catch(() => {});
 		this.runtimes.set(sessionId, sessionRuntime);
 		return sessionRuntime;
 	}
@@ -403,6 +487,7 @@ export class ChatRuntimeManager {
 					`Session ${sessionId} is already bound to workspace ${existing.workspaceId}`,
 				);
 			}
+			this.reloadHookConfig(existing);
 			return existing;
 		}
 
@@ -422,6 +507,7 @@ export class ChatRuntimeManager {
 		sessionId: string;
 		workspaceId: string;
 	}): Promise<ChatDisplayState> {
+		this.touchSession(input.sessionId);
 		const runtime = await this.getOrCreateRuntime(
 			input.sessionId,
 			input.workspaceId,
@@ -459,6 +545,7 @@ export class ChatRuntimeManager {
 						}
 					: null),
 			errorMessage: currentMessageError ?? runtime.lastErrorMessage,
+			messageCount: (await runtime.harness.listMessages()).length,
 		};
 	}
 
@@ -466,11 +553,98 @@ export class ChatRuntimeManager {
 		sessionId: string;
 		workspaceId: string;
 	}): Promise<RuntimeMessages> {
+		this.touchSession(input.sessionId);
 		const runtime = await this.getOrCreateRuntime(
 			input.sessionId,
 			input.workspaceId,
 		);
-		return runtime.harness.listMessages();
+		const messages = await runtime.harness.listMessages();
+		runtime.lastKnownMessageCount = messages.length;
+		return messages;
+	}
+
+	private async generateAndSetTitle(
+		runtime: RuntimeSession,
+		submittedUserMessage?: string,
+	): Promise<void> {
+		try {
+			const messages = await runtime.harness.listMessages();
+			const userMessages = messages.filter(
+				(m: { role: string }) => m.role === "user",
+			);
+			let userCount = userMessages.length;
+			if (
+				submittedUserMessage &&
+				!userMessages.some(
+					(m: { content: Array<{ type: string; text?: string }> }) =>
+						m.content.some(
+							(p) => p.type === "text" && p.text === submittedUserMessage,
+						),
+				)
+			) {
+				userCount += 1;
+			}
+
+			const isFirst = userCount === 1;
+			const isRename = userCount > 1 && userCount % 10 === 0;
+			if (!isFirst && !isRename) return;
+
+			let text: string;
+			if (isFirst) {
+				const firstMsg = userMessages[0] ?? {
+					content: [{ type: "text", text: submittedUserMessage ?? "" }],
+				};
+				text = (firstMsg.content as Array<{ type: string; text?: string }>)
+					.filter((p) => p.type === "text")
+					.map((p) => p.text ?? "")
+					.join(" ")
+					.slice(0, 500);
+			} else {
+				text = messages
+					.slice(-10)
+					.map(
+						(m: {
+							role: string;
+							content: Array<{ type: string; text?: string }>;
+						}) => {
+							const txt = m.content
+								.filter((p) => p.type === "text")
+								.map((p) => p.text ?? "")
+								.join(" ");
+							return `${m.role}: ${txt}`;
+						},
+					)
+					.join("\n")
+					.slice(0, 2000);
+			}
+			if (!text.trim()) return;
+
+			const mode = runtime.harness.getCurrentMode();
+			const agent =
+				typeof mode.agent === "function"
+					? mode.agent(runtime.harness.getState() as never)
+					: mode.agent;
+
+			const title = await (
+				agent as {
+					generateTitleFromUserMessage: (args: {
+						message: string;
+						model?: string;
+					}) => Promise<string | null | undefined>;
+				}
+			).generateTitleFromUserMessage({
+				message: text,
+				model: runtime.harness.getFullModelId(),
+			});
+			if (!title?.trim()) return;
+
+			await this.apiClient.chat.updateTitle.mutate({
+				sessionId: runtime.sessionId,
+				title: title.trim(),
+			});
+		} catch (error) {
+			console.warn("[chat] Title generation failed:", error);
+		}
 	}
 
 	async sendMessage(
@@ -481,6 +655,9 @@ export class ChatRuntimeManager {
 			input.workspaceId,
 		);
 		runtime.lastErrorMessage = null;
+
+		const userMessage = input.payload.content.trim() || "[non-text message]";
+		await this.onUserPromptSubmit(runtime, userMessage);
 
 		const selectedModel = input.metadata?.model?.trim();
 		if (selectedModel) {
@@ -495,6 +672,12 @@ export class ChatRuntimeManager {
 			await runtime.harness.setState({ thinkingLevel });
 		}
 
+		const submittedUserMessage = input.payload.content.trim();
+		void this.generateAndSetTitle(
+			runtime,
+			submittedUserMessage.length > 0 ? submittedUserMessage : undefined,
+		);
+
 		return runtime.harness.sendMessage(input.payload);
 	}
 
@@ -504,7 +687,14 @@ export class ChatRuntimeManager {
 			input.workspaceId,
 		);
 		runtime.lastErrorMessage = null;
+		const userMessage = input.payload.content.trim() || "[non-text message]";
+		await this.onUserPromptSubmit(runtime, userMessage);
 		await restartRuntimeFromUserMessage(runtime, input);
+		const submittedUserMessage = input.payload.content.trim();
+		void this.generateAndSetTitle(
+			runtime,
+			submittedUserMessage.length > 0 ? submittedUserMessage : undefined,
+		);
 	}
 
 	async stop(input: { sessionId: string; workspaceId: string }): Promise<void> {
@@ -558,7 +748,14 @@ export class ChatRuntimeManager {
 		return runtime.harness.respondToPlanApproval(input.payload);
 	}
 
-	async getSlashCommands(_input: {
+	private resolveWorkspaceCwd(workspaceId: string): string | null {
+		const workspace = this.db.query.workspaces
+			.findFirst({ where: eq(workspaces.id, workspaceId) })
+			.sync();
+		return workspace?.worktreePath ?? null;
+	}
+
+	async getSlashCommands(input: {
 		sessionId: string;
 		workspaceId: string;
 	}): Promise<
@@ -567,10 +764,12 @@ export class ChatRuntimeManager {
 			aliases: string[];
 			description: string;
 			argumentHint: string;
-			kind: "builtin" | "prompt";
+			kind: string;
 		}>
 	> {
-		return [];
+		const cwd = this.resolveWorkspaceCwd(input.workspaceId);
+		if (!cwd) return [];
+		return getSlashCommandsFromCwd(cwd);
 	}
 
 	async resolveSlashCommand(input: {
@@ -578,12 +777,16 @@ export class ChatRuntimeManager {
 		workspaceId: string;
 		text: string;
 	}) {
-		return {
-			handled: false,
-			invokedAs: input.text.trim().startsWith("/")
-				? input.text.trim()
-				: undefined,
-		};
+		const cwd = this.resolveWorkspaceCwd(input.workspaceId);
+		if (!cwd) {
+			return {
+				handled: false,
+				invokedAs: input.text.trim().startsWith("/")
+					? input.text.trim()
+					: undefined,
+			};
+		}
+		return resolveSlashCommandFromCwd(cwd, input.text);
 	}
 
 	async previewSlashCommand(input: {
@@ -594,10 +797,102 @@ export class ChatRuntimeManager {
 		return this.resolveSlashCommand(input);
 	}
 
-	async getMcpOverview(_input: {
+	async getMcpOverview(input: {
 		sessionId: string;
 		workspaceId: string;
-	}): Promise<{ sourcePath: string | null; servers: never[] }> {
-		return { sourcePath: null, servers: [] };
+	}): Promise<{
+		sourcePath: string | null;
+		servers: Array<{
+			name: string;
+			state: "enabled" | "disabled" | "invalid";
+			transport: "remote" | "local" | "unknown";
+			target: string;
+		}>;
+	}> {
+		const runtime = await this.getOrCreateRuntime(
+			input.sessionId,
+			input.workspaceId,
+		);
+		const manager = runtime.mcpManager;
+		if (!manager || !manager.hasServers()) {
+			return { sourcePath: null, servers: [] };
+		}
+
+		const rawConfig = manager.getConfig().mcpServers ?? {};
+		const configPaths = manager.getConfigPaths();
+		const sourcePath = configPaths?.project ?? null;
+
+		const servers = Object.entries(rawConfig).map(([name, rawServerConfig]) => {
+			const sc = rawServerConfig as unknown as Record<string, unknown>;
+			const enabled = sc.enabled !== false;
+			const hasUrl = typeof sc.url === "string" || typeof sc.type === "string";
+			const hasCommand = typeof sc.command === "string";
+
+			let transport: "remote" | "local" | "unknown" = "unknown";
+			let target = "Not configured";
+
+			if (hasUrl) {
+				transport = "remote";
+				target = (sc.url as string) ?? (sc.type as string);
+			} else if (hasCommand) {
+				const cmd = sc.command as string;
+				const args = Array.isArray(sc.args)
+					? (sc.args as string[]).join(" ")
+					: "";
+				transport = "local";
+				target = args ? `${cmd} ${args}` : cmd;
+			}
+
+			const state: "enabled" | "disabled" | "invalid" = !enabled
+				? "disabled"
+				: !hasUrl && !hasCommand
+					? "invalid"
+					: "enabled";
+
+			return { name, state, transport, target };
+		});
+
+		return { sourcePath, servers };
+	}
+
+	async authenticateMcpServer(input: {
+		sessionId: string;
+		workspaceId: string;
+		serverName: string;
+	}): Promise<{
+		sourcePath: string | null;
+		servers: Array<{
+			name: string;
+			state: "enabled" | "disabled" | "invalid";
+			transport: "remote" | "local" | "unknown";
+			target: string;
+		}>;
+	}> {
+		const runtime = await this.getOrCreateRuntime(
+			input.sessionId,
+			input.workspaceId,
+		);
+		const manager = runtime.mcpManager;
+		if (!manager || !manager.hasServers()) {
+			throw new Error("No MCP servers configured");
+		}
+
+		const serverName = input.serverName.trim();
+		if (!serverName) {
+			throw new Error("MCP server name is required");
+		}
+
+		runtime.mcpManualStatuses.set(serverName, "authenticating");
+		try {
+			await manager.init();
+			runtime.mcpManualStatuses.set(serverName, "connected");
+		} catch {
+			runtime.mcpManualStatuses.set(serverName, "error");
+		}
+
+		return this.getMcpOverview({
+			sessionId: input.sessionId,
+			workspaceId: input.workspaceId,
+		});
 	}
 }

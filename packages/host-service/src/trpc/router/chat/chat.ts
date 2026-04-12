@@ -68,6 +68,10 @@ export const chatRouter = router({
 		return ctx.runtime.chat.stop(input);
 	}),
 
+	abort: protectedProcedure.input(sessionInput).mutation(({ ctx, input }) => {
+		return ctx.runtime.chat.stop(input);
+	}),
+
 	respondToApproval: protectedProcedure
 		.input(
 			sessionInput.extend({
@@ -139,5 +143,21 @@ export const chatRouter = router({
 		.input(sessionInput)
 		.query(({ ctx, input }) => {
 			return ctx.runtime.chat.getMcpOverview(input);
+		}),
+
+	releaseSession: protectedProcedure
+		.input(sessionInput)
+		.mutation(({ ctx, input }) => {
+			ctx.runtime.chat.destroySession(input.sessionId);
+		}),
+
+	authenticateMcpServer: protectedProcedure
+		.input(
+			sessionInput.extend({
+				serverName: z.string().min(1),
+			}),
+		)
+		.mutation(({ ctx, input }) => {
+			return ctx.runtime.chat.authenticateMcpServer(input);
 		}),
 });

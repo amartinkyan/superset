@@ -106,17 +106,18 @@ export function ChatInputFooter({
 
 	const handleSend = useCallback(
 		(message: PromptInputMessage) => {
-			if (linkedIssues.length === 0) return onSend(message);
+			let text = message.text;
 
-			const prefix = linkedIssues
-				.map((issue) => `@task:${issue.slug}`)
-				.join(" ");
-			const modifiedMessage: PromptInputMessage = {
-				...message,
-				text: `${prefix} ${message.text}`,
-			};
-			setLinkedIssues([]);
-			return onSend(modifiedMessage);
+			if (linkedIssues.length > 0) {
+				const taskPrefix = linkedIssues
+					.map((issue) => `@task:${issue.slug}`)
+					.join(" ");
+				text = `${taskPrefix} ${text}`;
+				setLinkedIssues([]);
+			}
+
+			if (text === message.text) return onSend(message);
+			return onSend({ ...message, text });
 		},
 		[linkedIssues, onSend],
 	);
@@ -137,7 +138,7 @@ export function ChatInputFooter({
 						onCommandSend={onSlashCommandSend}
 						commands={slashCommands}
 					>
-						<MentionProvider cwd={cwd}>
+						<MentionProvider cwd={cwd} workspaceId={workspaceId}>
 							<MentionAnchor>
 								<div
 									ref={inputRootRef}

@@ -66,28 +66,39 @@ export function useV2WorkspacePaneLayout({
 		store.getState().replaceState(persistedPaneLayout);
 	}, [persistedPaneLayout, store]);
 
+	const pendingLayoutRef = useRef<WorkspaceState<PaneViewerData> | null>(null);
+
+	// Flush any queued layout update once the local state record appears
+	useEffect(() => {
+		if (!localWorkspaceState || !pendingLayoutRef.current) return;
+		const pending = pendingLayoutRef.current;
+		pendingLayoutRef.current = null;
+		collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
+			draft.paneLayout = pending;
+		});
+		lastSyncedSnapshotRef.current = getSnapshot(pending);
+	}, [localWorkspaceState, collections, workspaceId]);
+
 	useEffect(() => {
 		const unsubscribe = store.subscribe((nextStore) => {
-			const nextSnapshot = getSnapshot({
+			const layout = {
 				version: nextStore.version,
 				tabs: nextStore.tabs,
 				activeTabId: nextStore.activeTabId,
-			});
+			};
+			const nextSnapshot = getSnapshot(layout);
 			if (nextSnapshot === lastSyncedSnapshotRef.current) {
 				return;
 			}
 
 			ensureWorkspaceInSidebar(workspaceId, projectId);
 			if (!collections.v2WorkspaceLocalState.get(workspaceId)) {
+				pendingLayoutRef.current = layout;
 				return;
 			}
 
 			collections.v2WorkspaceLocalState.update(workspaceId, (draft) => {
-				draft.paneLayout = {
-					version: nextStore.version,
-					tabs: nextStore.tabs,
-					activeTabId: nextStore.activeTabId,
-				};
+				draft.paneLayout = layout;
 			});
 			lastSyncedSnapshotRef.current = nextSnapshot;
 		});

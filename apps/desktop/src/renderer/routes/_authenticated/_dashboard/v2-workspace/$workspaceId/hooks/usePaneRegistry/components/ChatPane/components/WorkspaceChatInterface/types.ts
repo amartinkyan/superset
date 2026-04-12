@@ -20,4 +20,7 @@ export interface ChatPaneInterfaceProps {
 	onResetSession: () => Promise<void>;
 	onUserMessageSubmitted?: (message: string) => void;
 	onRawSnapshotChange?: (snapshot: ChatRawSnapshot) => void;
+	onConsumeLaunchConfig?: () => void;
+	initialDraft?: string;
+	onDraftChange?: (draft: string) => void;
 }

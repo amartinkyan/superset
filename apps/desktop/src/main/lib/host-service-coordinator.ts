@@ -53,6 +53,9 @@ interface HostServiceProcess {
 const HEALTH_POLL_INTERVAL = 200;
 const HEALTH_POLL_TIMEOUT = 10_000;
 const ADOPTED_LIVENESS_INTERVAL = 5_000;
+const MAX_AUTO_RESTART_ATTEMPTS = 5;
+const INITIAL_RESTART_DELAY_MS = 1_000;
+const MAX_RESTART_DELAY_MS = 30_000;
 
 async function findFreePort(): Promise<number> {
 	return new Promise((resolve, reject) => {
@@ -101,6 +104,8 @@ export class HostServiceCoordinator extends EventEmitter {
 		string,
 		ReturnType<typeof setInterval>
 	>();
+	private restartAttempts = new Map<string, number>();
+	private lastSpawnConfig = new Map<string, SpawnConfig>();
 	private scriptPath = path.join(__dirname, "host-service.js");
 	private machineId = getHashedDeviceId();
 
@@ -108,6 +113,8 @@ export class HostServiceCoordinator extends EventEmitter {
 		organizationId: string,
 		config: SpawnConfig,
 	): Promise<Connection> {
+		this.lastSpawnConfig.set(organizationId, config);
+
 		const existing = this.instances.get(organizationId);
 		if (existing?.status === "running") {
 			return {
@@ -122,8 +129,13 @@ export class HostServiceCoordinator extends EventEmitter {
 
 		const startPromise = (async (): Promise<Connection> => {
 			const adopted = await this.tryAdopt(organizationId);
-			if (adopted) return adopted;
-			return this.spawn(organizationId, config);
+			if (adopted) {
+				this.restartAttempts.delete(organizationId);
+				return adopted;
+			}
+			const conn = await this.spawn(organizationId, config);
+			this.restartAttempts.delete(organizationId);
+			return conn;
 		})();
 		this.pendingStarts.set(organizationId, startPromise);
 
@@ -344,6 +356,7 @@ export class HostServiceCoordinator extends EventEmitter {
 			this.instances.delete(organizationId);
 			removeManifest(organizationId);
 			this.emitStatus(organizationId, "stopped", "running");
+			this.scheduleAutoRestart(organizationId);
 		});
 		child.unref();
 
@@ -423,6 +436,7 @@ export class HostServiceCoordinator extends EventEmitter {
 					this.instances.delete(organizationId);
 					removeManifest(organizationId);
 					this.emitStatus(organizationId, "stopped", "running");
+					this.scheduleAutoRestart(organizationId);
 				}
 			}
 		}, ADOPTED_LIVENESS_INTERVAL);
@@ -435,6 +449,41 @@ export class HostServiceCoordinator extends EventEmitter {
 			clearInterval(timer);
 			this.adoptedLivenessTimers.delete(organizationId);
 		}
+	}
+
+	// ── Auto-restart ─────────────────────────────────────────────────
+
+	private scheduleAutoRestart(organizationId: string): void {
+		const config = this.lastSpawnConfig.get(organizationId);
+		if (!config) return;
+
+		const attempts = (this.restartAttempts.get(organizationId) ?? 0) + 1;
+		this.restartAttempts.set(organizationId, attempts);
+
+		if (attempts > MAX_AUTO_RESTART_ATTEMPTS) {
+			console.error(
+				`[host-service:${organizationId}] Exceeded ${MAX_AUTO_RESTART_ATTEMPTS} restart attempts, giving up`,
+			);
+			return;
+		}
+
+		const delay = Math.min(
+			INITIAL_RESTART_DELAY_MS * 2 ** (attempts - 1),
+			MAX_RESTART_DELAY_MS,
+		);
+		console.log(
+			`[host-service:${organizationId}] Auto-restarting in ${delay}ms (attempt ${attempts}/${MAX_AUTO_RESTART_ATTEMPTS})`,
+		);
+
+		setTimeout(() => {
+			if (this.instances.get(organizationId)?.status === "running") return;
+			this.start(organizationId, config).catch((error) => {
+				console.error(
+					`[host-service:${organizationId}] Auto-restart failed:`,
+					error,
+				);
+			});
+		}, delay);
 	}
 
 	// ── Events ────────────────────────────────────────────────────────

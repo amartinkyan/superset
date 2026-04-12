@@ -45,6 +45,7 @@
 		"@hono/node-ws": "^1.3.0",
 		"@hono/trpc-server": "^0.3.4",
 		"@octokit/rest": "^22.0.1",
+		"@superset/chat": "workspace:*",
 		"@superset/shared": "workspace:*",
 		"@superset/trpc": "workspace:*",
 		"@superset/workspace-fs": "workspace:*",

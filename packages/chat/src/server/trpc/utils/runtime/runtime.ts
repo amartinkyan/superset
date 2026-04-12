@@ -33,6 +33,7 @@ export interface RuntimeSession {
 		reason: string;
 	} | null;
 	cwd: string;
+	lastKnownMessageCount: number;
 }
 
 export function syncRuntimeHookSessionId(runtime: RuntimeSession): void {

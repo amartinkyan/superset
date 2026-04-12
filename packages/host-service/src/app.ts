@@ -67,6 +67,7 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 	const chatRuntime = new ChatRuntimeManager({
 		db,
 		runtimeResolver: providers.modelResolver,
+		apiClient: api,
 	});
 
 	const runtime = {

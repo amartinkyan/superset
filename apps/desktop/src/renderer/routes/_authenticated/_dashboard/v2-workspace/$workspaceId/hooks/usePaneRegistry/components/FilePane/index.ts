@@ -1,1 +1,1 @@
-export { FilePane } from "./FilePane";
+export { FilePane, type FilePaneHandle, saveAllFilePanes } from "./FilePane";

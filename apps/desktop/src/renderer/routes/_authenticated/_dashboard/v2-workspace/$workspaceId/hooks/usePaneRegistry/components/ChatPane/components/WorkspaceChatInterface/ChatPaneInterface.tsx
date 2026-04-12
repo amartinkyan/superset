@@ -2,6 +2,7 @@ import {
 	PromptInputAttachment,
 	type PromptInputMessage,
 	PromptInputProvider,
+	usePromptInputController,
 	useProviderAttachments,
 } from "@superset/ui/ai-elements/prompt-input";
 import { workspaceTrpc } from "@superset/workspace-client";
@@ -51,6 +52,26 @@ type HarnessFilePayload = {
 	filename?: string;
 	uploaded?: boolean;
 };
+
+function DraftSaver({
+	onDraftChange,
+}: {
+	onDraftChange?: (draft: string) => void;
+}) {
+	const { textInput } = usePromptInputController();
+	const valueRef = useRef(textInput.value);
+	valueRef.current = textInput.value;
+	const onDraftChangeRef = useRef(onDraftChange);
+	onDraftChangeRef.current = onDraftChange;
+
+	useEffect(() => {
+		return () => {
+			onDraftChangeRef.current?.(valueRef.current);
+		};
+	}, []);
+
+	return null;
+}
 
 function ChatUploadFooter({
 	sessionId,
@@ -198,6 +219,9 @@ export function ChatPaneInterface({
 	onResetSession,
 	onUserMessageSubmitted,
 	onRawSnapshotChange,
+	onConsumeLaunchConfig,
+	initialDraft,
+	onDraftChange,
 }: ChatPaneInterfaceProps) {
 	const { models: availableModels, defaultModel } = useAvailableModels();
 	const selectedModelId = useChatPreferencesStore(
@@ -374,9 +398,25 @@ export function ChatPaneInterface({
 		},
 		[workspaceTrpcUtils.chat.getMcpOverview, sessionId, workspaceId],
 	);
+	const authenticateMcpServerMutation =
+		workspaceTrpc.chat.authenticateMcpServer.useMutation();
+	const authenticateMcpServer = useCallback(
+		async (_rootCwd: string, serverName: string) => {
+			if (!sessionId) {
+				return { sourcePath: null, servers: [] };
+			}
+			return authenticateMcpServerMutation.mutateAsync({
+				sessionId,
+				workspaceId,
+				serverName,
+			});
+		},
+		[authenticateMcpServerMutation, sessionId, workspaceId],
+	);
 	const mcpUi = useMcpUi({
 		cwd,
 		loadOverview: loadMcpOverview,
+		authenticateServer: authenticateMcpServer,
 		onSetErrorMessage: setRuntimeErrorMessage,
 		onClearError: clearRuntimeError,
 		onTrackEvent: captureChatEvent,
@@ -701,6 +741,7 @@ export function ChatPaneInterface({
 				consumedLaunchConfigRef.current = launchConfigKey;
 				delete autoLaunchAttemptsRef.current[launchConfigKey];
 				delete autoLaunchSessionLockRef.current[launchConfigKey];
+				onConsumeLaunchConfig?.();
 
 				captureChatEvent("chat_message_sent", {
 					session_id: targetSessionId,
@@ -750,6 +791,7 @@ export function ChatPaneInterface({
 		setRuntimeErrorMessage,
 		onUserMessageSubmitted,
 		thinkingLevel,
+		onConsumeLaunchConfig,
 	]);
 
 	const handleStop = useCallback(
@@ -921,7 +963,10 @@ export function ChatPaneInterface({
 	const errorMessage = runtimeError ?? toErrorMessage(error);
 
 	return (
-		<PromptInputProvider initialInput={initialLaunchConfig?.draftInput}>
+		<PromptInputProvider
+			initialInput={initialDraft ?? initialLaunchConfig?.draftInput}
+		>
+			<DraftSaver onDraftChange={onDraftChange} />
 			<div className="flex h-full flex-col bg-background">
 				<ChatMessageList
 					messages={visibleMessages}

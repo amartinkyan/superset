@@ -23,6 +23,10 @@
 		"./server/hono": {
 			"types": "./src/server/hono/index.ts",
 			"default": "./src/server/hono/index.ts"
+		},
+		"./server/slash-commands": {
+			"types": "./src/server/desktop/slash-commands/index.ts",
+			"default": "./src/server/desktop/slash-commands/index.ts"
 		}
 	},
 	"scripts": {

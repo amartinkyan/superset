@@ -26,7 +26,7 @@ function V2WorkspaceLayout() {
 	const workspaceId =
 		workspaceMatch !== false ? workspaceMatch.workspaceId : null;
 	const collections = useCollections();
-	const { machineId, activeHostUrl } = useLocalHostService();
+	const { machineId, activeHostUrl, status } = useLocalHostService();
 	const { ensureWorkspaceInSidebar } = useDashboardSidebarState();
 
 	const { data: workspacesWithHost = [] } = useLiveQuery(
@@ -69,9 +69,22 @@ function V2WorkspaceLayout() {
 	}
 
 	if (!hostUrl) {
+		if (isLocal && status === "starting") {
+			return (
+				<div className="flex h-full w-full items-center justify-center text-muted-foreground">
+					<div className="flex flex-col items-center gap-2">
+						<div className="size-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+						<span>Starting workspace host service...</span>
+					</div>
+				</div>
+			);
+		}
+		const message = isLocal
+			? "Workspace host service not available"
+			: "Host machine is offline — the remote workspace is not reachable";
 		return (
 			<div className="flex h-full w-full items-center justify-center text-muted-foreground">
-				Workspace host service not available
+				{message}
 			</div>
 		);
 	}

@@ -14,7 +14,8 @@ import { getUserMessageDraft } from "./utils/getUserMessageDraft";
 
 interface UserMessageProps {
 	message: ChatMessage;
-	prefixMessages: ChatMessage[];
+	allMessages: ChatMessage[];
+	messageIndex: number;
 	workspaceId: string;
 	workspaceCwd?: string;
 	isEditing: boolean;
@@ -28,7 +29,8 @@ interface UserMessageProps {
 
 export function UserMessage({
 	message,
-	prefixMessages,
+	allMessages,
+	messageIndex,
 	workspaceId,
 	workspaceCwd,
 	isEditing,
@@ -90,12 +92,19 @@ export function UserMessage({
 
 		void onRestart({
 			messageId: message.id,
-			prefixMessages,
+			prefixMessages: allMessages.slice(0, messageIndex),
 			payload: resendPayload,
 		}).catch((error) => {
 			console.debug("[UserMessage] resend failed", error);
 		});
-	}, [draft.files, draft.text, message.id, onRestart, prefixMessages]);
+	}, [
+		draft.files,
+		draft.text,
+		message.id,
+		onRestart,
+		allMessages,
+		messageIndex,
+	]);
 	const showActions =
 		!isEditing &&
 		Boolean(fullText || draft.files.length > 0) &&
@@ -115,7 +124,7 @@ export function UserMessage({
 					onSubmit={(payload) =>
 						onSubmitEdit({
 							messageId: message.id,
-							prefixMessages,
+							prefixMessages: allMessages.slice(0, messageIndex),
 							payload,
 						})
 					}

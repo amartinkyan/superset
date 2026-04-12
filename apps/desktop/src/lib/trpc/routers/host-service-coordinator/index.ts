@@ -1,3 +1,4 @@
+import { getHashedDeviceId } from "@superset/shared/device-info";
 import { observable } from "@trpc/server/observable";
 import { env } from "main/env.main";
 import {
@@ -44,6 +45,10 @@ export const createHostServiceCoordinatorRouter = () => {
 				authToken: token,
 				cloudApiUrl: env.NEXT_PUBLIC_API_URL,
 			});
+		}),
+
+		getMachineId: publicProcedure.query(() => {
+			return { machineId: getHashedDeviceId() };
 		}),
 
 		onStatusChange: publicProcedure.subscription(() => {

@@ -10,8 +10,23 @@ export interface TerminalPaneData {
 	initialCommand?: string;
 }
 
+export interface ChatLaunchConfig {
+	initialPrompt?: string;
+	draftInput?: string;
+	initialFiles?: Array<{
+		data: string;
+		mediaType: string;
+		filename?: string;
+	}>;
+	metadata?: {
+		model?: string;
+	};
+}
+
 export interface ChatPaneData {
 	sessionId: string | null;
+	draft?: string;
+	launchConfig?: ChatLaunchConfig | null;
 }
 
 export interface BrowserPaneData {

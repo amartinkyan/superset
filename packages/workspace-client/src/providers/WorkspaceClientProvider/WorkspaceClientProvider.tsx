@@ -28,6 +28,7 @@ interface WorkspaceClients {
 	getWsToken: () => string | null;
 }
 
+const MAX_WORKSPACE_CLIENTS_CACHE_SIZE = 5;
 const workspaceClientsCache = new Map<string, WorkspaceClients>();
 const WorkspaceClientContext =
 	createContext<WorkspaceClientContextValue | null>(null);
@@ -41,7 +42,20 @@ function getWorkspaceClients(
 	const clientKey = `${cacheKey}:${hostUrl}`;
 	const cached = workspaceClientsCache.get(clientKey);
 	if (cached) {
+		// LRU: move to end
+		workspaceClientsCache.delete(clientKey);
+		workspaceClientsCache.set(clientKey, cached);
 		return cached;
+	}
+
+	// Evict oldest if at capacity
+	if (workspaceClientsCache.size >= MAX_WORKSPACE_CLIENTS_CACHE_SIZE) {
+		const oldestKey = workspaceClientsCache.keys().next().value;
+		if (oldestKey) {
+			const evicted = workspaceClientsCache.get(oldestKey);
+			evicted?.queryClient.clear();
+			workspaceClientsCache.delete(oldestKey);
+		}
 	}
 
 	const queryClient = new QueryClient({
