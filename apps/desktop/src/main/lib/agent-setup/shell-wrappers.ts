@@ -194,6 +194,11 @@ _superset_home="\${SUPERSET_ORIG_ZDOTDIR:-$HOME}"
 export ZDOTDIR="$_superset_home"
 [[ -f "$_superset_home/.zshrc" ]] && source "$_superset_home/.zshrc"
 ${SUPERSET_ENV_RESTORE}
+# Suppress zsh partial-line indicator ('%') on fresh PTY open.
+# Without this, new terminals show a stray '%' and the cursor lands at the
+# wrong column, especially with prompt themes like Powerlevel10k.
+# https://github.com/AidenIO/superset/issues/3374
+PROMPT_EOL_MARK=""
 ${buildPathPrependFunction(paths.BIN_DIR)}
 ${buildZshPrecmdHook(paths.BIN_DIR)}
 rehash 2>/dev/null || true

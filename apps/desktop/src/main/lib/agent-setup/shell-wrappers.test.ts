@@ -63,6 +63,64 @@ describe("shell-wrappers", () => {
 		rmSync(TEST_ROOT, { recursive: true, force: true });
 	});
 
+	it("zsh wrapper suppresses PROMPT_EOL_MARK to prevent stray % on new terminal", () => {
+		createZshWrapper(TEST_PATHS);
+
+		const zshrc = readFileSync(path.join(TEST_ZSH_DIR, ".zshrc"), "utf-8");
+
+		// PROMPT_EOL_MARK must be unset/empty so zsh doesn't print its default
+		// partial-line indicator ('%') when a fresh PTY opens.
+		// See: https://github.com/AidenIO/superset/issues/3374
+		expect(zshrc).toContain('PROMPT_EOL_MARK=""');
+	});
+
+	it("zsh PROMPT_EOL_MARK is empty in running shell session", () => {
+		if (!isZshAvailable()) return;
+
+		const integrationRoot = path.join(TEST_ROOT, "prompt-eol-mark");
+		const integrationBinDir = path.join(integrationRoot, "superset-bin");
+		const integrationZshDir = path.join(integrationRoot, "zsh");
+		const integrationBashDir = path.join(integrationRoot, "bash");
+		const homeDir = path.join(integrationRoot, "home");
+
+		mkdirSync(integrationBinDir, { recursive: true });
+		mkdirSync(integrationZshDir, { recursive: true });
+		mkdirSync(integrationBashDir, { recursive: true });
+		mkdirSync(homeDir, { recursive: true });
+
+		// User .zshrc that does NOT set PROMPT_EOL_MARK (default zsh behavior)
+		writeFileSync(path.join(homeDir, ".zshrc"), "\n");
+		writeFileSync(path.join(homeDir, ".zlogin"), "\n");
+
+		createZshWrapper({
+			BIN_DIR: integrationBinDir,
+			ZSH_DIR: integrationZshDir,
+			BASH_DIR: integrationBashDir,
+		});
+
+		// In a running zsh session, PROMPT_EOL_MARK should be empty
+		const output = execFileSync(
+			"zsh",
+			["-lic", 'echo "MARK=${PROMPT_EOL_MARK}END"'],
+			{
+				encoding: "utf-8",
+				env: {
+					HOME: homeDir,
+					PATH: "/usr/bin:/bin",
+					SUPERSET_ORIG_ZDOTDIR: homeDir,
+					ZDOTDIR: integrationZshDir,
+				},
+			},
+		).trim();
+
+		const lines = output
+			.split("\n")
+			.map((l) => l.trim())
+			.filter(Boolean);
+		const markLine = lines.find((l) => l.startsWith("MARK="));
+		expect(markLine).toBe("MARK=END");
+	});
+
 	it("creates zsh wrappers with interactive .zlogin sourcing and idempotent PATH prepend", () => {
 		createZshWrapper(TEST_PATHS);
 
