@@ -64,9 +64,54 @@ describe("parseUserMentions", () => {
 		]);
 	});
 
-	it("returns plain text for non-file mentions", () => {
+	it("returns plain text for lowercase single-word mentions", () => {
 		expect(parseUserMentions("ping @teammate asap")).toEqual([
 			{ type: "text", value: "ping @teammate asap" },
+		]);
+	});
+
+	it("parses extensionless uppercase files like README", () => {
+		expect(parseUserMentions("check @README please")).toEqual([
+			{ type: "text", value: "check " },
+			{
+				type: "file-mention",
+				raw: "@README",
+				relativePath: "README",
+			},
+			{ type: "text", value: " please" },
+		]);
+	});
+
+	it("parses PascalCase extensionless files like Dockerfile", () => {
+		expect(parseUserMentions("see @Dockerfile")).toEqual([
+			{ type: "text", value: "see " },
+			{
+				type: "file-mention",
+				raw: "@Dockerfile",
+				relativePath: "Dockerfile",
+			},
+		]);
+	});
+
+	it("parses hyphenated extensionless files", () => {
+		expect(parseUserMentions("check @docker-compose")).toEqual([
+			{ type: "text", value: "check " },
+			{
+				type: "file-mention",
+				raw: "@docker-compose",
+				relativePath: "docker-compose",
+			},
+		]);
+	});
+
+	it("parses underscored extensionless files", () => {
+		expect(parseUserMentions("check @my_config")).toEqual([
+			{ type: "text", value: "check " },
+			{
+				type: "file-mention",
+				raw: "@my_config",
+				relativePath: "my_config",
+			},
 		]);
 	});
 

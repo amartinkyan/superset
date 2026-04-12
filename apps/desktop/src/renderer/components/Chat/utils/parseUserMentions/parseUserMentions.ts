@@ -23,7 +23,18 @@ function isTaskMention(value: string): boolean {
 function isFileLikeMention(value: string): boolean {
 	if (!value) return false;
 	if (value.includes(":")) return false;
-	return value.includes("/") || value.includes("\\") || value.includes(".");
+	// Has path separators or file extension — definitely a file path
+	if (value.includes("/") || value.includes("\\") || value.includes(".")) {
+		return true;
+	}
+	// Extensionless files (README, Dockerfile, Makefile, LICENSE, etc.):
+	// accept if it contains path-like chars, is ALL_CAPS, PascalCase,
+	// or contains hyphens/underscores (common in filenames but rare in prose)
+	if (value.includes("-") || value.includes("_")) return true;
+	if (value === value.toUpperCase() && value.length > 1) return true;
+	// PascalCase or starts with uppercase (Dockerfile, Makefile, Gemfile, etc.)
+	if (/^[A-Z]/.test(value)) return true;
+	return false;
 }
 
 export function parseUserMentions(text: string): UserMentionSegment[] {
