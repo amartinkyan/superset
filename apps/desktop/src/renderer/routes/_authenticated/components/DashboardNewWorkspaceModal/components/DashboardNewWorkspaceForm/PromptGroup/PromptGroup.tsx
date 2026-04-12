@@ -101,14 +101,18 @@ function PromptGroupInner({
 	const trimmedPrompt = prompt.trim();
 
 	// ── Branch data ──────────────────────────────────────────────────
+	const [branchSearch, setBranchSearch] = useState("");
 	const {
-		data: branchData,
+		branches,
+		defaultBranch,
 		isLoading: isBranchesLoading,
 		isError: isBranchesError,
-	} = useBranchContext(projectId, hostTarget);
+		isFetchingNextPage,
+		hasNextPage,
+		fetchNextPage,
+	} = useBranchContext(projectId, hostTarget, branchSearch);
 
-	const effectiveCompareBaseBranch =
-		baseBranch || branchData?.defaultBranch || null;
+	const effectiveCompareBaseBranch = baseBranch || defaultBranch || null;
 
 	const branchPreview = branchNameEdited
 		? sanitizeUserBranchName(branchName)
@@ -408,10 +412,17 @@ function PromptGroupInner({
 							>
 								<CompareBaseBranchPicker
 									effectiveCompareBaseBranch={effectiveCompareBaseBranch}
-									defaultBranch={branchData?.defaultBranch}
+									defaultBranch={defaultBranch}
 									isBranchesLoading={isBranchesLoading}
 									isBranchesError={isBranchesError}
-									branches={branchData?.branches ?? []}
+									branches={branches}
+									branchSearch={branchSearch}
+									onBranchSearchChange={setBranchSearch}
+									isFetchingNextPage={isFetchingNextPage}
+									hasNextPage={hasNextPage ?? false}
+									onLoadMore={() => {
+										void fetchNextPage();
+									}}
 									onSelectCompareBaseBranch={(branch) =>
 										updateDraft({ baseBranch: branch })
 									}

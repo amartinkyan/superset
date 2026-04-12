@@ -6,22 +6,31 @@ import {
 	CommandList,
 } from "@superset/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@superset/ui/popover";
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GoGitBranch } from "react-icons/go";
 import { HiCheck, HiChevronUpDown } from "react-icons/hi2";
 import { formatRelativeTime } from "renderer/lib/formatRelativeTime";
+
+interface BranchRow {
+	name: string;
+	lastCommitDate: number;
+	isLocal: boolean;
+	isRemote: boolean;
+	recency: number | null;
+	worktreePath: string | null;
+}
 
 interface CompareBaseBranchPickerProps {
 	effectiveCompareBaseBranch: string | null;
 	defaultBranch: string | null | undefined;
 	isBranchesLoading: boolean;
 	isBranchesError: boolean;
-	branches: Array<{
-		name: string;
-		lastCommitDate: number;
-		isLocal: boolean;
-		hasWorkspace: boolean;
-	}>;
+	branches: BranchRow[];
+	branchSearch: string;
+	onBranchSearchChange: (value: string) => void;
+	isFetchingNextPage: boolean;
+	hasNextPage: boolean;
+	onLoadMore: () => void;
 	onSelectCompareBaseBranch: (branchName: string) => void;
 }
 
@@ -31,16 +40,32 @@ export function CompareBaseBranchPicker({
 	isBranchesLoading,
 	isBranchesError,
 	branches,
+	branchSearch,
+	onBranchSearchChange,
+	isFetchingNextPage,
+	hasNextPage,
+	onLoadMore,
 	onSelectCompareBaseBranch,
 }: CompareBaseBranchPickerProps) {
 	const [open, setOpen] = useState(false);
-	const [branchSearch, setBranchSearch] = useState("");
+	const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-	const filteredBranches = useMemo(() => {
-		if (!branchSearch) return branches;
-		const searchLower = branchSearch.toLowerCase();
-		return branches.filter((b) => b.name.toLowerCase().includes(searchLower));
-	}, [branches, branchSearch]);
+	// Infinite scroll: observe a sentinel at the bottom of the list.
+	useEffect(() => {
+		if (!open || !hasNextPage || isFetchingNextPage) return;
+		const el = sentinelRef.current;
+		if (!el) return;
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries.some((e) => e.isIntersecting)) {
+					onLoadMore();
+				}
+			},
+			{ rootMargin: "64px" },
+		);
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, [open, hasNextPage, isFetchingNextPage, onLoadMore]);
 
 	if (isBranchesError) {
 		return (
@@ -53,17 +78,17 @@ export function CompareBaseBranchPicker({
 			open={open}
 			onOpenChange={(v) => {
 				setOpen(v);
-				if (!v) setBranchSearch("");
+				if (!v) onBranchSearchChange("");
 			}}
 		>
 			<PopoverTrigger asChild>
 				<button
 					type="button"
-					disabled={isBranchesLoading}
+					disabled={isBranchesLoading && branches.length === 0}
 					className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 min-w-0 max-w-full"
 				>
 					<GoGitBranch className="size-3 shrink-0" />
-					{isBranchesLoading ? (
+					{isBranchesLoading && branches.length === 0 ? (
 						<span className="h-2.5 w-14 rounded-sm bg-muted-foreground/15 animate-pulse" />
 					) : (
 						<span className="font-mono truncate">
@@ -82,11 +107,13 @@ export function CompareBaseBranchPicker({
 					<CommandInput
 						placeholder="Search branches..."
 						value={branchSearch}
-						onValueChange={setBranchSearch}
+						onValueChange={onBranchSearchChange}
 					/>
 					<CommandList className="max-h-[400px]">
-						<CommandEmpty>No branches found</CommandEmpty>
-						{filteredBranches.map((branch) => (
+						{!isBranchesLoading && branches.length === 0 && (
+							<CommandEmpty>No branches found</CommandEmpty>
+						)}
+						{branches.map((branch) => (
 							<CommandItem
 								key={branch.name}
 								value={branch.name}
@@ -107,9 +134,9 @@ export function CompareBaseBranchPicker({
 												default
 											</span>
 										)}
-										{branch.hasWorkspace && (
+										{branch.worktreePath && (
 											<span className="text-[10px] text-muted-foreground/60 bg-muted/60 px-1.5 py-0.5 rounded">
-												workspace
+												worktree
 											</span>
 										)}
 									</span>
@@ -126,6 +153,14 @@ export function CompareBaseBranchPicker({
 								</span>
 							</CommandItem>
 						))}
+						{hasNextPage && (
+							<div
+								ref={sentinelRef}
+								className="py-2 text-center text-[11px] text-muted-foreground/60"
+							>
+								{isFetchingNextPage ? "Loading more..." : ""}
+							</div>
+						)}
 					</CommandList>
 				</Command>
 			</PopoverContent>

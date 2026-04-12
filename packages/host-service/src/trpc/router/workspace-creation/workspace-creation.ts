@@ -96,6 +96,106 @@ async function resolveGithubRepo(
 
 import { normalizeGitHubQuery } from "./normalize-github-query";
 
+// ── searchBranches helpers ──────────────────────────────────────────
+
+type BranchRow = {
+	name: string;
+	lastCommitDate: number;
+	isLocal: boolean;
+	isRemote: boolean;
+	recency: number | null;
+	worktreePath: string | null;
+};
+
+function encodeCursor(offset: number): string {
+	return Buffer.from(JSON.stringify({ offset })).toString("base64url");
+}
+
+function decodeCursor(cursor: string | undefined): number {
+	if (!cursor) return 0;
+	try {
+		const parsed = JSON.parse(
+			Buffer.from(cursor, "base64url").toString("utf8"),
+		);
+		const offset = typeof parsed.offset === "number" ? parsed.offset : 0;
+		return Math.max(0, offset);
+	} catch {
+		return 0;
+	}
+}
+
+// 30s TTL on `git fetch` per project — keeps rapid searches from thrashing.
+const REMOTE_REFETCH_TTL_MS = 30_000;
+const lastRemoteRefetch = new Map<string, number>();
+
+function shouldRefetchRemote(projectId: string): boolean {
+	const last = lastRemoteRefetch.get(projectId) ?? 0;
+	return Date.now() - last >= REMOTE_REFETCH_TTL_MS;
+}
+
+function markRefetchRemote(projectId: string): void {
+	lastRemoteRefetch.set(projectId, Date.now());
+}
+
+type GitClient = Awaited<ReturnType<HostServiceContext["git"]>>;
+
+async function listWorktreeBranches(
+	git: GitClient,
+): Promise<Map<string, string>> {
+	const map = new Map<string, string>();
+	try {
+		const raw = await git.raw(["worktree", "list", "--porcelain"]);
+		let currentPath: string | null = null;
+		for (const line of raw.split("\n")) {
+			if (line.startsWith("worktree ")) {
+				currentPath = line.slice("worktree ".length).trim();
+			} else if (line.startsWith("branch refs/heads/") && currentPath) {
+				const branch = line.slice("branch refs/heads/".length).trim();
+				if (branch) map.set(branch, currentPath);
+			} else if (line === "") {
+				currentPath = null;
+			}
+		}
+	} catch {
+		// ignore
+	}
+	return map;
+}
+
+// Parses `git log -g` to return {branchName: ordinal} where 0 = most recent.
+async function getRecentBranchOrder(
+	git: GitClient,
+	limit: number,
+): Promise<Map<string, number>> {
+	const order = new Map<string, number>();
+	try {
+		const raw = await git.raw([
+			"log",
+			"-g",
+			"--pretty=%gs",
+			"--grep-reflog=checkout:",
+			"-n",
+			"500",
+			"HEAD",
+			"--",
+		]);
+		const re = /^checkout: moving from .+ to (.+)$/;
+		for (const line of raw.split("\n")) {
+			const m = re.exec(line);
+			if (!m?.[1]) continue;
+			const name = m[1].trim();
+			if (!name || /^[0-9a-f]{7,40}$/.test(name)) continue; // skip detached SHAs
+			if (!order.has(name)) {
+				order.set(name, order.size);
+				if (order.size >= limit) break;
+			}
+		}
+	} catch {
+		// ignore (e.g. unborn branch)
+	}
+	return order;
+}
+
 async function listBranchNames(
 	ctx: HostServiceContext,
 	repoPath: string,
@@ -164,10 +264,15 @@ export const workspaceCreationRouter = router({
 			z.object({
 				projectId: z.string(),
 				query: z.string().optional(),
-				limit: z.number().min(1).max(500).optional(),
+				cursor: z.string().optional(),
+				limit: z.number().min(1).max(200).optional(),
+				refresh: z.boolean().optional(),
 			}),
 		)
 		.query(async ({ ctx, input }) => {
+			const limit = input.limit ?? 50;
+			const offset = decodeCursor(input.cursor);
+
 			const localProject = ctx.db.query.projects
 				.findFirst({ where: eq(projects.id, input.projectId) })
 				.sync();
@@ -175,16 +280,23 @@ export const workspaceCreationRouter = router({
 			if (!localProject) {
 				return {
 					defaultBranch: null as string | null,
-					branches: [] as Array<{
-						name: string;
-						lastCommitDate: number;
-						isLocal: boolean;
-						hasWorkspace: boolean;
-					}>,
+					items: [] as BranchRow[],
+					nextCursor: null as string | null,
 				};
 			}
 
 			const git = await ctx.git(localProject.repoPath);
+
+			// Honor `refresh` only if TTL elapsed — prevents thrashing `git fetch`
+			// on every keystroke when the client tags first-page requests.
+			if (input.refresh && shouldRefetchRemote(input.projectId)) {
+				markRefetchRemote(input.projectId);
+				try {
+					await git.fetch(["--prune", "--quiet", "--no-tags"]);
+				} catch {
+					// offline — proceed with cached refs
+				}
+			}
 
 			let defaultBranch: string | null = null;
 			try {
@@ -198,45 +310,48 @@ export const workspaceCreationRouter = router({
 				defaultBranch = "main";
 			}
 
-			const localBranchNames = new Set<string>();
-			try {
-				const raw = await git.raw([
-					"branch",
-					"--list",
-					"--format=%(refname:short)",
-				]);
-				for (const name of raw.trim().split("\n").filter(Boolean)) {
-					localBranchNames.add(name);
-				}
-			} catch {
-				// ignore
-			}
+			const worktreeMap = await listWorktreeBranches(git);
+			const recencyMap = await getRecentBranchOrder(git, 30);
 
-			type BranchInfo = {
+			type BranchAccum = {
 				name: string;
 				lastCommitDate: number;
 				isLocal: boolean;
+				isRemote: boolean;
 			};
-			const branchMap = new Map<string, BranchInfo>();
+			const branchMap = new Map<string, BranchAccum>();
 			try {
 				const raw = await git.raw([
 					"for-each-ref",
 					"--sort=-committerdate",
-					"--format=%(refname:short)\t%(committerdate:unix)",
+					"--format=%(refname)\t%(refname:short)\t%(committerdate:unix)",
 					"refs/heads/",
 					"refs/remotes/origin/",
 				]);
 				for (const line of raw.trim().split("\n").filter(Boolean)) {
-					const [rawRef, ts] = line.split("\t");
-					if (!rawRef) continue;
-					let name = rawRef;
-					if (name.startsWith("origin/")) name = name.slice("origin/".length);
+					const [refname, short, ts] = line.split("\t");
+					if (!refname || !short) continue;
+
+					const isLocal = refname.startsWith("refs/heads/");
+					const isRemote = refname.startsWith("refs/remotes/origin/");
+
+					let name = short;
+					if (isRemote) {
+						if (name === "origin/HEAD") continue;
+						name = name.slice("origin/".length);
+					}
 					if (name === "HEAD") continue;
-					if (!branchMap.has(name)) {
+
+					const existing = branchMap.get(name);
+					if (existing) {
+						existing.isLocal = existing.isLocal || isLocal;
+						existing.isRemote = existing.isRemote || isRemote;
+					} else {
 						branchMap.set(name, {
 							name,
 							lastCommitDate: Number.parseInt(ts ?? "0", 10),
-							isLocal: localBranchNames.has(name),
+							isLocal,
+							isRemote,
 						});
 					}
 				}
@@ -251,24 +366,39 @@ export const workspaceCreationRouter = router({
 				branches = branches.filter((b) => b.name.toLowerCase().includes(q));
 			}
 
-			branches = branches.slice(0, input.limit ?? 200);
+			// Sort: default → reflog-recent → everything else by committerdate desc.
+			// for-each-ref already emits in committerdate-desc order, so the tail
+			// of this sort is a stable no-op for branches outside default/recency.
+			branches.sort((a, b) => {
+				const aDefault = a.name === defaultBranch ? 0 : 1;
+				const bDefault = b.name === defaultBranch ? 0 : 1;
+				if (aDefault !== bDefault) return aDefault - bDefault;
 
-			const localWorkspaceBranches = new Set(
-				ctx.db
-					.select()
-					.from(workspaces)
-					.where(eq(workspaces.projectId, input.projectId))
-					.all()
-					.map((w) => w.branch),
-			);
+				const aRecency = recencyMap.get(a.name);
+				const bRecency = recencyMap.get(b.name);
+				if (aRecency !== undefined && bRecency !== undefined) {
+					return aRecency - bRecency;
+				}
+				if (aRecency !== undefined) return -1;
+				if (bRecency !== undefined) return 1;
 
-			return {
-				defaultBranch,
-				branches: branches.map((b) => ({
-					...b,
-					hasWorkspace: localWorkspaceBranches.has(b.name),
-				})),
-			};
+				return b.lastCommitDate - a.lastCommitDate;
+			});
+
+			const page = branches.slice(offset, offset + limit);
+			const hasMore = offset + limit < branches.length;
+			const nextCursor = hasMore ? encodeCursor(offset + limit) : null;
+
+			const items: BranchRow[] = page.map((b) => ({
+				name: b.name,
+				lastCommitDate: b.lastCommitDate,
+				isLocal: b.isLocal,
+				isRemote: b.isRemote,
+				recency: recencyMap.get(b.name) ?? null,
+				worktreePath: worktreeMap.get(b.name) ?? null,
+			}));
+
+			return { defaultBranch, items, nextCursor };
 		}),
 
 	/**
