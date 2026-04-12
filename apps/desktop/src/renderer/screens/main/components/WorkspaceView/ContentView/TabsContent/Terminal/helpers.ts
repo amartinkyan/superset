@@ -8,7 +8,11 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
-import { getBinding, isTerminalReservedEvent } from "renderer/hotkeys";
+import {
+	getBinding,
+	isTerminalReservedEvent,
+	resolveHotkeyFromEvent,
+} from "renderer/hotkeys";
 import { electronTrpcClient as trpcClient } from "renderer/lib/trpc-client";
 import { toXtermTheme } from "renderer/stores/theme/utils";
 import {
@@ -580,9 +584,10 @@ export function setupKeyboardHandler(
 			return false;
 		}
 
-		// Any other ctrl/meta combo → let it bubble to document for react-hotkeys-hook
-		if (event.type === "keydown" && (event.metaKey || event.ctrlKey))
-			return false;
+		// Registered app hotkeys → let them bubble to document for react-hotkeys-hook.
+		// All other Ctrl/Meta combos pass through to xterm so terminal shortcuts
+		// (Ctrl+A, Ctrl+R, Ctrl+L, Ctrl+K, Ctrl+W, etc.) work correctly.
+		if (resolveHotkeyFromEvent(event) !== null) return false;
 
 		return true;
 	};
