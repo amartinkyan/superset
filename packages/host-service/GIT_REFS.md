@@ -93,11 +93,85 @@ If we copy code from these repos, attribute and licence-check first (both MIT). 
 
 VSCode is harder to vendor (deeply tied to their VS Code API surface), but worth reading for the discriminated approach.
 
+## TypeScript guarantees
+
+The point of the discriminated union is that the compiler does the work, not the reviewer. Five rules to keep that property:
+
+### 1. Always narrow with `switch`, not `if` chains
+
+`switch (r.kind)` lets the compiler enforce exhaustiveness via the `never` trick:
+
+```ts
+function handle(r: ResolvedRef): string {
+  switch (r.kind) {
+    case "local":            return r.shortName;
+    case "remote-tracking":  return `${r.remote}/${r.shortName}`;
+    case "tag":              return r.shortName;
+    case "head":             return "HEAD";
+    default: {
+      const _exhaustive: never = r;  // compile error if a new kind is added
+      throw new Error(`unhandled ref kind: ${_exhaustive}`);
+    }
+  }
+}
+```
+
+Add a `default: { const _: never = r }` branch in every consumer. When we add `kind: "stash"` later, every call site fails to compile until updated. Cheaper than test coverage.
+
+### 2. Don't make fields optional that are required for a kind
+
+Bad:
+```ts
+type Ref = { kind: "local" | "remote-tracking" | "tag" | "head"; remote?: string; ... }
+```
+
+Now `ref.remote` is `string | undefined` everywhere — defeats the point. The narrowing only works when `remote` is **only present in the variant where it's required**:
+
+```ts
+type ResolvedRef =
+  | { kind: "remote-tracking"; remote: string; ... }  // required, not optional
+  | { kind: "local"; ... }                            // not present at all
+```
+
+After narrowing on `kind === "remote-tracking"`, `ref.remote` is `string`, no `!` needed.
+
+### 3. Template-literal `fullRef` types are worth it on `ResolvedRef`, not on general inputs
+
+```ts
+fullRef: `refs/heads/${string}`
+```
+
+This doesn't validate at runtime — git could hand us a wrong-shaped string and TS wouldn't notice. The value is at the *caller* boundary: if downstream code tries to assign `someShortName` (typed as plain `string`) into a `` `refs/heads/${string}` `` slot, the compiler catches it. The mistake gets surfaced at the assignment, not three function calls later when something silently mis-resolves.
+
+Use template-literal types for `fullRef` and `asLocalRef`'s return type. Don't use them on user-facing parameters (everyone passes `string` and you'd need brand assertions everywhere — friction without payoff).
+
+### 4. Type-only re-exports across package boundaries
+
+```ts
+// runtime/git/refs.ts
+export type { ResolvedRef } from "./refs";
+export { resolveRef, asLocalRef } from "./refs";
+```
+
+Callers can `import type { ResolvedRef }` without dragging the runtime in. Matters when the renderer wants the type for prop shapes but doesn't need (and can't run) the simple-git wrapper.
+
+### 5. Type guards as last resort, not first
+
+If you find yourself writing:
+
+```ts
+function isRemoteTracking(r: ResolvedRef): r is Extract<ResolvedRef, { kind: "remote-tracking" }> {
+  return r.kind === "remote-tracking";
+}
+```
+
+you've already lost — `r.kind === "remote-tracking"` already narrows TS-natively. Type guards are only useful when narrowing crosses a function boundary (rare for this module). Skip them by default.
+
 ## Enforcement
 
 Two layers:
 
-1. **Type system** — once `ResolvedRef` exists and the helpers consume it, downstream code can't reintroduce the bug for *new* call sites. The compiler narrows correctly.
+1. **Type system** (above) — once `ResolvedRef` exists and the helpers consume it, downstream code can't reintroduce the bug for *new* call sites. The compiler narrows correctly. The exhaustive-switch pattern catches breakage when the union grows.
 
 2. **Lint** — Biome rule banning `\.startsWith\(['"]origin/` and `\.startsWith\(['"]refs/remotes/origin/` outside of `runtime/git/refs.ts`. There's no legitimate use of that string check elsewhere — every match is the smoking gun for this bug class. Cheap belt-and-suspenders for grep-style audits.
 
