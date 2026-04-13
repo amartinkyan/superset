@@ -12,9 +12,12 @@ import {
 	clearAttachments,
 	loadAttachments,
 } from "renderer/lib/pending-attachment-store";
+import { useAdoptWorktree } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/hooks/useAdoptWorktree";
+import { useCheckoutDashboardWorkspace } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/hooks/useCheckoutDashboardWorkspace";
 import { useCreateDashboardWorkspace } from "renderer/routes/_authenticated/components/DashboardNewWorkspaceModal/hooks/useCreateDashboardWorkspace";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
+import type { PendingWorkspaceRow } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal/schema";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { buildSetupPaneLayout } from "./buildSetupPaneLayout";
 
@@ -26,6 +29,11 @@ import { buildSetupPaneLayout } from "./buildSetupPaneLayout";
  * transitions away from a real workspace, the layout would strip the provider
  * while the old workspace's TerminalPane is still mounted — causing a crash.
  * Keeping this route outside v2-workspace avoids that entirely.
+ *
+ * The page is the single point of dispatch for all three workspace-creation
+ * intents (fork / checkout / adopt). The modal inserts a row tagged with
+ * `intent` and navigates here; this page calls the right host-service mutation
+ * on first mount and on retry. See `PENDING_FLOW.md`.
  */
 export const Route = createFileRoute(
 	"/_authenticated/_dashboard/pending/$pendingId/",
@@ -33,24 +41,13 @@ export const Route = createFileRoute(
 	component: PendingWorkspacePage,
 });
 
-function useRetryCreate(
-	pendingId: string,
-	pending: {
-		projectId: string;
-		name: string;
-		branchName: string;
-		prompt: string;
-		baseBranch: string | null;
-		baseBranchSource: "local" | "remote-tracking" | null;
-		runSetupScript: boolean;
-		linkedIssues: unknown[];
-		linkedPR: unknown;
-		hostTarget: unknown;
-		attachmentCount: number;
-	} | null,
-) {
+type HostTarget = { kind: "local" } | { kind: "host"; hostId: string };
+
+function useFireIntent(pendingId: string, pending: PendingWorkspaceRow | null) {
 	const collections = useCollections();
 	const createWorkspace = useCreateDashboardWorkspace();
+	const checkoutWorkspace = useCheckoutDashboardWorkspace();
+	const adoptWorktree = useAdoptWorktree();
 
 	return useCallback(async () => {
 		if (!pending) return;
@@ -60,60 +57,97 @@ function useRetryCreate(
 			draft.error = null;
 		});
 
-		const internalIssueIds = (
-			pending.linkedIssues as Array<{ source?: string; taskId?: string }>
-		)
-			.filter((i) => i.source === "internal" && i.taskId)
-			.map((i) => i.taskId as string);
-		const githubIssueUrls = (
-			pending.linkedIssues as Array<{ source?: string; url?: string }>
-		)
-			.filter((i) => i.source === "github" && i.url)
-			.map((i) => i.url as string);
-		const linkedPR = pending.linkedPR as { url?: string } | null;
-
-		let attachmentPayload:
-			| Array<{ data: string; mediaType: string; filename: string }>
-			| undefined;
-		if (pending.attachmentCount > 0) {
-			try {
-				attachmentPayload = await loadAttachments(pendingId);
-			} catch {
-				// proceed without
-			}
-		}
+		const hostTarget = pending.hostTarget as HostTarget;
 
 		try {
-			const result = await createWorkspace({
-				pendingId,
-				projectId: pending.projectId,
-				hostTarget: pending.hostTarget as
-					| { kind: "local" }
-					| { kind: "host"; hostId: string },
-				names: {
-					workspaceName: pending.name,
-					branchName: pending.branchName,
-				},
-				composer: {
-					prompt: pending.prompt || undefined,
-					baseBranch: pending.baseBranch || undefined,
-					baseBranchSource: pending.baseBranchSource ?? undefined,
-					runSetupScript: pending.runSetupScript,
-				},
-				linkedContext: {
-					internalIssueIds:
-						internalIssueIds.length > 0 ? internalIssueIds : undefined,
-					githubIssueUrls:
-						githubIssueUrls.length > 0 ? githubIssueUrls : undefined,
-					linkedPrUrl: linkedPR?.url,
-					attachments: attachmentPayload,
-				},
-			});
+			let result: {
+				workspace?: { id?: string } | null;
+				terminals?: Array<{ id: string; role: string; label: string }>;
+				warnings?: string[];
+			};
+
+			switch (pending.intent) {
+				case "fork": {
+					const internalIssueIds = (
+						pending.linkedIssues as Array<{
+							source?: string;
+							taskId?: string;
+						}>
+					)
+						.filter((i) => i.source === "internal" && i.taskId)
+						.map((i) => i.taskId as string);
+					const githubIssueUrls = (
+						pending.linkedIssues as Array<{ source?: string; url?: string }>
+					)
+						.filter((i) => i.source === "github" && i.url)
+						.map((i) => i.url as string);
+					const linkedPR = pending.linkedPR as { url?: string } | null;
+
+					let attachmentPayload:
+						| Array<{ data: string; mediaType: string; filename: string }>
+						| undefined;
+					if (pending.attachmentCount > 0) {
+						try {
+							attachmentPayload = await loadAttachments(pendingId);
+						} catch {
+							// proceed without
+						}
+					}
+
+					result = await createWorkspace({
+						pendingId,
+						projectId: pending.projectId,
+						hostTarget,
+						names: {
+							workspaceName: pending.name,
+							branchName: pending.branchName,
+						},
+						composer: {
+							prompt: pending.prompt || undefined,
+							baseBranch: pending.baseBranch || undefined,
+							baseBranchSource: pending.baseBranchSource ?? undefined,
+							runSetupScript: pending.runSetupScript,
+						},
+						linkedContext: {
+							internalIssueIds:
+								internalIssueIds.length > 0 ? internalIssueIds : undefined,
+							githubIssueUrls:
+								githubIssueUrls.length > 0 ? githubIssueUrls : undefined,
+							linkedPrUrl: linkedPR?.url,
+							attachments: attachmentPayload,
+						},
+					});
+					break;
+				}
+
+				case "checkout": {
+					result = await checkoutWorkspace({
+						pendingId,
+						projectId: pending.projectId,
+						hostTarget,
+						workspaceName: pending.name,
+						branch: pending.branchName,
+						composer: { runSetupScript: pending.runSetupScript },
+					});
+					break;
+				}
+
+				case "adopt": {
+					result = await adoptWorktree({
+						projectId: pending.projectId,
+						hostTarget,
+						workspaceName: pending.name,
+						branch: pending.branchName,
+					});
+					break;
+				}
+			}
 
 			collections.pendingWorkspaces.update(pendingId, (draft) => {
 				draft.status = "succeeded";
 				draft.workspaceId = result.workspace?.id ?? null;
 				draft.terminals = result.terminals ?? [];
+				draft.warnings = result.warnings ?? [];
 			});
 			void clearAttachments(pendingId);
 		} catch (err) {
@@ -123,7 +157,14 @@ function useRetryCreate(
 					err instanceof Error ? err.message : "Failed to create workspace";
 			});
 		}
-	}, [collections, createWorkspace, pending, pendingId]);
+	}, [
+		collections,
+		createWorkspace,
+		checkoutWorkspace,
+		adoptWorktree,
+		pending,
+		pendingId,
+	]);
 }
 
 function PendingWorkspacePage() {
@@ -133,8 +174,8 @@ function PendingWorkspacePage() {
 	const { activeHostUrl } = useLocalHostService();
 	const { ensureWorkspaceInSidebar } = useDashboardSidebarState();
 	const navigatedRef = useRef(false);
+	const firedRef = useRef(false);
 
-	// Read pending workspace from collection (declared early for useRetryCreate)
 	const { data: pendingRows } = useLiveQuery(
 		(q) =>
 			q
@@ -144,9 +185,21 @@ function PendingWorkspacePage() {
 		[collections, pendingId],
 	);
 	const pending = pendingRows?.[0] ?? null;
-	const retryCreate = useRetryCreate(pendingId, pending);
+	const fireIntent = useFireIntent(pendingId, pending);
 
-	// Poll host-service for step-by-step progress
+	// Fire the mutation once on first mount. The modal stores draft state in
+	// the pending row and navigates here — page owns the actual call so all
+	// three intents share one dispatch + retry path.
+	useEffect(() => {
+		if (!pending || pending.status !== "creating" || firedRef.current) return;
+		firedRef.current = true;
+		void fireIntent();
+	}, [pending, fireIntent]);
+
+	// Poll host-service for step-by-step progress (fork + checkout only;
+	// adopt is fast and doesn't instrument progress).
+	const intentHasProgress =
+		pending?.intent === "fork" || pending?.intent === "checkout";
 	const hostUrl =
 		pending?.hostTarget &&
 		typeof pending.hostTarget === "object" &&
@@ -167,12 +220,11 @@ function PendingWorkspacePage() {
 			});
 		},
 		refetchInterval: 500,
-		enabled: pending?.status === "creating" && !!hostUrl,
+		enabled: pending?.status === "creating" && !!hostUrl && intentHasProgress,
 	});
 
 	const steps = progress?.steps ?? [];
 
-	// Elapsed timer + staleness detection
 	const STALE_THRESHOLD_MS = 2 * 60 * 1000;
 	const [now, setNow] = useState(Date.now());
 	useEffect(() => {
@@ -189,7 +241,6 @@ function PendingWorkspacePage() {
 	const isStale =
 		pending?.status === "creating" && elapsedMs > STALE_THRESHOLD_MS;
 
-	// Auto-navigate to real workspace on success
 	useEffect(() => {
 		if (
 			pending?.status === "succeeded" &&
@@ -198,10 +249,8 @@ function PendingWorkspacePage() {
 		) {
 			navigatedRef.current = true;
 
-			// Ensure sidebar local state row exists before writing pane layout
 			ensureWorkspaceInSidebar(pending.workspaceId, pending.projectId);
 
-			// Pre-populate pane layout with setup terminals (already running on host)
 			if (pending.terminals.length > 0) {
 				const paneLayout = buildSetupPaneLayout(pending.terminals);
 				collections.v2WorkspaceLocalState.update(
@@ -216,7 +265,6 @@ function PendingWorkspacePage() {
 				to: "/v2-workspace/$workspaceId",
 				params: { workspaceId: pending.workspaceId },
 			});
-			// Clean up the pending row after a short delay
 			setTimeout(() => {
 				collections.pendingWorkspaces.delete(pendingId);
 			}, 1000);
@@ -231,10 +279,16 @@ function PendingWorkspacePage() {
 		);
 	}
 
+	const creatingLabel =
+		pending.intent === "adopt"
+			? "Adopting worktree..."
+			: pending.intent === "checkout"
+				? "Checking out branch..."
+				: "Creating workspace...";
+
 	return (
 		<div className="flex h-full w-full flex-1 justify-center pt-24">
 			<div className="w-full max-w-sm space-y-5 p-8">
-				{/* Header */}
 				<div className="space-y-1">
 					<h2 className="text-lg font-semibold">{pending.name}</h2>
 					<div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -243,7 +297,6 @@ function PendingWorkspacePage() {
 					</div>
 				</div>
 
-				{/* Status */}
 				{pending.status === "creating" && (
 					<div className="space-y-3">
 						<div className="flex items-center justify-between">
@@ -252,13 +305,13 @@ function PendingWorkspacePage() {
 							>
 								{isStale
 									? "This is taking longer than expected..."
-									: "Creating workspace..."}
+									: creatingLabel}
 							</p>
 							<span className="text-xs tabular-nums text-muted-foreground/50">
 								{elapsedLabel}
 							</span>
 						</div>
-						{steps.length > 0 && (
+						{intentHasProgress && steps.length > 0 ? (
 							<div className="space-y-2">
 								{steps.map((step) => (
 									<div
@@ -288,6 +341,13 @@ function PendingWorkspacePage() {
 									</div>
 								))}
 							</div>
+						) : (
+							// Adopt has no host-side progress steps — show a generic spinner.
+							<div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+								<div className="size-4 flex items-center justify-center">
+									<div className="size-2.5 rounded-full bg-foreground animate-pulse" />
+								</div>
+							</div>
 						)}
 						<div className="flex gap-2 pt-1">
 							<button
@@ -306,9 +366,21 @@ function PendingWorkspacePage() {
 				)}
 
 				{pending.status === "succeeded" && (
-					<div className="flex items-center gap-2 text-sm text-emerald-500">
-						<HiCheck className="size-4" />
-						<span>Workspace created — opening...</span>
+					<div className="space-y-2">
+						<div className="flex items-center gap-2 text-sm text-emerald-500">
+							<HiCheck className="size-4" />
+							<span>Workspace ready — opening...</span>
+						</div>
+						{pending.warnings.length > 0 && (
+							<ul className="space-y-1 text-xs text-amber-500">
+								{pending.warnings.map((w) => (
+									<li key={w} className="flex items-start gap-1.5">
+										<HiExclamationTriangle className="size-3.5 mt-0.5 shrink-0" />
+										<span>{w}</span>
+									</li>
+								))}
+							</ul>
+						)}
 					</div>
 				)}
 
@@ -322,7 +394,10 @@ function PendingWorkspacePage() {
 							<button
 								type="button"
 								className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90"
-								onClick={() => void retryCreate()}
+								onClick={() => {
+									firedRef.current = true; // prevent the mount-effect from racing
+									void fireIntent();
+								}}
 							>
 								Retry
 							</button>

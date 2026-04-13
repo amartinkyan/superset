@@ -30,8 +30,6 @@ import { getEnabledAgentConfigs } from "shared/utils/agent-settings";
 import { sanitizeUserBranchName, slugifyForBranch } from "shared/utils/branch";
 import type { LinkedPR } from "../../../DashboardNewWorkspaceDraftContext";
 import { useDashboardNewWorkspaceDraft } from "../../../DashboardNewWorkspaceDraftContext";
-import { useAdoptWorktree } from "../../../hooks/useAdoptWorktree";
-import { useCheckoutDashboardWorkspace } from "../../../hooks/useCheckoutDashboardWorkspace";
 import { DevicePicker } from "../components/DevicePicker";
 import { type BranchFilter, useBranchContext } from "../hooks/useBranchContext";
 import { AttachmentButtons } from "./components/AttachmentButtons";
@@ -141,11 +139,11 @@ function PromptGroupInner({
 		}
 	}, [projectId, hostTarget, updateDraft]);
 
-	// ── Open + Checkout actions (per-row, bypass submit) ─────────────
+	// ── Per-row actions (Open / Check out / Adopt) ─────────────────────
+	// Mutations live on the pending page now; this component only inserts
+	// pending rows and navigates. See PENDING_FLOW.md.
 	const navigate = useNavigate();
 	const collections = useCollections();
-	const checkoutWorkspace = useCheckoutDashboardWorkspace();
-	const adoptWorktree = useAdoptWorktree();
 
 	const { data: projectWorkspaces } = useLiveQuery(
 		(q) => q.from({ workspaces: collections.v2Workspaces }),
@@ -201,84 +199,75 @@ function PromptGroupInner({
 		[workspaceName],
 	);
 
-	const handleAdoptWorktree = useCallback(
-		(branchName: string) => {
+	// All three intents (fork, checkout, adopt) follow the same shape now:
+	// insert a pending row + close modal + navigate. The pending page owns
+	// the actual host-service mutation. See PENDING_FLOW.md.
+	const insertPendingAndNavigate = useCallback(
+		(row: {
+			pendingId: string;
+			intent: "checkout" | "adopt";
+			workspaceName: string;
+			branchName: string;
+		}) => {
 			if (!projectId) {
 				toast.error("Select a project first");
 				return;
 			}
+			collections.pendingWorkspaces.insert({
+				id: row.pendingId,
+				projectId,
+				intent: row.intent,
+				name: row.workspaceName,
+				branchName: row.branchName,
+				prompt: "",
+				baseBranch: null,
+				baseBranchSource: null,
+				runSetupScript: draft.runSetupScript,
+				linkedIssues: [],
+				linkedPR: null,
+				hostTarget,
+				attachmentCount: 0,
+				status: "creating",
+				error: null,
+				workspaceId: null,
+				warnings: [],
+				createdAt: new Date(),
+			});
 			closeModal();
-			void (async () => {
-				try {
-					const result = await adoptWorktree({
-						projectId,
-						hostTarget,
-						workspaceName: resolveActionWorkspaceName(branchName),
-						branch: branchName,
-					});
-					if (result.workspace?.id) {
-						void navigate({
-							to: "/v2-workspace/$workspaceId",
-							params: { workspaceId: result.workspace.id },
-						});
-					}
-				} catch (err) {
-					toast.error(
-						err instanceof Error ? err.message : "Failed to create workspace",
-					);
-				}
-			})();
+			void navigate({ to: `/pending/${row.pendingId}` as string });
 		},
 		[
 			projectId,
+			collections,
+			draft.runSetupScript,
 			hostTarget,
-			adoptWorktree,
 			closeModal,
 			navigate,
-			resolveActionWorkspaceName,
 		],
+	);
+
+	const handleAdoptWorktree = useCallback(
+		(branchName: string) => {
+			insertPendingAndNavigate({
+				pendingId: crypto.randomUUID(),
+				intent: "adopt",
+				workspaceName: resolveActionWorkspaceName(branchName),
+				branchName,
+			});
+		},
+		[insertPendingAndNavigate, resolveActionWorkspaceName],
 	);
 
 	const handleCheckout = useCallback(
 		(branchName: string) => {
-			if (!projectId) {
-				toast.error("Select a project first");
-				return;
-			}
-			const pendingId = crypto.randomUUID();
-			closeModal();
-			void (async () => {
-				try {
-					const result = await checkoutWorkspace({
-						pendingId,
-						projectId,
-						hostTarget,
-						workspaceName: resolveActionWorkspaceName(branchName),
-						branch: branchName,
-						composer: { runSetupScript: draft.runSetupScript },
-					});
-					if (result.workspace?.id) {
-						void navigate({
-							to: "/v2-workspace/$workspaceId",
-							params: { workspaceId: result.workspace.id },
-						});
-					}
-				} catch (err) {
-					toast.error(
-						err instanceof Error ? err.message : "Failed to check out branch",
-					);
-				}
-			})();
+			insertPendingAndNavigate({
+				pendingId: crypto.randomUUID(),
+				intent: "checkout",
+				workspaceName: resolveActionWorkspaceName(branchName),
+				branchName,
+			});
 		},
-		[
-			projectId,
-			hostTarget,
-			checkoutWorkspace,
-			closeModal,
-			navigate,
-			draft.runSetupScript,
-			resolveActionWorkspaceName,
-		],
+		[insertPendingAndNavigate, resolveActionWorkspaceName],
 	);
 
 	// ── Create ───────────────────────────────────────────────────────

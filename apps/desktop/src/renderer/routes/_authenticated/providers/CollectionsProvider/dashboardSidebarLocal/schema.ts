@@ -76,32 +76,43 @@ export const v2TerminalPresetSchema = z.object({
 });
 
 export const pendingWorkspaceSchema = z.object({
+	// Shared
 	id: z.string().uuid(),
 	projectId: z.string().uuid(),
-	name: z.string(),
-	branchName: z.string(),
-	prompt: z.string(),
-	baseBranch: z.string().nullable().default(null),
-	// Picker hint: which form of `baseBranch` was selected. Lets the host-
-	// service skip re-resolution at create time so it can't be misled by a
-	// stale cached remote ref. Null when the caller didn't specify (legacy
-	// rows + non-picker callers fall back to server-side resolveStartPoint).
-	baseBranchSource: z
-		.enum(["local", "remote-tracking"])
-		.nullable()
-		.default(null),
-	runSetupScript: z.boolean().default(true),
-	linkedIssues: z.array(z.unknown()).default([]),
-	linkedPR: z.unknown().nullable().default(null),
 	hostTarget: z.unknown(),
-	attachmentCount: z.number().int().default(0),
+	// Which mutation the pending page should run. See PENDING_FLOW.md.
+	// Defaults to "fork" for any rows that predate this field.
+	intent: z.enum(["fork", "checkout", "adopt"]).default("fork"),
+	name: z.string(),
+	// fork: derived branch name from prompt; checkout/adopt: existing branch.
+	branchName: z.string(),
 	status: z.enum(["creating", "failed", "succeeded"]).default("creating"),
 	error: z.string().nullable().default(null),
 	workspaceId: z.string().nullable().default(null),
+	// Non-fatal messages from the procedure (e.g. "setup terminal failed").
+	// Pending page renders these on success.
+	warnings: z.array(z.string()).default([]),
 	terminals: z
 		.array(z.object({ id: z.string(), role: z.string(), label: z.string() }))
 		.default([]),
 	createdAt: persistedDateSchema,
+
+	// Fork-only (left at defaults for checkout/adopt).
+	prompt: z.string().default(""),
+	baseBranch: z.string().nullable().default(null),
+	// Picker hint: which form of `baseBranch` was selected. Lets the host-
+	// service skip re-resolution at create time so it can't be misled by a
+	// stale cached remote ref. Null when the caller didn't specify.
+	baseBranchSource: z
+		.enum(["local", "remote-tracking"])
+		.nullable()
+		.default(null),
+	linkedIssues: z.array(z.unknown()).default([]),
+	linkedPR: z.unknown().nullable().default(null),
+	attachmentCount: z.number().int().default(0),
+
+	// fork + checkout (irrelevant for adopt — worktree already exists).
+	runSetupScript: z.boolean().default(true),
 });
 
 export type PendingWorkspaceRow = z.infer<typeof pendingWorkspaceSchema>;
