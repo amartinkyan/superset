@@ -185,19 +185,27 @@ export function findPanePath(
 	return findPanePath(node.second, paneId, [...currentPath, "second"]);
 }
 
-function findEdgePaneId(node: LayoutNode, dir: FocusDirection): string | null {
+// Descent into a sibling subtree once a pivot split has been chosen.
+// - On splits matching the arrow axis: pick the near edge (first for
+//   right/down, second for left/up), preserving alignmentPath.
+// - On perpendicular splits: consume one entry from alignmentPath to
+//   preserve the source pane's cross-axis position; if exhausted, fall
+//   back to `first`.
+function findEdgePaneId(
+	node: LayoutNode,
+	dir: FocusDirection,
+	alignmentPath: SplitPath = [],
+): string | null {
 	if (node.type === "pane") return node.paneId;
 	const axis: SplitDirection =
 		dir === "left" || dir === "right" ? "horizontal" : "vertical";
-	// If the descent hits a split on the matching axis, pick the near edge:
-	// for "right"/"down" the near edge is `first`, for "left"/"up" it's `second`.
-	// For perpendicular splits there is no spatial preference, default to `first`.
 	if (node.direction === axis) {
 		const nearEdge: SplitBranch =
 			dir === "right" || dir === "down" ? "first" : "second";
-		return findEdgePaneId(node[nearEdge], dir);
+		return findEdgePaneId(node[nearEdge], dir, alignmentPath);
 	}
-	return findEdgePaneId(node.first, dir);
+	const [alignedBranch = "first", ...rest] = alignmentPath;
+	return findEdgePaneId(node[alignedBranch], dir, rest);
 }
 
 export function getSpatialNeighborPaneId(
@@ -220,7 +228,7 @@ export function getSpatialNeighborPaneId(
 		if (wantSecond && cameFrom !== "first") continue;
 		if (!wantSecond && cameFrom !== "second") continue;
 		const siblingBranch: SplitBranch = wantSecond ? "second" : "first";
-		return findEdgePaneId(ancestor[siblingBranch], dir);
+		return findEdgePaneId(ancestor[siblingBranch], dir, path.slice(i + 1));
 	}
 	return null;
 }
