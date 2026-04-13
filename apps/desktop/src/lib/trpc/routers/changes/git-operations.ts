@@ -1,6 +1,10 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
+import {
+	extractGitHookOutput,
+	isPreCommitHookFailure,
+} from "../utils/git-hook-tolerance";
 import { getCurrentBranch } from "../workspaces/utils/git";
 import { getSimpleGitWithShellPath } from "../workspaces/utils/git-client";
 import {
@@ -64,9 +68,20 @@ export const createGitOperationsRouter = () => {
 					assertRegisteredWorktree(input.worktreePath);
 
 					const git = await getGitWithShellPath(input.worktreePath);
-					const result = await git.commit(input.message);
-					clearStatusCacheForWorktree(input.worktreePath);
-					return { success: true, hash: result.commit };
+					try {
+						const result = await git.commit(input.message);
+						clearStatusCacheForWorktree(input.worktreePath);
+						return { success: true, hash: result.commit };
+					} catch (error) {
+						if (isPreCommitHookFailure(error)) {
+							const hookOutput = extractGitHookOutput(error);
+							throw new TRPCError({
+								code: "BAD_REQUEST",
+								message: hookOutput ?? "Pre-commit hook failed",
+							});
+						}
+						throw error;
+					}
 				},
 			),
 

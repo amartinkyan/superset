@@ -19,6 +19,30 @@ function getErrorText(error: unknown): string {
 	return String(error);
 }
 
+export function isPreCommitHookFailure(error: unknown): boolean {
+	const text = getErrorText(error).toLowerCase();
+	return (
+		text.includes("pre-commit") ||
+		(text.includes("hook") &&
+			!text.includes("post-checkout") &&
+			(text.includes("husky") ||
+				text.includes("lint-staged") ||
+				text.includes("hook returned") ||
+				text.includes("hook failed")))
+	);
+}
+
+/**
+ * Extracts the full hook output (message + stderr + stdout) from a git error,
+ * suitable for displaying to the user. Returns null if the error is not a
+ * hook failure or has no meaningful extra output.
+ */
+export function extractGitHookOutput(error: unknown): string | null {
+	const text = getErrorText(error);
+	if (text.length === 0) return null;
+	return text;
+}
+
 export function isPostCheckoutHookFailure(error: unknown): boolean {
 	const text = getErrorText(error).toLowerCase();
 	if (!text.includes("post-checkout")) {
