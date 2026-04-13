@@ -28,10 +28,23 @@ function createMockGit(existingFullRefs: Set<string>, defaultBranch?: string) {
 }
 
 describe("resolveStartPoint", () => {
-	test("prefers origin/<branch> when it exists", async () => {
+	test("prefers local branch when it exists (even if origin/<branch> also exists)", async () => {
+		// User picked a branch from a list of refs they can see — fork from
+		// the local state, not a possibly-stale remote ref.
 		const git = createMockGit(
 			new Set(["refs/remotes/origin/main", "refs/heads/main"]),
 		);
+		const result = await resolveStartPoint(git, "main");
+
+		expect(result.kind).toBe("local");
+		if (result.kind === "local") {
+			expect(result.shortName).toBe("main");
+			expect(result.fullRef).toBe("refs/heads/main");
+		}
+	});
+
+	test("falls back to remote-tracking when local doesn't exist", async () => {
+		const git = createMockGit(new Set(["refs/remotes/origin/main"]));
 		const result = await resolveStartPoint(git, "main");
 
 		expect(result.kind).toBe("remote-tracking");
@@ -42,14 +55,32 @@ describe("resolveStartPoint", () => {
 		}
 	});
 
-	test("falls back to local branch when origin/<branch> missing", async () => {
+	test("returns local for a local-only branch (e.g. workspace branch)", async () => {
 		const git = createMockGit(new Set(["refs/heads/main"]));
 		const result = await resolveStartPoint(git, "main");
 
 		expect(result.kind).toBe("local");
 		if (result.kind === "local") {
 			expect(result.shortName).toBe("main");
-			expect(result.fullRef).toBe("refs/heads/main");
+		}
+	});
+
+	// Regression: workspace branches like `agreeable-ermine` exist locally
+	// only. A stale `refs/remotes/origin/agreeable-ermine` cached ref must
+	// not win — `git worktree add ... origin/agreeable-ermine` would fail
+	// with "invalid reference" if the remote ref doesn't actually resolve.
+	test("workspace-style branch (local + stale remote cache) prefers local", async () => {
+		const git = createMockGit(
+			new Set([
+				"refs/heads/agreeable-ermine",
+				"refs/remotes/origin/agreeable-ermine",
+			]),
+		);
+		const result = await resolveStartPoint(git, "agreeable-ermine");
+
+		expect(result.kind).toBe("local");
+		if (result.kind === "local") {
+			expect(result.shortName).toBe("agreeable-ermine");
 		}
 	});
 
@@ -66,10 +97,10 @@ describe("resolveStartPoint", () => {
 		);
 		const result = await resolveStartPoint(git, "develop");
 
-		expect(result.kind).toBe("remote-tracking");
-		if (result.kind === "remote-tracking") {
+		// Local-first.
+		expect(result.kind).toBe("local");
+		if (result.kind === "local") {
 			expect(result.shortName).toBe("develop");
-			expect(result.remoteShortName).toBe("origin/develop");
 		}
 	});
 
@@ -80,8 +111,8 @@ describe("resolveStartPoint", () => {
 		);
 		const result = await resolveStartPoint(git, undefined);
 
-		expect(result.kind).toBe("remote-tracking");
-		if (result.kind === "remote-tracking") {
+		expect(result.kind).toBe("local");
+		if (result.kind === "local") {
 			expect(result.shortName).toBe("master");
 		}
 	});
