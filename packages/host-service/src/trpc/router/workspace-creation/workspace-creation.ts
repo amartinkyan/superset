@@ -6,6 +6,10 @@ import { eq } from "drizzle-orm";
 import simpleGit from "simple-git";
 import { z } from "zod";
 import { projects, workspaces } from "../../../db/schema";
+import {
+	resolveDefaultBranchName,
+	resolveRef,
+} from "../../../runtime/git/refs";
 import { createTerminalSessionInternal } from "../../../terminal/terminal";
 import type { HostServiceContext } from "../../../types";
 import { protectedProcedure, router } from "../../index";
@@ -228,15 +232,25 @@ async function listBranchNames(
 		const raw = await git.raw([
 			"for-each-ref",
 			"--sort=-committerdate",
-			"--format=%(refname:short)",
+			"--format=%(refname)",
 			"refs/heads/",
 			"refs/remotes/origin/",
 		]);
 		const names = new Set<string>();
-		for (const line of raw.trim().split("\n").filter(Boolean)) {
-			let name = line;
-			if (name.startsWith("origin/")) name = name.slice("origin/".length);
-			if (name !== "HEAD") names.add(name);
+		for (const refname of raw.trim().split("\n").filter(Boolean)) {
+			// Use the full refname's structural prefix to classify (safe — a
+			// branch name can't contain `refs/heads/`). Stripping `origin/`
+			// from the SHORT name would misclassify a local branch named
+			// `origin/foo`. See GIT_REFS.md.
+			let name: string;
+			if (refname.startsWith("refs/heads/")) {
+				name = refname.slice("refs/heads/".length);
+			} else if (refname.startsWith("refs/remotes/origin/")) {
+				name = refname.slice("refs/remotes/origin/".length);
+			} else {
+				continue;
+			}
+			if (name && name !== "HEAD") names.add(name);
 		}
 		return Array.from(names);
 	} catch {
@@ -263,17 +277,7 @@ export const workspaceCreationRouter = router({
 			}
 
 			const git = await ctx.git(localProject.repoPath);
-			let defaultBranch: string | null = null;
-			try {
-				const originHead = await git.raw([
-					"symbolic-ref",
-					"refs/remotes/origin/HEAD",
-					"--short",
-				]);
-				defaultBranch = originHead.trim().replace("origin/", "");
-			} catch {
-				defaultBranch = "main";
-			}
+			const defaultBranch: string | null = await resolveDefaultBranchName(git);
 
 			return {
 				projectId: input.projectId,
@@ -322,17 +326,7 @@ export const workspaceCreationRouter = router({
 				}
 			}
 
-			let defaultBranch: string | null = null;
-			try {
-				const originHead = await git.raw([
-					"symbolic-ref",
-					"refs/remotes/origin/HEAD",
-					"--short",
-				]);
-				defaultBranch = originHead.trim().replace("origin/", "");
-			} catch {
-				defaultBranch = "main";
-			}
+			const defaultBranch: string | null = await resolveDefaultBranchName(git);
 
 			const { worktreeMap, checkedOutBranches } = await listWorktreeBranches(
 				git,
@@ -369,18 +363,25 @@ export const workspaceCreationRouter = router({
 					"refs/remotes/origin/",
 				]);
 				for (const line of raw.trim().split("\n").filter(Boolean)) {
-					const [refname, short, ts] = line.split("\t");
-					if (!refname || !short) continue;
+					const [refname, _short, ts] = line.split("\t");
+					if (!refname) continue;
 
-					const isLocal = refname.startsWith("refs/heads/");
-					const isRemote = refname.startsWith("refs/remotes/origin/");
-
-					let name = short;
-					if (isRemote) {
-						if (name === "origin/HEAD") continue;
-						name = name.slice("origin/".length);
+					// Derive isLocal/isRemote and the user-facing name from
+					// the FULL refname's structural prefix — never from the
+					// short form. See GIT_REFS.md.
+					let name: string;
+					let isLocal = false;
+					let isRemote = false;
+					if (refname.startsWith("refs/heads/")) {
+						name = refname.slice("refs/heads/".length);
+						isLocal = true;
+					} else if (refname.startsWith("refs/remotes/origin/")) {
+						name = refname.slice("refs/remotes/origin/".length);
+						isRemote = true;
+					} else {
+						continue;
 					}
-					if (name === "HEAD") continue;
+					if (!name || name === "HEAD") continue;
 
 					const existing = branchMap.get(name);
 					if (existing) {
@@ -562,34 +563,41 @@ export const workspaceCreationRouter = router({
 
 			const git = await ctx.git(localProject.repoPath);
 
-			// Resolve the best start point: prefer origin/<branch> for freshest code,
-			// fall back to local branch, then HEAD.
-			const { ref: startPoint, resolvedFrom } = await resolveStartPoint(
+			// Resolve the best start point: prefer origin/<branch> for freshest
+			// code, fall back to local branch, then HEAD.
+			const startPoint = await resolveStartPoint(
 				git,
 				input.composer.baseBranch,
 			);
 			console.log(
-				`[workspaceCreation.create] start point resolved: ${startPoint} (${resolvedFrom})`,
+				`[workspaceCreation.create] start point resolved: ${startPoint.kind}`,
 			);
 
 			// If we resolved to a remote-tracking ref, fetch just that branch
 			// to ensure we're branching from the latest remote state.
-			if (startPoint.startsWith("origin/")) {
-				const remoteBranch = startPoint.replace(/^origin\//, "");
+			if (startPoint.kind === "remote-tracking") {
 				try {
-					await git.fetch(["origin", remoteBranch, "--quiet", "--no-tags"]);
+					await git.fetch([
+						startPoint.remote,
+						startPoint.shortName,
+						"--quiet",
+						"--no-tags",
+					]);
 				} catch (err) {
 					console.warn(
-						`[workspaceCreation.create] fetch origin ${remoteBranch} failed, proceeding with local ref:`,
+						`[workspaceCreation.create] fetch ${startPoint.remoteShortName} failed, proceeding with local ref:`,
 						err,
 					);
 				}
 			}
 
 			// Always create a new branch — never check out an existing one.
-			// Checking out existing branches is a separate intent (e.g. createFromPr).
+			// Checking out existing branches is a separate intent (createFromPr,
+			// or the picker's Check out action via the `checkout` procedure).
 			// --no-track prevents the new branch from tracking the remote ref
 			// (e.g. origin/main); push.autoSetupRemote handles first-push tracking.
+			const startPointArg =
+				startPoint.kind === "head" ? "HEAD" : startPoint.shortName;
 			await git.raw([
 				"worktree",
 				"add",
@@ -597,7 +605,9 @@ export const workspaceCreationRouter = router({
 				"-b",
 				branchName,
 				worktreePath,
-				startPoint,
+				startPoint.kind === "remote-tracking"
+					? startPoint.remoteShortName
+					: startPointArg,
 			]);
 
 			setProgress(input.pendingId, "registering");
@@ -791,41 +801,32 @@ export const workspaceCreationRouter = router({
 			);
 			const git = await ctx.git(localProject.repoPath);
 
-			// Resolve a valid ref: prefer local, fallback to origin/<branch>.
-			// `git worktree add <path> origin/<branch>` auto-creates a local tracking branch.
-			let ref: string;
-			try {
-				await git.raw([
-					"show-ref",
-					"--verify",
-					"--quiet",
-					`refs/heads/${branch}`,
-				]);
-				ref = branch;
-			} catch {
-				try {
-					await git.raw([
-						"show-ref",
-						"--verify",
-						"--quiet",
-						`refs/remotes/origin/${branch}`,
-					]);
-					ref = `origin/${branch}`;
-				} catch {
-					throw new TRPCError({
-						code: "BAD_REQUEST",
-						message: `Branch "${branch}" does not exist locally or on origin`,
-					});
-				}
+			// Resolve via the discriminated-ref helper so we don't infer kind
+			// from a refname string (a local branch named `origin/foo` would
+			// otherwise be misclassified). See GIT_REFS.md.
+			const resolved = await resolveRef(git, branch);
+			if (!resolved || resolved.kind === "head" || resolved.kind === "tag") {
+				clearProgress(input.pendingId);
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message:
+						resolved?.kind === "tag"
+							? `"${branch}" is a tag, not a branch — cannot check out into a workspace`
+							: `Branch "${branch}" does not exist locally or on origin`,
+				});
 			}
 
-			const isRemoteOnly = ref.startsWith("origin/");
-			if (isRemoteOnly) {
+			if (resolved.kind === "remote-tracking") {
 				try {
-					await git.fetch(["origin", branch, "--quiet", "--no-tags"]);
+					await git.fetch([
+						resolved.remote,
+						resolved.shortName,
+						"--quiet",
+						"--no-tags",
+					]);
 				} catch (err) {
 					console.warn(
-						`[workspaceCreation.checkout] fetch origin ${branch} failed:`,
+						`[workspaceCreation.checkout] fetch ${resolved.remoteShortName} failed:`,
 						err,
 					);
 				}
@@ -837,9 +838,17 @@ export const workspaceCreationRouter = router({
 				// --track/-b produces a detached HEAD because the fully-qualified
 				// ref is treated as a commit-ish, not a branch shorthand.
 				await git.raw(
-					isRemoteOnly
-						? ["worktree", "add", "--track", "-b", branch, worktreePath, ref]
-						: ["worktree", "add", worktreePath, ref],
+					resolved.kind === "remote-tracking"
+						? [
+								"worktree",
+								"add",
+								"--track",
+								"-b",
+								branch,
+								worktreePath,
+								resolved.remoteShortName,
+							]
+						: ["worktree", "add", worktreePath, resolved.shortName],
 				);
 			} catch (err) {
 				clearProgress(input.pendingId);

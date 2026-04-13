@@ -177,6 +177,10 @@ Two layers:
 
 Add the rule as part of the refactor PR, not after — otherwise it'll never get added.
 
+## V1 cleanup
+
+The v1 desktop tRPC routers (`apps/desktop/src/lib/trpc/routers/**`) still use string-based ref handling and have known instances of the bug class. They're excluded from the lint rule for now (see `scripts/check-git-ref-strings.sh`). The reason: v1 and v2 deliberately diverge during the migration window, and porting v1 to `ResolvedRef` is meaningful work that doesn't belong in the same PR as the v2 refactor. When v1 either migrates or sunsets, drop the exclusion and the rule covers everything.
+
 ## Open questions
 
 - **Multi-remote support.** Today `origin` is hardcoded everywhere. The discriminated union encodes `remote: string` so the data model is ready, but `resolveRef` would need to enumerate remotes from `git remote` rather than probing only `refs/remotes/origin/`. Punt until we actually support more than one remote, but make sure the API doesn't bake in `origin`.
