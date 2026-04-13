@@ -60,13 +60,20 @@ export interface ResolveRefOptions {
 }
 
 /**
- * Resolve a user-supplied ref string (branch shortname like `foo` or
- * `origin/foo`, or a tag name) to a `ResolvedRef`. Probes happen against
- * full refnames so the classification is unambiguous.
+ * Resolve a user-supplied ref string to a `ResolvedRef`. Probes happen
+ * against full refnames so the classification is unambiguous.
  *
- * Resolution order:
+ * Accepted input shapes:
+ *   - bare branch name           (`foo`)
+ *   - remote-qualified shortname (`origin/foo`)
+ *   - tag name                   (`v1.0`)
+ *
+ * Resolution order — local always wins, so a local branch literally named
+ * `origin/foo` resolves to `kind: "local"`, not `remote-tracking`:
+ *
  *   1. local branch (`refs/heads/<input>`)
- *   2. remote-tracking branch (`refs/remotes/<remote>/<input>`)
+ *   2. remote-tracking (`refs/remotes/<remote>/<input>`, after stripping
+ *      a leading `<remote>/` from the input if present)
  *   3. tag (`refs/tags/<input>`)
  *   4. HEAD fallback (only if `headFallback: true`)
  *
@@ -83,19 +90,30 @@ export async function resolveRef(
 		return options.headFallback ? { kind: "head" } : null;
 	}
 
+	// Local always wins: if a local branch literally named `<input>` exists
+	// (including names like `origin/foo`), it takes precedence. Probes against
+	// the full refname so the structural prefix removes any ambiguity.
 	const localRef = asLocalRef(trimmed);
 	if (await refExists(git, localRef)) {
 		return { kind: "local", fullRef: localRef, shortName: trimmed };
 	}
 
-	const remoteRef = asRemoteRef(remote, trimmed);
+	// For the remote probe, accept both bare names (`foo`) and the natural
+	// short form (`origin/foo`). Strip the `<remote>/` prefix only if it's
+	// present in the input — without this, `origin/foo` would probe
+	// `refs/remotes/origin/origin/foo` and miss.
+	const remotePrefix = `${remote}/`;
+	const remoteShortName = trimmed.startsWith(remotePrefix)
+		? trimmed.slice(remotePrefix.length)
+		: trimmed;
+	const remoteRef = asRemoteRef(remote, remoteShortName);
 	if (await refExists(git, remoteRef)) {
 		return {
 			kind: "remote-tracking",
 			fullRef: remoteRef,
-			shortName: trimmed,
+			shortName: remoteShortName,
 			remote,
-			remoteShortName: `${remote}/${trimmed}`,
+			remoteShortName: `${remote}/${remoteShortName}`,
 		};
 	}
 

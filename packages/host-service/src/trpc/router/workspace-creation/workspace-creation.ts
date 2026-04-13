@@ -173,18 +173,20 @@ async function listWorktreeBranches(
 				const branch = line.slice("branch refs/heads/".length).trim();
 				if (!branch) continue;
 				checkedOutBranches.add(branch);
-				if (
-					currentPath === worktreesRoot ||
-					currentPath.startsWith(worktreesRoot + sep)
-				) {
+				// Superset-managed worktrees live under <repoPath>/.worktrees/<name>;
+				// the primary working tree is at repoPath itself and skipped here.
+				if (currentPath.startsWith(worktreesRoot + sep)) {
 					worktreeMap.set(branch, currentPath);
 				}
 			} else if (line === "") {
 				currentPath = null;
 			}
 		}
-	} catch {
-		// ignore
+	} catch (err) {
+		console.warn(
+			"[workspace-creation] git worktree list failed; treating no branches as checked out:",
+			err,
+		);
 	}
 	return { worktreeMap, checkedOutBranches };
 }

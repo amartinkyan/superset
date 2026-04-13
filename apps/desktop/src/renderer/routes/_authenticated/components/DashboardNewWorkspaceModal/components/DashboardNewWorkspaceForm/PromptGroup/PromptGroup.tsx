@@ -193,6 +193,14 @@ function PromptGroupInner({
 		[workspaceByBranch, closeModal, navigate],
 	);
 
+	// Respect the user's typed workspace name when set. The picker actions
+	// (Create / Check out) bypass the modal submit, so they don't get the
+	// resolveNames pass — fall back to the branch name explicitly.
+	const resolveActionWorkspaceName = useCallback(
+		(branchName: string) => workspaceName.trim() || branchName,
+		[workspaceName],
+	);
+
 	const handleAdoptWorktree = useCallback(
 		(branchName: string) => {
 			if (!projectId) {
@@ -205,7 +213,7 @@ function PromptGroupInner({
 					const result = await adoptWorktree({
 						projectId,
 						hostTarget,
-						workspaceName: branchName,
+						workspaceName: resolveActionWorkspaceName(branchName),
 						branch: branchName,
 					});
 					if (result.workspace?.id) {
@@ -221,7 +229,14 @@ function PromptGroupInner({
 				}
 			})();
 		},
-		[projectId, hostTarget, adoptWorktree, closeModal, navigate],
+		[
+			projectId,
+			hostTarget,
+			adoptWorktree,
+			closeModal,
+			navigate,
+			resolveActionWorkspaceName,
+		],
 	);
 
 	const handleCheckout = useCallback(
@@ -238,7 +253,7 @@ function PromptGroupInner({
 						pendingId,
 						projectId,
 						hostTarget,
-						workspaceName: branchName,
+						workspaceName: resolveActionWorkspaceName(branchName),
 						branch: branchName,
 						composer: { runSetupScript: draft.runSetupScript },
 					});
@@ -262,6 +277,7 @@ function PromptGroupInner({
 			closeModal,
 			navigate,
 			draft.runSetupScript,
+			resolveActionWorkspaceName,
 		],
 	);
 

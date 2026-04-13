@@ -17,18 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { GoGitBranch } from "react-icons/go";
 import { HiCheck, HiChevronUpDown } from "react-icons/hi2";
 import { formatRelativeTime } from "renderer/lib/formatRelativeTime";
-import type { BranchFilter } from "../../../hooks/useBranchContext";
-
-interface BranchRow {
-	name: string;
-	lastCommitDate: number;
-	isLocal: boolean;
-	isRemote: boolean;
-	recency: number | null;
-	worktreePath: string | null;
-	hasWorkspace: boolean;
-	isCheckedOut: boolean;
-}
+import type { BranchFilter, BranchRow } from "../../../hooks/useBranchContext";
 
 interface CompareBaseBranchPickerProps {
 	effectiveCompareBaseBranch: string | null;
@@ -74,9 +63,17 @@ export function CompareBaseBranchPicker({
 		if (!open || !hasNextPage || isFetchingNextPage) return;
 		const el = sentinelRef.current;
 		if (!el) return;
+		// Guard against cascade: when isFetchingNextPage flips false → effect
+		// re-runs → observer reattaches → if sentinel is still in the root
+		// margin (e.g. tall viewport, small page), the callback fires again
+		// immediately. Re-checking the latest fetch state avoids loading every
+		// remaining page in one chain.
+		let inFlight = false;
 		const observer = new IntersectionObserver(
 			(entries) => {
+				if (inFlight) return;
 				if (entries.some((e) => e.isIntersecting)) {
+					inFlight = true;
 					onLoadMore();
 				}
 			},
@@ -201,9 +198,14 @@ export function CompareBaseBranchPicker({
 											) : branch.isCheckedOut ? (
 												<Tooltip>
 													<TooltipTrigger asChild>
+														{/*
+															Use aria-disabled, NOT the native `disabled` attribute.
+															Native disabled buttons don't fire pointer events, so the
+															Tooltip never sees hover/focus and never opens — defeating
+															the purpose of explaining why the button is unavailable.
+														*/}
 														<button
 															type="button"
-															disabled
 															aria-disabled="true"
 															className="hidden group-hover:inline-flex group-focus-within:inline-flex items-center rounded-sm bg-muted px-2 py-0.5 text-[11px] text-muted-foreground/70 cursor-not-allowed"
 															onClick={(e) => e.stopPropagation()}
