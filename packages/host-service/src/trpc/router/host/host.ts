@@ -1,7 +1,6 @@
 import os from "node:os";
 import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { TRPCError } from "@trpc/server";
-import type { ApiClient } from "../../../types";
 import { protectedProcedure, router } from "../../index";
 
 const HOST_SERVICE_VERSION = "0.1.0";
@@ -12,9 +11,24 @@ let cachedOrganization: {
 	cachedAt: number;
 } | null = null;
 
-async function getOrganization(
-	api: ApiClient,
-): Promise<{ id: string; name: string; slug: string }> {
+async function getOrganization(input: {
+	api?: {
+		organization: {
+			getActiveFromJwt: {
+				query: () => Promise<{ id: string; name: string; slug: string } | null>;
+			};
+		};
+	};
+	organizationId: string;
+}): Promise<{ id: string; name: string; slug: string }> {
+	if (!input.api) {
+		return {
+			id: input.organizationId,
+			name: "Local Development",
+			slug: "local-development",
+		};
+	}
+
 	if (
 		cachedOrganization &&
 		Date.now() - cachedOrganization.cachedAt < ORGANIZATION_CACHE_TTL_MS
@@ -22,7 +36,7 @@ async function getOrganization(
 		return cachedOrganization.data;
 	}
 
-	const organization = await api.organization.getActiveFromJwt.query();
+	const organization = await input.api.organization.getActiveFromJwt.query();
 	if (!organization) {
 		throw new TRPCError({
 			code: "PRECONDITION_FAILED",
@@ -36,8 +50,10 @@ async function getOrganization(
 
 export const hostRouter = router({
 	info: protectedProcedure.query(async ({ ctx }) => {
-		const api = (ctx as { api: ApiClient }).api;
-		const organization = await getOrganization(api);
+		const organization = await getOrganization({
+			api: ctx.api,
+			organizationId: ctx.organizationId,
+		});
 
 		return {
 			hostId: getHashedDeviceId(),

@@ -80,6 +80,13 @@ async function resolveGithubRepo(
 	ctx: HostServiceContext,
 	projectId: string,
 ): Promise<{ owner: string; name: string }> {
+	if (!ctx.api) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: "Cloud API not configured",
+		});
+	}
+
 	const cloudProject = await ctx.api.v2Project.get.query({
 		organizationId: ctx.organizationId,
 		id: projectId,
@@ -316,6 +323,14 @@ export const workspaceCreationRouter = router({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
+			if (!ctx.api) {
+				throw new TRPCError({
+					code: "PRECONDITION_FAILED",
+					message: "Cloud API not configured",
+				});
+			}
+
+			const api = ctx.api;
 			const deviceClientId = getHashedDeviceId();
 			const deviceName = getDeviceName();
 			setProgress(input.pendingId, "ensuring_repo");
@@ -326,7 +341,7 @@ export const workspaceCreationRouter = router({
 				.sync();
 
 			if (!localProject) {
-				const cloudProject = await ctx.api.v2Project.get.query({
+				const cloudProject = await api.v2Project.get.query({
 					organizationId: ctx.organizationId,
 					id: input.projectId,
 				});
@@ -437,7 +452,7 @@ export const workspaceCreationRouter = router({
 
 			let host: { id: string };
 			try {
-				host = await ctx.api.device.ensureV2Host.mutate({
+				host = await api.device.ensureV2Host.mutate({
 					organizationId: ctx.organizationId,
 					machineId: deviceClientId,
 					name: deviceName,
@@ -452,7 +467,7 @@ export const workspaceCreationRouter = router({
 				});
 			}
 
-			const cloudRow = await ctx.api.v2Workspace.create
+			const cloudRow = await api.v2Workspace.create
 				.mutate({
 					organizationId: ctx.organizationId,
 					projectId: input.projectId,

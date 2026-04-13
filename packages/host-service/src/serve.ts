@@ -12,10 +12,10 @@ async function main(): Promise<void> {
 	const terminalBaseEnv = await resolveTerminalBaseEnv();
 	initTerminalBaseEnv(terminalBaseEnv);
 
-	const authProvider = new JwtApiAuthProvider(
-		env.AUTH_TOKEN,
-		env.CLOUD_API_URL,
-	);
+	const authProvider =
+		env.AUTH_TOKEN && env.CLOUD_API_URL
+			? new JwtApiAuthProvider(env.AUTH_TOKEN, env.CLOUD_API_URL)
+			: null;
 
 	const { app, injectWebSocket, api } = createApp({
 		config: {
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 	const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
 		console.log(`[host-service] listening on http://localhost:${info.port}`);
 
-		if (env.RELAY_URL) {
+		if (env.RELAY_URL && api && authProvider) {
 			void connectRelay({
 				api,
 				relayUrl: env.RELAY_URL,

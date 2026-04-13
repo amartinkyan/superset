@@ -25,10 +25,10 @@ async function main(): Promise<void> {
 	const terminalBaseEnv = await resolveTerminalBaseEnv();
 	initTerminalBaseEnv(terminalBaseEnv);
 
-	const authProvider = new JwtApiAuthProvider(
-		env.AUTH_TOKEN,
-		env.CLOUD_API_URL,
-	);
+	const authProvider =
+		env.AUTH_TOKEN && env.CLOUD_API_URL
+			? new JwtApiAuthProvider(env.AUTH_TOKEN, env.CLOUD_API_URL)
+			: null;
 
 	const { app, injectWebSocket, api } = createApp({
 		config: {
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
 				}
 			}
 
-			if (env.RELAY_URL && env.ORGANIZATION_ID) {
+			if (env.RELAY_URL && env.ORGANIZATION_ID && api && authProvider) {
 				void connectRelay({
 					api,
 					relayUrl: env.RELAY_URL,

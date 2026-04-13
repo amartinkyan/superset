@@ -18,7 +18,7 @@ export interface HostServiceRuntime {
 export interface HostServiceContext {
 	git: GitFactory;
 	github: () => Promise<Octokit>;
-	api: ApiClient;
+	api?: ApiClient;
 	db: HostDb;
 	runtime: HostServiceRuntime;
 	organizationId: string;

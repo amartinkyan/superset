@@ -23,12 +23,12 @@ export interface CreateAppOptions {
 	config: {
 		organizationId: string;
 		dbPath: string;
-		cloudApiUrl: string;
+		cloudApiUrl?: string;
 		migrationsFolder: string;
 		allowedOrigins: string[];
 	};
 	providers: {
-		auth: ApiAuthProvider;
+		auth?: ApiAuthProvider | null;
 		hostAuth: HostAuthProvider;
 		credentials: GitCredentialProvider;
 		modelResolver: ModelProviderRuntimeResolver;
@@ -38,13 +38,16 @@ export interface CreateAppOptions {
 export interface CreateAppResult {
 	app: Hono;
 	injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
-	api: ApiClient;
+	api: ApiClient | null;
 }
 
 export function createApp(options: CreateAppOptions): CreateAppResult {
 	const { config, providers } = options;
 
-	const api = createApiClient(config.cloudApiUrl, providers.auth);
+	const api =
+		config.cloudApiUrl && providers.auth
+			? createApiClient(config.cloudApiUrl, providers.auth)
+			: null;
 	const db = createDb(config.dbPath, config.migrationsFolder);
 	const git = createGitFactory(providers.credentials);
 	const github = async () => {
@@ -115,7 +118,7 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 				return {
 					git,
 					github,
-					api,
+					...(api ? { api } : {}),
 					db,
 					runtime,
 					organizationId: config.organizationId,
