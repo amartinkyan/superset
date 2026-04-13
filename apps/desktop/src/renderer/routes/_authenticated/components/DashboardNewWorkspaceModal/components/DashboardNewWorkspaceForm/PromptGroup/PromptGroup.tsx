@@ -9,7 +9,10 @@ import {
 	useProviderAttachments,
 } from "@superset/ui/ai-elements/prompt-input";
 import { Input } from "@superset/ui/input";
+import { toast } from "@superset/ui/sonner";
 import { cn } from "@superset/ui/utils";
+import { useLiveQuery } from "@tanstack/react-db";
+import { useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,11 +23,13 @@ import { IssueLinkCommand } from "renderer/components/Chat/ChatInterface/compone
 import { useAgentLaunchPreferences } from "renderer/hooks/useAgentLaunchPreferences";
 import { PLATFORM } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { useNewWorkspaceModalOpen } from "renderer/stores/new-workspace-modal";
 import { getEnabledAgentConfigs } from "shared/utils/agent-settings";
 import { sanitizeUserBranchName, slugifyForBranch } from "shared/utils/branch";
 import type { LinkedPR } from "../../../DashboardNewWorkspaceDraftContext";
 import { useDashboardNewWorkspaceDraft } from "../../../DashboardNewWorkspaceDraftContext";
+import { useCheckoutDashboardWorkspace } from "../../../hooks/useCheckoutDashboardWorkspace";
 import { DevicePicker } from "../components/DevicePicker";
 import { type BranchFilter, useBranchContext } from "../hooks/useBranchContext";
 import { AttachmentButtons } from "./components/AttachmentButtons";
@@ -133,6 +138,84 @@ function PromptGroupInner({
 			updateDraft({ baseBranch: null });
 		}
 	}, [projectId, hostTarget, updateDraft]);
+
+	// ── Open + Checkout actions (per-row, bypass submit) ─────────────
+	const navigate = useNavigate();
+	const collections = useCollections();
+	const checkoutWorkspace = useCheckoutDashboardWorkspace();
+
+	const { data: projectWorkspaces } = useLiveQuery(
+		(q) => q.from({ workspaces: collections.v2Workspaces }),
+		[collections],
+	);
+
+	const workspaceByBranch = useMemo(() => {
+		const map = new Map<string, string>();
+		if (!projectId || !projectWorkspaces) return map;
+		for (const w of projectWorkspaces) {
+			if (w.projectId === projectId && w.branch) {
+				map.set(w.branch, w.id);
+			}
+		}
+		return map;
+	}, [projectId, projectWorkspaces]);
+
+	const handleOpenExisting = useCallback(
+		(branchName: string) => {
+			const workspaceId = workspaceByBranch.get(branchName);
+			if (!workspaceId) {
+				toast.error("Could not find existing workspace for this branch");
+				return;
+			}
+			closeModal();
+			void navigate({
+				to: "/v2-workspace/$workspaceId",
+				params: { workspaceId },
+			});
+		},
+		[workspaceByBranch, closeModal, navigate],
+	);
+
+	const handleCheckout = useCallback(
+		(branchName: string) => {
+			if (!projectId) {
+				toast.error("Select a project first");
+				return;
+			}
+			const pendingId = crypto.randomUUID();
+			closeModal();
+			void (async () => {
+				try {
+					const result = await checkoutWorkspace({
+						pendingId,
+						projectId,
+						hostTarget,
+						workspaceName: branchName,
+						branch: branchName,
+						composer: { runSetupScript: draft.runSetupScript },
+					});
+					if (result.workspace?.id) {
+						void navigate({
+							to: "/v2-workspace/$workspaceId",
+							params: { workspaceId: result.workspace.id },
+						});
+					}
+				} catch (err) {
+					toast.error(
+						err instanceof Error ? err.message : "Failed to check out branch",
+					);
+				}
+			})();
+		},
+		[
+			projectId,
+			hostTarget,
+			checkoutWorkspace,
+			closeModal,
+			navigate,
+			draft.runSetupScript,
+		],
+	);
 
 	// ── Create ───────────────────────────────────────────────────────
 	const handleCreate = useSubmitWorkspace(projectId);
@@ -429,6 +512,8 @@ function PromptGroupInner({
 									onSelectCompareBaseBranch={(branch) =>
 										updateDraft({ baseBranch: branch })
 									}
+									onCheckoutBranch={handleCheckout}
+									onOpenExisting={handleOpenExisting}
 								/>
 							</motion.div>
 						)}

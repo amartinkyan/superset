@@ -105,6 +105,7 @@ type BranchRow = {
 	isRemote: boolean;
 	recency: number | null;
 	worktreePath: string | null;
+	isCheckedOut: boolean;
 };
 
 function encodeCursor(offset: number): string {
@@ -142,12 +143,18 @@ type GitClient = Awaited<ReturnType<HostServiceContext["git"]>>;
 async function listWorktreeBranches(
 	git: GitClient,
 	repoPath: string,
-): Promise<Map<string, string>> {
-	// Only include Superset-managed worktrees (under <repoPath>/.worktrees/).
-	// `git worktree list` also reports the primary working tree, which is the
-	// main clone — its branch should not be treated as "has a workspace".
+): Promise<{
+	// Superset-managed worktrees only (under <repoPath>/.worktrees/).
+	// These count as "has a workspace" for the picker.
+	worktreeMap: Map<string, string>;
+	// Every branch checked out in any git worktree, including the primary
+	// working tree. Used to disable the Checkout action when a branch is
+	// already in use elsewhere — `git worktree add <path> <branch>` would fail.
+	checkedOutBranches: Set<string>;
+}> {
 	const worktreesRoot = resolve(repoPath, ".worktrees");
-	const map = new Map<string, string>();
+	const worktreeMap = new Map<string, string>();
+	const checkedOutBranches = new Set<string>();
 	try {
 		const raw = await git.raw(["worktree", "list", "--porcelain"]);
 		let currentPath: string | null = null;
@@ -155,12 +162,14 @@ async function listWorktreeBranches(
 			if (line.startsWith("worktree ")) {
 				currentPath = line.slice("worktree ".length).trim();
 			} else if (line.startsWith("branch refs/heads/") && currentPath) {
+				const branch = line.slice("branch refs/heads/".length).trim();
+				if (!branch) continue;
+				checkedOutBranches.add(branch);
 				if (
 					currentPath === worktreesRoot ||
 					currentPath.startsWith(worktreesRoot + sep)
 				) {
-					const branch = line.slice("branch refs/heads/".length).trim();
-					if (branch) map.set(branch, currentPath);
+					worktreeMap.set(branch, currentPath);
 				}
 			} else if (line === "") {
 				currentPath = null;
@@ -169,7 +178,7 @@ async function listWorktreeBranches(
 	} catch {
 		// ignore
 	}
-	return map;
+	return { worktreeMap, checkedOutBranches };
 }
 
 // Parses `git log -g` to return {branchName: ordinal} where 0 = most recent.
@@ -284,32 +293,17 @@ export const workspaceCreationRouter = router({
 			const limit = input.limit ?? 50;
 			const offset = decodeCursor(input.cursor);
 
-			console.log("[searchBranches] input", {
-				projectId: input.projectId,
-				query: input.query,
-				filter: input.filter,
-				cursor: input.cursor,
-				limit,
-				refresh: input.refresh,
-			});
-
 			const localProject = ctx.db.query.projects
 				.findFirst({ where: eq(projects.id, input.projectId) })
 				.sync();
 
 			if (!localProject) {
-				console.warn(
-					"[searchBranches] no local project row for",
-					input.projectId,
-				);
 				return {
 					defaultBranch: null as string | null,
 					items: [] as BranchRow[],
 					nextCursor: null as string | null,
 				};
 			}
-
-			console.log("[searchBranches] repoPath", localProject.repoPath);
 
 			const git = await ctx.git(localProject.repoPath);
 
@@ -336,14 +330,11 @@ export const workspaceCreationRouter = router({
 				defaultBranch = "main";
 			}
 
-			const worktreeMap = await listWorktreeBranches(
+			const { worktreeMap, checkedOutBranches } = await listWorktreeBranches(
 				git,
 				localProject.repoPath,
 			);
 			const recencyMap = await getRecentBranchOrder(git, 30);
-			console.log("[searchBranches] worktreeMap entries", [
-				...worktreeMap.entries(),
-			]);
 
 			type BranchAccum = {
 				name: string;
@@ -392,27 +383,13 @@ export const workspaceCreationRouter = router({
 			}
 
 			let branches = Array.from(branchMap.values());
-			console.log(
-				"[searchBranches] for-each-ref total",
-				branches.length,
-				"sample",
-				branches.slice(0, 5).map((b) => b.name),
-			);
 
-			const beforeFilter = branches.length;
 			if (input.filter === "worktree") {
 				branches = branches.filter((b) => worktreeMap.has(b.name));
 			} else {
 				// default "branch": any branch (local or remote) without a worktree
 				branches = branches.filter((b) => !worktreeMap.has(b.name));
 			}
-			console.log(
-				"[searchBranches] after filter",
-				input.filter ?? "branch",
-				beforeFilter,
-				"→",
-				branches.length,
-			);
 
 			if (input.query) {
 				const q = input.query.toLowerCase();
@@ -449,15 +426,8 @@ export const workspaceCreationRouter = router({
 				isRemote: b.isRemote,
 				recency: recencyMap.get(b.name) ?? null,
 				worktreePath: worktreeMap.get(b.name) ?? null,
+				isCheckedOut: checkedOutBranches.has(b.name),
 			}));
-
-			console.log("[searchBranches] returning", {
-				defaultBranch,
-				total: branches.length,
-				pageSize: items.length,
-				hasMore,
-				worktreeCount: worktreeMap.size,
-			});
 
 			return { defaultBranch, items, nextCursor };
 		}),
@@ -717,6 +687,238 @@ export const workspaceCreationRouter = router({
 				terminals,
 				warnings,
 			};
+		}),
+
+	/**
+	 * Check out an existing branch into a new workspace. Unlike `create`, this
+	 * reuses the branch name as-is (no new branch) — `git worktree add` without
+	 * `-b`. Fails if the branch is already checked out elsewhere.
+	 */
+	checkout: protectedProcedure
+		.input(
+			z.object({
+				pendingId: z.string(),
+				projectId: z.string(),
+				workspaceName: z.string(),
+				branch: z.string(),
+				composer: z.object({
+					prompt: z.string().optional(),
+					runSetupScript: z.boolean().optional(),
+				}),
+				linkedContext: z
+					.object({
+						internalIssueIds: z.array(z.string()).optional(),
+						githubIssueUrls: z.array(z.string()).optional(),
+						linkedPrUrl: z.string().optional(),
+						attachments: z
+							.array(
+								z.object({
+									data: z.string(),
+									mediaType: z.string(),
+									filename: z.string().optional(),
+								}),
+							)
+							.optional(),
+					})
+					.optional(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const deviceClientId = getHashedDeviceId();
+			const deviceName = getDeviceName();
+			setProgress(input.pendingId, "ensuring_repo");
+
+			// 1. Ensure project locally (clone if missing) — same as create
+			let localProject = ctx.db.query.projects
+				.findFirst({ where: eq(projects.id, input.projectId) })
+				.sync();
+
+			if (!localProject) {
+				const cloudProject = await ctx.api.v2Project.get.query({
+					organizationId: ctx.organizationId,
+					id: input.projectId,
+				});
+				if (!cloudProject.repoCloneUrl) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: "Project has no linked GitHub repository — cannot clone",
+					});
+				}
+				const homeDir = process.env.HOME || process.env.USERPROFILE || "/tmp";
+				const repoPath = join(homeDir, ".superset", "repos", input.projectId);
+				if (!existsSync(repoPath)) {
+					mkdirSync(dirname(repoPath), { recursive: true });
+					await simpleGit().clone(cloudProject.repoCloneUrl, repoPath);
+				}
+				localProject = ctx.db
+					.insert(projects)
+					.values({ id: input.projectId, repoPath })
+					.returning()
+					.get();
+			}
+
+			setProgress(input.pendingId, "creating_worktree");
+
+			const branch = input.branch.trim();
+			if (!branch) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Branch name is empty",
+				});
+			}
+
+			const worktreePath = safeResolveWorktreePath(
+				localProject.repoPath,
+				branch,
+			);
+			const git = await ctx.git(localProject.repoPath);
+
+			// Resolve a valid ref: prefer local, fallback to origin/<branch>.
+			// `git worktree add <path> origin/<branch>` auto-creates a local tracking branch.
+			let ref: string;
+			try {
+				await git.raw([
+					"show-ref",
+					"--verify",
+					"--quiet",
+					`refs/heads/${branch}`,
+				]);
+				ref = branch;
+			} catch {
+				try {
+					await git.raw([
+						"show-ref",
+						"--verify",
+						"--quiet",
+						`refs/remotes/origin/${branch}`,
+					]);
+					ref = `origin/${branch}`;
+				} catch {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: `Branch "${branch}" does not exist locally or on origin`,
+					});
+				}
+			}
+
+			if (ref.startsWith("origin/")) {
+				try {
+					await git.fetch(["origin", branch, "--quiet", "--no-tags"]);
+				} catch (err) {
+					console.warn(
+						`[workspaceCreation.checkout] fetch origin ${branch} failed:`,
+						err,
+					);
+				}
+			}
+
+			try {
+				await git.raw(["worktree", "add", worktreePath, ref]);
+			} catch (err) {
+				clearProgress(input.pendingId);
+				const message =
+					err instanceof Error ? err.message : "Failed to add worktree";
+				// Most common cause here is "branch already checked out elsewhere".
+				// Client disables the button for known cases via isCheckedOut, but
+				// we still get here for races.
+				throw new TRPCError({ code: "CONFLICT", message });
+			}
+
+			setProgress(input.pendingId, "registering");
+
+			const rollbackWorktree = async () => {
+				try {
+					await git.raw(["worktree", "remove", worktreePath]);
+				} catch (err) {
+					console.warn(
+						"[workspaceCreation.checkout] failed to rollback worktree",
+						{ worktreePath, err },
+					);
+				}
+			};
+
+			let host: { id: string };
+			try {
+				host = await ctx.api.device.ensureV2Host.mutate({
+					organizationId: ctx.organizationId,
+					machineId: deviceClientId,
+					name: deviceName,
+				});
+			} catch (err) {
+				console.error("[workspaceCreation.checkout] ensureV2Host failed", err);
+				clearProgress(input.pendingId);
+				await rollbackWorktree();
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: `Failed to register host: ${err instanceof Error ? err.message : String(err)}`,
+				});
+			}
+
+			const cloudRow = await ctx.api.v2Workspace.create
+				.mutate({
+					organizationId: ctx.organizationId,
+					projectId: input.projectId,
+					name: input.workspaceName,
+					branch,
+					hostId: host.id,
+				})
+				.catch(async (err) => {
+					console.error(
+						"[workspaceCreation.checkout] v2Workspace.create failed",
+						err,
+					);
+					clearProgress(input.pendingId);
+					await rollbackWorktree();
+					throw err;
+				});
+
+			if (!cloudRow) {
+				clearProgress(input.pendingId);
+				await rollbackWorktree();
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Cloud workspace create returned no row",
+				});
+			}
+
+			ctx.db
+				.insert(workspaces)
+				.values({
+					id: cloudRow.id,
+					projectId: input.projectId,
+					worktreePath,
+					branch,
+				})
+				.run();
+
+			const terminals: Array<{ id: string; role: string; label: string }> = [];
+			const warnings: string[] = [];
+
+			if (input.composer.runSetupScript) {
+				const setupScriptPath = join(worktreePath, ".superset", "setup.sh");
+				if (existsSync(setupScriptPath)) {
+					const terminalId = crypto.randomUUID();
+					const result = createTerminalSessionInternal({
+						terminalId,
+						workspaceId: cloudRow.id,
+						db: ctx.db,
+						initialCommand: `bash "${setupScriptPath}"`,
+					});
+					if ("error" in result) {
+						warnings.push(`Failed to start setup terminal: ${result.error}`);
+					} else {
+						terminals.push({
+							id: terminalId,
+							role: "setup",
+							label: "Workspace Setup",
+						});
+					}
+				}
+			}
+
+			clearProgress(input.pendingId);
+
+			return { workspace: cloudRow, terminals, warnings };
 		}),
 
 	// ── GitHub endpoints for the link commands ────────────────────────

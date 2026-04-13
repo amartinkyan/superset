@@ -49,11 +49,10 @@ export function useBranchContext(
 		getNextPageParam: (last: BranchPage) => last.nextCursor ?? undefined,
 		queryFn: async ({ pageParam }): Promise<BranchPage> => {
 			if (!hostUrl || !projectId) {
-				console.warn("[useBranchContext] skip", { hostUrl, projectId });
 				return { defaultBranch: null, items: [], nextCursor: null };
 			}
 			const client = getHostServiceClientByUrl(hostUrl);
-			const res = await client.workspaceCreation.searchBranches.query({
+			return client.workspaceCreation.searchBranches.query({
 				projectId,
 				query: query || undefined,
 				cursor: pageParam,
@@ -61,16 +60,6 @@ export function useBranchContext(
 				refresh: pageParam === undefined,
 				filter,
 			});
-			console.log("[useBranchContext] page", {
-				filter,
-				query,
-				pageParam,
-				defaultBranch: res?.defaultBranch,
-				itemCount: res?.items?.length,
-				sampleNames: res?.items?.slice(0, 5).map((b) => b.name),
-				nextCursor: res?.nextCursor,
-			});
-			return res;
 		},
 	});
 
