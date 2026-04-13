@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { gitHubStatusSchema } from "@superset/local-db";
+import { gitHubStatusSchema } from "@superset/local-db/schema/zod";
 import { GHPRResponseSchema } from "./types";
 
 describe("baseRefName in PR schemas", () => {
