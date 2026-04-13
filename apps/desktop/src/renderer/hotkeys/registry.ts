@@ -330,31 +330,11 @@ export const HOTKEYS_REGISTRY = {
 		label: "Next Tab (Alt)",
 		category: "Terminal",
 	},
-	PREV_PANE: {
-		key: {
-			mac: "meta+shift+left",
-			windows: "ctrl+shift+alt+left",
-			linux: "ctrl+shift+alt+left",
-		},
-		label: "Previous Pane",
-		category: "Terminal",
-		description: "Focus the previous pane in the current tab",
-	},
-	NEXT_PANE: {
-		key: {
-			mac: "meta+shift+right",
-			windows: "ctrl+shift+alt+right",
-			linux: "ctrl+shift+alt+right",
-		},
-		label: "Next Pane",
-		category: "Terminal",
-		description: "Focus the next pane in the current tab",
-	},
 	FOCUS_PANE_LEFT: {
 		key: {
 			mac: "meta+alt+left",
-			windows: "ctrl+alt+left",
-			linux: "ctrl+alt+left",
+			windows: "ctrl+shift+alt+left",
+			linux: "ctrl+shift+alt+left",
 		},
 		label: "Focus Pane Left",
 		category: "Terminal",
@@ -363,8 +343,8 @@ export const HOTKEYS_REGISTRY = {
 	FOCUS_PANE_RIGHT: {
 		key: {
 			mac: "meta+alt+right",
-			windows: "ctrl+alt+right",
-			linux: "ctrl+alt+right",
+			windows: "ctrl+shift+alt+right",
+			linux: "ctrl+shift+alt+right",
 		},
 		label: "Focus Pane Right",
 		category: "Terminal",
@@ -373,8 +353,8 @@ export const HOTKEYS_REGISTRY = {
 	FOCUS_PANE_UP: {
 		key: {
 			mac: "meta+alt+up",
-			windows: "ctrl+alt+up",
-			linux: "ctrl+alt+up",
+			windows: "ctrl+shift+alt+up",
+			linux: "ctrl+shift+alt+up",
 		},
 		label: "Focus Pane Up",
 		category: "Terminal",
@@ -383,8 +363,8 @@ export const HOTKEYS_REGISTRY = {
 	FOCUS_PANE_DOWN: {
 		key: {
 			mac: "meta+alt+down",
-			windows: "ctrl+alt+down",
-			linux: "ctrl+alt+down",
+			windows: "ctrl+shift+alt+down",
+			linux: "ctrl+shift+alt+down",
 		},
 		label: "Focus Pane Down",
 		category: "Terminal",

@@ -125,26 +125,6 @@ export function useWorkspaceHotkeys({
 
 	// --- Pane management ---
 
-	useHotkey("PREV_PANE", () => {
-		const state = store.getState();
-		const tab = state.getActiveTab();
-		if (!tab || !tab.activePaneId) return;
-		const paneIds = Object.keys(tab.panes);
-		const index = paneIds.indexOf(tab.activePaneId);
-		const prevIndex = index <= 0 ? paneIds.length - 1 : index - 1;
-		state.setActivePane({ tabId: tab.id, paneId: paneIds[prevIndex] });
-	});
-
-	useHotkey("NEXT_PANE", () => {
-		const state = store.getState();
-		const tab = state.getActiveTab();
-		if (!tab || !tab.activePaneId) return;
-		const paneIds = Object.keys(tab.panes);
-		const index = paneIds.indexOf(tab.activePaneId);
-		const nextIndex = index >= paneIds.length - 1 ? 0 : index + 1;
-		state.setActivePane({ tabId: tab.id, paneId: paneIds[nextIndex] });
-	});
-
 	const moveFocusDirectional = useCallback(
 		(dir: FocusDirection) => {
 			const state = store.getState();

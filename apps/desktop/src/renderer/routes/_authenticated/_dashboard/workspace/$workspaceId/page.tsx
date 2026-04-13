@@ -34,8 +34,6 @@ import { useTabsWithPresets } from "renderer/stores/tabs/useTabsWithPresets";
 import {
 	findPanePath,
 	getFirstPaneId,
-	getNextPaneId,
-	getPreviousPaneId,
 	resolveActiveTabIdForWorkspace,
 } from "renderer/stores/tabs/utils";
 import {
@@ -259,22 +257,6 @@ function WorkspacePage() {
 	useHotkey("JUMP_TO_TAB_7", () => switchToTab(6));
 	useHotkey("JUMP_TO_TAB_8", () => switchToTab(7));
 	useHotkey("JUMP_TO_TAB_9", () => switchToTab(8));
-
-	useHotkey("PREV_PANE", () => {
-		if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
-		const prevPaneId = getPreviousPaneId(activeTab.layout, focusedPaneId);
-		if (prevPaneId) {
-			setFocusedPane(activeTabId, prevPaneId);
-		}
-	});
-
-	useHotkey("NEXT_PANE", () => {
-		if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
-		const nextPaneId = getNextPaneId(activeTab.layout, focusedPaneId);
-		if (nextPaneId) {
-			setFocusedPane(activeTabId, nextPaneId);
-		}
-	});
 
 	// Open in last used app shortcut
 	const projectId = workspace?.projectId;
