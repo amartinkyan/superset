@@ -105,6 +105,10 @@ type BranchRow = {
 	isRemote: boolean;
 	recency: number | null;
 	worktreePath: string | null;
+	// True when a workspaces row exists for this (project, branch) on this
+	// host. A worktree can exist on disk without one (orphan); the Worktree
+	// tab distinguishes Open (hasWorkspace) from Create (orphan adopt).
+	hasWorkspace: boolean;
 	isCheckedOut: boolean;
 };
 
@@ -336,6 +340,19 @@ export const workspaceCreationRouter = router({
 			);
 			const recencyMap = await getRecentBranchOrder(git, 30);
 
+			// Branches that already have a workspace row on this host. The
+			// Worktree tab uses this to distinguish Open (has row) from
+			// Create (orphan worktree — worktree on disk, no workspace row).
+			const workspaceBranches = new Set<string>(
+				ctx.db
+					.select()
+					.from(workspaces)
+					.where(eq(workspaces.projectId, input.projectId))
+					.all()
+					.map((w) => w.branch)
+					.filter((b): b is string => !!b),
+			);
+
 			type BranchAccum = {
 				name: string;
 				lastCommitDate: number;
@@ -426,6 +443,7 @@ export const workspaceCreationRouter = router({
 				isRemote: b.isRemote,
 				recency: recencyMap.get(b.name) ?? null,
 				worktreePath: worktreeMap.get(b.name) ?? null,
+				hasWorkspace: workspaceBranches.has(b.name),
 				isCheckedOut: checkedOutBranches.has(b.name),
 			}));
 
@@ -928,6 +946,109 @@ export const workspaceCreationRouter = router({
 			clearProgress(input.pendingId);
 
 			return { workspace: cloudRow, terminals, warnings };
+		}),
+
+	/**
+	 * Adopt an existing git worktree as a workspace. Used when the Worktree
+	 * tab surfaces a branch whose `.worktrees/<branch>` directory exists on
+	 * disk but has no corresponding workspaces row (e.g. created by an older
+	 * flow, or partial create rollback). No git ops — just registers the
+	 * cloud + local workspace row over the existing worktree path.
+	 */
+	adopt: protectedProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				workspaceName: z.string(),
+				branch: z.string(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const deviceClientId = getHashedDeviceId();
+			const deviceName = getDeviceName();
+
+			const localProject = ctx.db.query.projects
+				.findFirst({ where: eq(projects.id, input.projectId) })
+				.sync();
+			if (!localProject) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Project is not set up locally",
+				});
+			}
+
+			const branch = input.branch.trim();
+			if (!branch) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Branch name is empty",
+				});
+			}
+
+			const git = await ctx.git(localProject.repoPath);
+			const { worktreeMap } = await listWorktreeBranches(
+				git,
+				localProject.repoPath,
+			);
+			const worktreePath = worktreeMap.get(branch);
+			if (!worktreePath) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: `No existing worktree for branch "${branch}"`,
+				});
+			}
+
+			// Already adopted? Return the existing row rather than duplicating.
+			const existingLocal = ctx.db
+				.select()
+				.from(workspaces)
+				.where(eq(workspaces.projectId, input.projectId))
+				.all()
+				.find((w) => w.branch === branch);
+			if (existingLocal) {
+				return {
+					workspace: { id: existingLocal.id },
+					terminals: [],
+					warnings: [],
+				};
+			}
+
+			const host = await ctx.api.device.ensureV2Host.mutate({
+				organizationId: ctx.organizationId,
+				machineId: deviceClientId,
+				name: deviceName,
+			});
+
+			const cloudRow = await ctx.api.v2Workspace.create.mutate({
+				organizationId: ctx.organizationId,
+				projectId: input.projectId,
+				name: input.workspaceName,
+				branch,
+				hostId: host.id,
+			});
+
+			if (!cloudRow) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Cloud workspace create returned no row",
+				});
+			}
+
+			ctx.db
+				.insert(workspaces)
+				.values({
+					id: cloudRow.id,
+					projectId: input.projectId,
+					worktreePath,
+					branch,
+				})
+				.run();
+
+			return {
+				workspace: cloudRow,
+				terminals: [] as Array<{ id: string; role: string; label: string }>,
+				warnings: [] as string[],
+			};
 		}),
 
 	// ── GitHub endpoints for the link commands ────────────────────────

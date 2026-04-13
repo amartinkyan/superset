@@ -29,6 +29,7 @@ type BranchRow = {
   isRemote: boolean;
   recency: number | null;       // reflog ordinal, 0 = most recent
   worktreePath: string | null;  // only Superset worktrees under <repo>/.worktrees/
+  hasWorkspace: boolean;        // workspaces row exists for (project, branch) on this host
   isCheckedOut: boolean;        // true if in any git worktree (incl. primary)
 };
 ```
@@ -58,7 +59,10 @@ Cursor is opaque; currently `base64(JSON.stringify({ offset }))`. Each call re-r
 | Tab      | Click on row body (existing behavior) | Hover-reveal action                        |
 |----------|----------------------------------------|--------------------------------------------|
 | Branch   | Set as base branch → user types prompt → submit → fork new branch | **Check out** — create workspace reusing this branch |
-| Worktree | Set as base branch → fork from this worktree's branch | **Open** — navigate to existing workspace |
+| Worktree, `hasWorkspace`     | Set as base branch → fork from this worktree's branch | **Open** — navigate to existing workspace |
+| Worktree, orphan (no workspace row) | Set as base branch → fork from this worktree's branch | **Create** — adopt the existing worktree by registering a workspace row, then navigate |
+
+Worktree-tab split: a `.worktrees/<branch>` directory can exist on disk with no matching `workspaces` row (stale state from older flows, partial failures, or manual creation). Hiding those would let orphans linger invisibly. Showing them with a distinct `Create` label makes recovery a one-click operation — the user sees what's there, and clicking adopts it into a workspace. Every Worktree-tab row becomes actionable.
 
 Why split this way:
 - Click stays as "select" to preserve today's prompt-driven fork flow. Changing click to dispatch an action would be a UX regression.
@@ -67,9 +71,11 @@ Why split this way:
 
 "Check out" over "Create" because the distinguishing axis is *branch-level*: Check out reuses an existing branch as-is; click+submit creates a new one. Both create a workspace — that's not the signal the user needs.
 
-### `workspaceCreation.checkout` procedure
+### Host-service procedures
 
-Separate from `create`, not a mode flag. `git worktree add <path> <branch>` with no `-b`, no dedup. Auto-resolves `<branch>` vs `origin/<branch>`; fetches latest when only the remote ref exists. Same cloud-workspace registration + setup-script + rollback as `create`. Throws `CONFLICT` if the branch is already checked out elsewhere (client pre-empts this via `isCheckedOut`).
+- `create` — existing fork flow. New branch from base via `git worktree add --no-track -b <new> <path> <base>`.
+- `checkout` — Branch tab action. Reuses an existing branch. `git worktree add <path> <branch>` for local-only; `git worktree add --track -b <branch> <path> origin/<branch>` for remote-only (explicit tracking is required — passing `origin/<branch>` alone yields detached HEAD). Same cloud registration + setup-script + rollback path. Throws `CONFLICT` if the branch is already checked out elsewhere.
+- `adopt` — Worktree tab's orphan path. Takes an existing `.worktrees/<branch>` directory and registers cloud + local workspace rows for it. No git operations. Idempotent (returns the existing row if one already exists).
 
 ### Edge cases
 

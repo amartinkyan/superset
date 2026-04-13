@@ -26,6 +26,7 @@ interface BranchRow {
 	isRemote: boolean;
 	recency: number | null;
 	worktreePath: string | null;
+	hasWorkspace: boolean;
 	isCheckedOut: boolean;
 }
 
@@ -45,6 +46,7 @@ interface CompareBaseBranchPickerProps {
 	onSelectCompareBaseBranch: (branchName: string) => void;
 	onCheckoutBranch: (branchName: string) => void;
 	onOpenExisting: (branchName: string) => void;
+	onAdoptWorktree: (branchName: string) => void;
 }
 
 export function CompareBaseBranchPicker({
@@ -63,6 +65,7 @@ export function CompareBaseBranchPicker({
 	onSelectCompareBaseBranch,
 	onCheckoutBranch,
 	onOpenExisting,
+	onAdoptWorktree,
 }: CompareBaseBranchPickerProps) {
 	const [open, setOpen] = useState(false);
 	const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -186,10 +189,14 @@ export function CompareBaseBranchPicker({
 													className="hidden group-hover:inline-flex group-focus-within:inline-flex items-center rounded-sm bg-primary/10 hover:bg-primary/20 px-2 py-0.5 text-[11px] text-primary font-medium"
 													onClick={(e) => {
 														e.stopPropagation();
-														onOpenExisting(branch.name);
+														if (branch.hasWorkspace) {
+															onOpenExisting(branch.name);
+														} else {
+															onAdoptWorktree(branch.name);
+														}
 													}}
 												>
-													Open
+													{branch.hasWorkspace ? "Open" : "Create"}
 												</button>
 											) : branch.isCheckedOut ? (
 												<Tooltip>

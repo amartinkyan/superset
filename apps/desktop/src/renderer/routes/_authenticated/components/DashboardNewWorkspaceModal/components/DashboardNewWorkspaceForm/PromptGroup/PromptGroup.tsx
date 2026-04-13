@@ -30,6 +30,7 @@ import { getEnabledAgentConfigs } from "shared/utils/agent-settings";
 import { sanitizeUserBranchName, slugifyForBranch } from "shared/utils/branch";
 import type { LinkedPR } from "../../../DashboardNewWorkspaceDraftContext";
 import { useDashboardNewWorkspaceDraft } from "../../../DashboardNewWorkspaceDraftContext";
+import { useAdoptWorktree } from "../../../hooks/useAdoptWorktree";
 import { useCheckoutDashboardWorkspace } from "../../../hooks/useCheckoutDashboardWorkspace";
 import { DevicePicker } from "../components/DevicePicker";
 import { type BranchFilter, useBranchContext } from "../hooks/useBranchContext";
@@ -144,6 +145,7 @@ function PromptGroupInner({
 	const navigate = useNavigate();
 	const collections = useCollections();
 	const checkoutWorkspace = useCheckoutDashboardWorkspace();
+	const adoptWorktree = useAdoptWorktree();
 
 	const { data: projectWorkspaces } = useLiveQuery(
 		(q) => q.from({ workspaces: collections.v2Workspaces }),
@@ -166,15 +168,11 @@ function PromptGroupInner({
 
 	const workspaceByBranch = useMemo(() => {
 		const map = new Map<string, string>();
-		if (!projectId || !projectWorkspaces) return map;
-		// Prefer a host-scoped match to disambiguate the same branch across
-		// hosts. When host id can't be resolved yet (collections still loading,
-		// or no matching host row), fall back to branch-only — this keeps the
-		// single-host common case working.
+		if (!projectId || !projectWorkspaces || !targetHostId) return map;
 		for (const w of projectWorkspaces) {
-			if (w.projectId !== projectId || !w.branch) continue;
-			if (targetHostId && w.hostId !== targetHostId) continue;
-			map.set(w.branch, w.id);
+			if (w.projectId === projectId && w.hostId === targetHostId && w.branch) {
+				map.set(w.branch, w.id);
+			}
 		}
 		return map;
 	}, [projectId, projectWorkspaces, targetHostId]);
@@ -193,6 +191,37 @@ function PromptGroupInner({
 			});
 		},
 		[workspaceByBranch, closeModal, navigate],
+	);
+
+	const handleAdoptWorktree = useCallback(
+		(branchName: string) => {
+			if (!projectId) {
+				toast.error("Select a project first");
+				return;
+			}
+			closeModal();
+			void (async () => {
+				try {
+					const result = await adoptWorktree({
+						projectId,
+						hostTarget,
+						workspaceName: branchName,
+						branch: branchName,
+					});
+					if (result.workspace?.id) {
+						void navigate({
+							to: "/v2-workspace/$workspaceId",
+							params: { workspaceId: result.workspace.id },
+						});
+					}
+				} catch (err) {
+					toast.error(
+						err instanceof Error ? err.message : "Failed to create workspace",
+					);
+				}
+			})();
+		},
+		[projectId, hostTarget, adoptWorktree, closeModal, navigate],
 	);
 
 	const handleCheckout = useCallback(
@@ -533,6 +562,7 @@ function PromptGroupInner({
 									}
 									onCheckoutBranch={handleCheckout}
 									onOpenExisting={handleOpenExisting}
+									onAdoptWorktree={handleAdoptWorktree}
 								/>
 							</motion.div>
 						)}
