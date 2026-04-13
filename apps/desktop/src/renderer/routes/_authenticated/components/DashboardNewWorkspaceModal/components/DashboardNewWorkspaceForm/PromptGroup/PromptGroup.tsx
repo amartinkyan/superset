@@ -166,11 +166,15 @@ function PromptGroupInner({
 
 	const workspaceByBranch = useMemo(() => {
 		const map = new Map<string, string>();
-		if (!projectId || !projectWorkspaces || !targetHostId) return map;
+		if (!projectId || !projectWorkspaces) return map;
+		// Prefer a host-scoped match to disambiguate the same branch across
+		// hosts. When host id can't be resolved yet (collections still loading,
+		// or no matching host row), fall back to branch-only — this keeps the
+		// single-host common case working.
 		for (const w of projectWorkspaces) {
-			if (w.projectId === projectId && w.hostId === targetHostId && w.branch) {
-				map.set(w.branch, w.id);
-			}
+			if (w.projectId !== projectId || !w.branch) continue;
+			if (targetHostId && w.hostId !== targetHostId) continue;
+			map.set(w.branch, w.id);
 		}
 		return map;
 	}, [projectId, projectWorkspaces, targetHostId]);
