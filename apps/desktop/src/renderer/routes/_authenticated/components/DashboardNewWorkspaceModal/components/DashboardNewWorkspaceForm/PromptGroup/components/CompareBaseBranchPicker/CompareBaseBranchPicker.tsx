@@ -133,7 +133,7 @@ export function CompareBaseBranchPicker({
 						onValueChange={(v) => onBranchFilterChange(v as BranchFilter)}
 						className="p-2"
 					>
-						<TabsList className="grid w-full grid-cols-2 h-7">
+						<TabsList className="grid w-full grid-cols-2 h-7 bg-transparent">
 							<TabsTrigger value="branch" className="text-[11px]">
 								Branch
 							</TabsTrigger>
