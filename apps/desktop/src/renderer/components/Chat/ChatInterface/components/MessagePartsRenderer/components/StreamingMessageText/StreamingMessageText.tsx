@@ -33,10 +33,18 @@ export function StreamingMessageText({
 		const intervalId = window.setInterval(() => {
 			setDisplayText((previous) => {
 				if (previous.length >= text.length) return previous;
-				const nextLength = Math.min(
+				let nextLength = Math.min(
 					text.length,
 					previous.length + STREAM_TEXT_CHARS_PER_TICK,
 				);
+				// Avoid splitting surrogate pairs: if the code unit at nextLength
+				// is a low surrogate (0xDC00-0xDFFF), include it to keep the pair intact
+				if (nextLength < text.length) {
+					const code = text.charCodeAt(nextLength);
+					if (code >= 0xdc00 && code <= 0xdfff) {
+						nextLength++;
+					}
+				}
 				return text.slice(0, nextLength);
 			});
 		}, STREAM_TEXT_TICK_MS);

@@ -47,7 +47,16 @@ export function TypewriterText({
 
 		if (displayedText.length < fullText.length) {
 			const timeout = setTimeout(() => {
-				setDisplayedText(fullText.slice(0, displayedText.length + 1));
+				let nextLength = displayedText.length + 1;
+				// Avoid splitting surrogate pairs: if the code unit at nextLength
+				// is a low surrogate (0xDC00-0xDFFF), include it to keep the pair intact
+				if (nextLength < fullText.length) {
+					const code = fullText.charCodeAt(nextLength);
+					if (code >= 0xdc00 && code <= 0xdfff) {
+						nextLength++;
+					}
+				}
+				setDisplayedText(fullText.slice(0, nextLength));
 			}, speed);
 
 			return () => clearTimeout(timeout);
