@@ -61,6 +61,7 @@ export function useDashboardSidebarShortcuts(
 		const index = flattenedWorkspaces.findIndex(
 			(w) => w.id === currentWorkspaceId,
 		);
+		if (index === -1) return;
 		const prevIndex = index <= 0 ? flattenedWorkspaces.length - 1 : index - 1;
 		navigateToV2Workspace(flattenedWorkspaces[prevIndex].id, navigate);
 	});
@@ -70,8 +71,8 @@ export function useDashboardSidebarShortcuts(
 		const index = flattenedWorkspaces.findIndex(
 			(w) => w.id === currentWorkspaceId,
 		);
-		const nextIndex =
-			index >= flattenedWorkspaces.length - 1 || index === -1 ? 0 : index + 1;
+		if (index === -1) return;
+		const nextIndex = index >= flattenedWorkspaces.length - 1 ? 0 : index + 1;
 		navigateToV2Workspace(flattenedWorkspaces[nextIndex].id, navigate);
 	});
 
