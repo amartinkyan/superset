@@ -548,6 +548,67 @@ describe("movePaneToSplit", () => {
 	});
 });
 
+describe("multi-pane tab creation", () => {
+	it("addTab with 2 panes sets splitPercentage to 50", () => {
+		const store = makeStore();
+		store.getState().addTab({ id: "t1", panes: [tp("p1"), tp("p2")] });
+
+		const layout = store.getState().tabs[0]?.layout;
+		expect(layout?.type).toBe("split");
+		if (layout?.type === "split") {
+			expect(layout.splitPercentage).toBe(50);
+		}
+	});
+
+	it("addTab with 3 panes equalizes splits so each pane gets equal space", () => {
+		const store = makeStore();
+		store
+			.getState()
+			.addTab({ id: "t1", panes: [tp("p1"), tp("p2"), tp("p3")] });
+
+		const layout = store.getState().tabs[0]?.layout;
+		expect(layout?.type).toBe("split");
+		if (layout?.type === "split") {
+			// Root: 2 leaves vs 1 leaf → first gets ~66.67%
+			expect(layout.splitPercentage).toBeCloseTo(66.67, 0);
+			// Nested split should be 50/50
+			if (layout.first.type === "split") {
+				expect(layout.first.splitPercentage).toBe(50);
+			}
+		}
+	});
+
+	it("addTab with 4 panes equalizes splits so each pane gets equal space", () => {
+		const store = makeStore();
+		store.getState().addTab({
+			id: "t1",
+			panes: [tp("p1"), tp("p2"), tp("p3"), tp("p4")],
+		});
+
+		const layout = store.getState().tabs[0]?.layout;
+		expect(layout?.type).toBe("split");
+		if (layout?.type === "split") {
+			// Root: 2 leaves vs 2 leaves → 50%
+			expect(layout.splitPercentage).toBe(50);
+			// Both sub-splits should be 50/50
+			if (layout.first.type === "split") {
+				expect(layout.first.splitPercentage).toBe(50);
+			}
+			if (layout.second.type === "split") {
+				expect(layout.second.splitPercentage).toBe(50);
+			}
+		}
+	});
+
+	it("addTab with 1 pane creates a leaf node (no split)", () => {
+		const store = makeStore();
+		store.getState().addTab({ id: "t1", panes: [tp("p1")] });
+
+		const layout = store.getState().tabs[0]?.layout;
+		expect(layout?.type).toBe("pane");
+	});
+});
+
 describe("edge cases", () => {
 	it("invalid IDs are no-ops", () => {
 		const store = makeStore();

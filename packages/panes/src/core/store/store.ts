@@ -69,7 +69,7 @@ function buildTab<TData>(args: {
 		titleOverride: args.titleOverride,
 		createdAt: Date.now(),
 		activePaneId: args.activePaneId ?? args.panes[0].id,
-		layout: buildBalancedTree(leaves),
+		layout: equalizeAllSplits(buildBalancedTree(leaves)),
 		panes: panesMap,
 	};
 }
