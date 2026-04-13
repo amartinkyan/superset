@@ -10,8 +10,9 @@ export function resolveTabTitle<TData>(
 	const panes = Object.values(tab.panes);
 	const onlyPane = panes.length === 1 ? panes[0] : undefined;
 	if (onlyPane) {
-		const fromRegistry = registry[onlyPane.kind]?.getTitle?.(onlyPane);
-		if (fromRegistry) return fromRegistry;
+		const fromPane =
+			onlyPane.titleOverride ?? registry[onlyPane.kind]?.getTitle?.(onlyPane);
+		if (fromPane) return fromPane;
 	}
 	return `Tab ${tabs.indexOf(tab) + 1}`;
 }
