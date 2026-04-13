@@ -74,7 +74,7 @@ Separate from `create`, not a mode flag. `git worktree add <path> <branch>` with
 ### Edge cases
 
 - **Branch already checked out in main clone.** `isCheckedOut` is true — Check out button renders disabled with tooltip "Already checked out in another worktree". Click-to-set-as-base still works (fork is unaffected).
-- **Remote-only row** (`isRemote && !isLocal`). Check out passes `origin/<branch>` to `git worktree add`, which auto-creates a local tracking branch.
+- **Remote-only row** (`isRemote && !isLocal`). Check out calls `git worktree add --track -b <branch> <path> origin/<branch>` — explicit tracking is required; passing `origin/<branch>` alone would produce a detached HEAD (auto-track only kicks in for the short name).
 - **Worktree'd branch appears in Branch tab search.** Can't happen — filter is server-side and applied before `query`. The row belongs in the Worktree tab.
 
 ### Visual

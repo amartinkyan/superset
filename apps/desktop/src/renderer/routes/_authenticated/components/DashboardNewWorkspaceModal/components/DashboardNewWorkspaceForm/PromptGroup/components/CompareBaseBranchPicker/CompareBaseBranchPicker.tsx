@@ -183,7 +183,7 @@ export function CompareBaseBranchPicker({
 											{branchFilter === "worktree" ? (
 												<button
 													type="button"
-													className="hidden group-hover:inline-flex items-center rounded-sm bg-primary/10 hover:bg-primary/20 px-2 py-0.5 text-[11px] text-primary font-medium"
+													className="hidden group-hover:inline-flex group-focus-within:inline-flex items-center rounded-sm bg-primary/10 hover:bg-primary/20 px-2 py-0.5 text-[11px] text-primary font-medium"
 													onClick={(e) => {
 														e.stopPropagation();
 														onOpenExisting(branch.name);
@@ -194,9 +194,15 @@ export function CompareBaseBranchPicker({
 											) : branch.isCheckedOut ? (
 												<Tooltip>
 													<TooltipTrigger asChild>
-														<span className="hidden group-hover:inline-flex items-center rounded-sm bg-muted px-2 py-0.5 text-[11px] text-muted-foreground/70 cursor-not-allowed">
+														<button
+															type="button"
+															disabled
+															aria-disabled="true"
+															className="hidden group-hover:inline-flex group-focus-within:inline-flex items-center rounded-sm bg-muted px-2 py-0.5 text-[11px] text-muted-foreground/70 cursor-not-allowed"
+															onClick={(e) => e.stopPropagation()}
+														>
 															Check out
-														</span>
+														</button>
 													</TooltipTrigger>
 													<TooltipContent side="left">
 														Already checked out in another worktree
@@ -205,7 +211,7 @@ export function CompareBaseBranchPicker({
 											) : (
 												<button
 													type="button"
-													className="hidden group-hover:inline-flex items-center rounded-sm bg-primary/10 hover:bg-primary/20 px-2 py-0.5 text-[11px] text-primary font-medium"
+													className="hidden group-hover:inline-flex group-focus-within:inline-flex items-center rounded-sm bg-primary/10 hover:bg-primary/20 px-2 py-0.5 text-[11px] text-primary font-medium"
 													onClick={(e) => {
 														e.stopPropagation();
 														onCheckoutBranch(branch.name);

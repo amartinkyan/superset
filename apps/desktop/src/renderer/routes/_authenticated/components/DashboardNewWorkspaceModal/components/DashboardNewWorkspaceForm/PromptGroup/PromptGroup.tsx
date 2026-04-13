@@ -24,6 +24,7 @@ import { useAgentLaunchPreferences } from "renderer/hooks/useAgentLaunchPreferen
 import { PLATFORM } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
+import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { useNewWorkspaceModalOpen } from "renderer/stores/new-workspace-modal";
 import { getEnabledAgentConfigs } from "shared/utils/agent-settings";
 import { sanitizeUserBranchName, slugifyForBranch } from "shared/utils/branch";
@@ -148,17 +149,31 @@ function PromptGroupInner({
 		(q) => q.from({ workspaces: collections.v2Workspaces }),
 		[collections],
 	);
+	const { data: allHosts } = useLiveQuery(
+		(q) => q.from({ hosts: collections.v2Hosts }),
+		[collections],
+	);
+	const { machineId } = useLocalHostService();
+
+	// Resolve the host id matching the current `hostTarget`. Rows in
+	// `v2Workspaces` are keyed by host id, so collapsing only by branch name
+	// would collide across hosts that happen to share a branch.
+	const targetHostId = useMemo<string | null>(() => {
+		if (hostTarget.kind === "host") return hostTarget.hostId;
+		if (!machineId || !allHosts) return null;
+		return allHosts.find((h) => h.machineId === machineId)?.id ?? null;
+	}, [hostTarget, allHosts, machineId]);
 
 	const workspaceByBranch = useMemo(() => {
 		const map = new Map<string, string>();
-		if (!projectId || !projectWorkspaces) return map;
+		if (!projectId || !projectWorkspaces || !targetHostId) return map;
 		for (const w of projectWorkspaces) {
-			if (w.projectId === projectId && w.branch) {
+			if (w.projectId === projectId && w.hostId === targetHostId && w.branch) {
 				map.set(w.branch, w.id);
 			}
 		}
 		return map;
-	}, [projectId, projectWorkspaces]);
+	}, [projectId, projectWorkspaces, targetHostId]);
 
 	const handleOpenExisting = useCallback(
 		(branchName: string) => {

@@ -801,7 +801,8 @@ export const workspaceCreationRouter = router({
 				}
 			}
 
-			if (ref.startsWith("origin/")) {
+			const isRemoteOnly = ref.startsWith("origin/");
+			if (isRemoteOnly) {
 				try {
 					await git.fetch(["origin", branch, "--quiet", "--no-tags"]);
 				} catch (err) {
@@ -813,7 +814,15 @@ export const workspaceCreationRouter = router({
 			}
 
 			try {
-				await git.raw(["worktree", "add", worktreePath, ref]);
+				// For a remote-only branch, create a local tracking branch
+				// explicitly. `git worktree add <path> origin/<branch>` without
+				// --track/-b produces a detached HEAD because the fully-qualified
+				// ref is treated as a commit-ish, not a branch shorthand.
+				await git.raw(
+					isRemoteOnly
+						? ["worktree", "add", "--track", "-b", branch, worktreePath, ref]
+						: ["worktree", "add", worktreePath, ref],
+				);
 			} catch (err) {
 				clearProgress(input.pendingId);
 				const message =
