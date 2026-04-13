@@ -141,7 +141,12 @@ type GitClient = Awaited<ReturnType<HostServiceContext["git"]>>;
 
 async function listWorktreeBranches(
 	git: GitClient,
+	repoPath: string,
 ): Promise<Map<string, string>> {
+	// Only include Superset-managed worktrees (under <repoPath>/.worktrees/).
+	// `git worktree list` also reports the primary working tree, which is the
+	// main clone — its branch should not be treated as "has a workspace".
+	const worktreesRoot = resolve(repoPath, ".worktrees");
 	const map = new Map<string, string>();
 	try {
 		const raw = await git.raw(["worktree", "list", "--porcelain"]);
@@ -150,8 +155,13 @@ async function listWorktreeBranches(
 			if (line.startsWith("worktree ")) {
 				currentPath = line.slice("worktree ".length).trim();
 			} else if (line.startsWith("branch refs/heads/") && currentPath) {
-				const branch = line.slice("branch refs/heads/".length).trim();
-				if (branch) map.set(branch, currentPath);
+				if (
+					currentPath === worktreesRoot ||
+					currentPath.startsWith(worktreesRoot + sep)
+				) {
+					const branch = line.slice("branch refs/heads/".length).trim();
+					if (branch) map.set(branch, currentPath);
+				}
 			} else if (line === "") {
 				currentPath = null;
 			}
@@ -267,24 +277,39 @@ export const workspaceCreationRouter = router({
 				cursor: z.string().optional(),
 				limit: z.number().min(1).max(200).optional(),
 				refresh: z.boolean().optional(),
-				filter: z.enum(["local", "remote", "worktree"]).optional(),
+				filter: z.enum(["branch", "worktree"]).optional(),
 			}),
 		)
 		.query(async ({ ctx, input }) => {
 			const limit = input.limit ?? 50;
 			const offset = decodeCursor(input.cursor);
 
+			console.log("[searchBranches] input", {
+				projectId: input.projectId,
+				query: input.query,
+				filter: input.filter,
+				cursor: input.cursor,
+				limit,
+				refresh: input.refresh,
+			});
+
 			const localProject = ctx.db.query.projects
 				.findFirst({ where: eq(projects.id, input.projectId) })
 				.sync();
 
 			if (!localProject) {
+				console.warn(
+					"[searchBranches] no local project row for",
+					input.projectId,
+				);
 				return {
 					defaultBranch: null as string | null,
 					items: [] as BranchRow[],
 					nextCursor: null as string | null,
 				};
 			}
+
+			console.log("[searchBranches] repoPath", localProject.repoPath);
 
 			const git = await ctx.git(localProject.repoPath);
 
@@ -311,8 +336,14 @@ export const workspaceCreationRouter = router({
 				defaultBranch = "main";
 			}
 
-			const worktreeMap = await listWorktreeBranches(git);
+			const worktreeMap = await listWorktreeBranches(
+				git,
+				localProject.repoPath,
+			);
 			const recencyMap = await getRecentBranchOrder(git, 30);
+			console.log("[searchBranches] worktreeMap entries", [
+				...worktreeMap.entries(),
+			]);
 
 			type BranchAccum = {
 				name: string;
@@ -361,15 +392,27 @@ export const workspaceCreationRouter = router({
 			}
 
 			let branches = Array.from(branchMap.values());
+			console.log(
+				"[searchBranches] for-each-ref total",
+				branches.length,
+				"sample",
+				branches.slice(0, 5).map((b) => b.name),
+			);
 
-			if (input.filter === "local") {
-				branches = branches.filter((b) => b.isLocal);
-			} else if (input.filter === "worktree") {
+			const beforeFilter = branches.length;
+			if (input.filter === "worktree") {
 				branches = branches.filter((b) => worktreeMap.has(b.name));
 			} else {
-				// default + explicit "remote"
-				branches = branches.filter((b) => b.isRemote);
+				// default "branch": any branch (local or remote) without a worktree
+				branches = branches.filter((b) => !worktreeMap.has(b.name));
 			}
+			console.log(
+				"[searchBranches] after filter",
+				input.filter ?? "branch",
+				beforeFilter,
+				"→",
+				branches.length,
+			);
 
 			if (input.query) {
 				const q = input.query.toLowerCase();
@@ -407,6 +450,14 @@ export const workspaceCreationRouter = router({
 				recency: recencyMap.get(b.name) ?? null,
 				worktreePath: worktreeMap.get(b.name) ?? null,
 			}));
+
+			console.log("[searchBranches] returning", {
+				defaultBranch,
+				total: branches.length,
+				pageSize: items.length,
+				hasMore,
+				worktreeCount: worktreeMap.size,
+			});
 
 			return { defaultBranch, items, nextCursor };
 		}),

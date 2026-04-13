@@ -118,14 +118,11 @@ export function CompareBaseBranchPicker({
 					<Tabs
 						value={branchFilter}
 						onValueChange={(v) => onBranchFilterChange(v as BranchFilter)}
-						className="px-2 pt-2"
+						className="p-2"
 					>
-						<TabsList className="grid w-full grid-cols-3 h-7">
-							<TabsTrigger value="local" className="text-[11px]">
-								Local
-							</TabsTrigger>
-							<TabsTrigger value="remote" className="text-[11px]">
-								Remote
+						<TabsList className="grid w-full grid-cols-2 h-7">
+							<TabsTrigger value="branch" className="text-[11px]">
+								Branch
 							</TabsTrigger>
 							<TabsTrigger value="worktree" className="text-[11px]">
 								Worktree

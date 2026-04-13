@@ -102,7 +102,7 @@ function PromptGroupInner({
 
 	// ── Branch data ──────────────────────────────────────────────────
 	const [branchSearch, setBranchSearch] = useState("");
-	const [branchFilter, setBranchFilter] = useState<BranchFilter>("remote");
+	const [branchFilter, setBranchFilter] = useState<BranchFilter>("branch");
 	const {
 		branches,
 		defaultBranch,

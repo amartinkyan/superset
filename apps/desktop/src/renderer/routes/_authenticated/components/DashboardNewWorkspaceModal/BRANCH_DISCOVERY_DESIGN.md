@@ -142,4 +142,143 @@ With thousands of branches now plausible, the rendered list needs windowing once
 ## Open questions
 
 - Remote host case: when `hostTarget.kind !== "local"`, `git fetch` runs on the remote machine. That's fine but slower; keep the SWR pattern so users on a laggy remote still see cached branches instantly.
-- Should `hasWorkspace` disable the row or just annotate it? Current v2 modal lets users pick a branch that has a workspace already — which then creates a second worktree with a deduped branch name. Probably fine but worth confirming with the user.
+
+---
+
+# Branch picker actions — design
+
+Once branches are listed, each row needs to lead somewhere. This extends the picker from "select a base branch" to offering one base-branch-selection plus one immediate action per row.
+
+## Actions per row
+
+Preserve today's click behavior; add exactly one action button per row, tab-specific:
+
+| Tab      | Click on row body             | Action button                            |
+|----------|-------------------------------|------------------------------------------|
+| Branch   | Set as base branch (→ user types prompt → submits → Fork) | **Checkout** — create workspace reusing this branch |
+| Worktree | Set as base branch (→ Fork from this worktree's branch) | **Open** — navigate to existing workspace |
+
+Why this split:
+
+- **Click = select** keeps the current mental model. The user's primary flow is still "type a prompt, pick a base, submit" — click shouldn't yank them out of that.
+- **Action button = commit**. When the user's intent is to open an existing workspace or pick up an existing branch as-is, they want to skip the prompt dance. One button, one click.
+- The action button's meaning collapses per tab because the row state is invariant within a tab (Branch tab rows never have a worktree; Worktree tab rows always do). No need to render both Open and Checkout on the same row.
+
+## UX — per-row
+
+Default state:
+
+```
+⎇ feature-foo  [remote]             3d ago   [✓ when selected]
+```
+
+On hover (or keyboard focus):
+
+```
+⎇ feature-foo  [remote]             3d ago   [Check out]     <-- Branch tab
+⎇ feature-bar                       1h ago   [Open]          <-- Worktree tab
+```
+
+- Clicking row body = set as base branch (existing behavior, closes popover).
+- Action button appears on hover/focus; clicking it dispatches immediate action and closes the modal.
+- Keyboard: arrows to move; **Enter** = set as base branch; **⌘+Enter** = action button.
+
+Disable the action button (don't just hide — show greyed with tooltip) when the action isn't valid; see §Edge cases.
+
+## State shape
+
+`draft.baseBranch: string | null` stays as-is for the click path — it already works.
+
+For the Checkout action path, the picker dispatches a direct call into a new handler that runs the host-service `checkout` mutation and navigates, without going through the draft or the modal's submit path. No draft shape change needed.
+
+For the Open action, the picker navigates immediately — no draft, no mutation. See §Opening existing.
+
+## Host-service API
+
+Add one procedure; don't overload `create`:
+
+```ts
+checkout: protectedProcedure
+  .input(z.object({
+    pendingId: z.string(),
+    projectId: z.string(),
+    workspaceName: z.string(),
+    branch: z.string(),              // existing branch name, reused as-is
+    linkedContext: /* same as create */,
+    composer: /* same as create */,
+  }))
+  .mutation(async ({ ctx, input }) => {
+    // git worktree add <path> <branch>
+    //   — no -b, no --no-track; branch already exists.
+    // Same cloud-workspace registration + setup-script path as create.
+  });
+```
+
+Rationale for a separate procedure over a `mode: "fork" | "checkout"` flag on `create`: the contracts diverge (no `branchName` input, no dedup logic, different git command), error cases differ (checkout can fail if branch is already checked out elsewhere). One flag would either balloon the input schema or carry invalid combinations.
+
+`create`'s `deduplicateBranchName` stays as-is for fork; checkout skips it entirely.
+
+## Opening existing
+
+Worktree tab's action button. Doesn't touch the draft:
+
+1. Look up the workspace row for this branch via the `workspaces` collection on the client.
+2. Seed the typed prompt (see below), then `navigate({ to: "/v2-workspace/$workspaceId", params: { workspaceId } })`.
+3. Close the modal.
+
+### Prompt carry-over on Open
+
+If the user typed a prompt before hitting Open, drop it on the floor would be lossy. Carrying it into the existing workspace's chat is the right call. Two implementation paths exist; both are achievable.
+
+**Path A — Launch config plumbing (cleanest, more code).**
+
+The main-screen ChatPane already threads `initialLaunchConfig` with an `initialPrompt` field (`screens/main/.../ChatPane.tsx:217` → `ChatPaneInterface.tsx:639`). The v2 ChatPane's `initialLaunchConfig` is currently hardcoded to `null` (`v2-workspace/$workspaceId/.../ChatPane.tsx:44`). The infra exists; the wire just isn't connected.
+
+Steps:
+- Extend the v2 ChatPane to accept a launch config from an ambient source.
+- Introduce a one-shot zustand store: `usePendingWorkspaceSeed({ workspaceId, prompt, attachments })`.
+- Branch picker's Open handler: set pending seed → navigate → close modal.
+- v2 ChatPane on mount: read pending seed for its workspaceId, clear it, pass into `initialLaunchConfig`.
+
+This reuses all existing launch-config behavior (retry, metadata, dedup via `getLaunchConfigKey`). Also unblocks other "open existing workspace with a prompt" entry points later (e.g., notifications, CLI, deep links).
+
+**Path B — Route search param (fast, dirty).**
+
+Navigate to `/v2-workspace/$workspaceId?prompt=<encoded>`. Chat pane reads the param on mount, clears it via `navigate({ replace: true, search: { prompt: undefined } })`, and seeds. Works if the prompt is short; breaks down with attachments, long prompts, or shareable URLs (someone sharing a URL with a pasted prompt accidentally is awkward).
+
+**Recommendation:** Path A. It's more work but aligns with how the app already seeds prompts and handles the attachment case for free. If we're tight on time, Path B unblocks the UX and we migrate to A when the "open existing with prompt" pattern appears elsewhere.
+
+### What the button label says
+
+- Prompt empty: "Open"
+- Prompt non-empty: "Open & send" (hint that the prompt will go with them)
+
+## Edge cases
+
+- **Branch tab row where a workspace has actually been created on this branch since last refresh.** The filter excluded it server-side, so the user won't see it. If the user types the name explicitly in the search box, it still won't match — because the filter is applied before the query. This is correct behavior, not a bug: the row belongs in the Worktree tab.
+- **Checkout against a branch that's already checked out in the main clone.** `git worktree add <path> <branch>` fails if the branch is currently checked out anywhere else. To avoid offering a broken button: the server returns `isCheckedOut: boolean` per row (true if this branch is checked out in any git worktree — primary or additional). Client disables the Checkout button when true, with tooltip "Checked out in main clone". Click-to-select-as-base-branch still works; the user can still fork from this branch.
+  - Implementation: extend `listWorktreeBranches` to also return a `checkedOutAll` set (every branch from `git worktree list --porcelain`, including the primary). Emit `isCheckedOut: checkedOutAll.has(name)` on each row.
+- **Row's `isRemote: true, isLocal: false`** (a remote branch the user hasn't fetched). Checkout should work — `git worktree add <path> origin/<branch>` auto-creates a local tracking branch. Fork already does the right thing.
+
+## Visual deltas alongside this change
+
+- Drop the `worktree` badge from rows. Worktree-ness is implicit from the tab now.
+- Keep (or add) a `remote` badge — `isRemote && !isLocal` means the user hasn't fetched this branch locally. Useful signal in the Branch tab.
+
+## Implementation order
+
+1. Host-service: add `isCheckedOut: boolean` to each row (emit from a full-worktree scan alongside the existing superset-worktree scan).
+2. Host-service: `checkout` procedure — pure `git worktree add <path> <branch>` (no `-b`, no `--no-track`). Same cloud-workspace registration + setup-script path as `create`. No branch-name dedup.
+3. Renderer visuals: drop `worktree` badge; add `remote` badge (shown when `isRemote && !isLocal`).
+4. Renderer: picker row action button per tab — Checkout on Branch tab, Open on Worktree tab. Hover/focus to reveal; disabled state when `isCheckedOut` in the Branch tab.
+5. Renderer: Checkout handler — call host-service `checkout`, reuse the pending-row pattern from `useSubmitWorkspace`, navigate to the new workspace.
+6. Renderer: Open handler — resolve workspace from the `workspaces` collection, set pending seed (Path A), navigate, close modal.
+7. Plumbing: connect `initialLaunchConfig` in the v2 ChatPane to the pending-seed store (see §Prompt carry-over).
+
+Steps 1–3 are independent and unblock 4. Step 7 is the only one that touches files outside the modal — do it last.
+
+## Things worth leaving out of scope
+
+- Grouping by recency headers ("Recent" / "Other"). Nice-to-have but orthogonal; drop into a follow-up.
+- A dedicated "New workspace from PR" intent — already handled elsewhere via `linkedPR`.
+- Cross-project branch discovery in one picker. Project picker handles that.

@@ -1,28 +1,22 @@
+import type { AppRouter } from "@superset/host-service";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { useMemo } from "react";
 import { env } from "renderer/env.renderer";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import type { WorkspaceHostTarget } from "../../components/DevicePicker";
 
-export type BranchRow = {
-	name: string;
-	lastCommitDate: number;
-	isLocal: boolean;
-	isRemote: boolean;
-	recency: number | null;
-	worktreePath: string | null;
-};
+type SearchBranchesInput =
+	inferRouterInputs<AppRouter>["workspaceCreation"]["searchBranches"];
+type SearchBranchesOutput =
+	inferRouterOutputs<AppRouter>["workspaceCreation"]["searchBranches"];
+
+export type BranchFilter = NonNullable<SearchBranchesInput["filter"]>;
+export type BranchRow = SearchBranchesOutput["items"][number];
+type BranchPage = SearchBranchesOutput;
 
 const PAGE_SIZE = 50;
-
-type BranchPage = {
-	defaultBranch: string | null;
-	items: BranchRow[];
-	nextCursor: string | null;
-};
-
-export type BranchFilter = "local" | "remote" | "worktree";
 
 /**
  * Paginated branch search via host-service. First page of a
@@ -33,7 +27,7 @@ export function useBranchContext(
 	projectId: string | null,
 	hostTarget: WorkspaceHostTarget,
 	query: string,
-	filter: BranchFilter = "remote",
+	filter: BranchFilter = "branch",
 ) {
 	const { activeHostUrl } = useLocalHostService();
 	const hostUrl =
@@ -55,10 +49,11 @@ export function useBranchContext(
 		getNextPageParam: (last: BranchPage) => last.nextCursor ?? undefined,
 		queryFn: async ({ pageParam }): Promise<BranchPage> => {
 			if (!hostUrl || !projectId) {
+				console.warn("[useBranchContext] skip", { hostUrl, projectId });
 				return { defaultBranch: null, items: [], nextCursor: null };
 			}
 			const client = getHostServiceClientByUrl(hostUrl);
-			return client.workspaceCreation.searchBranches.query({
+			const res = await client.workspaceCreation.searchBranches.query({
 				projectId,
 				query: query || undefined,
 				cursor: pageParam,
@@ -66,6 +61,16 @@ export function useBranchContext(
 				refresh: pageParam === undefined,
 				filter,
 			});
+			console.log("[useBranchContext] page", {
+				filter,
+				query,
+				pageParam,
+				defaultBranch: res?.defaultBranch,
+				itemCount: res?.items?.length,
+				sampleNames: res?.items?.slice(0, 5).map((b) => b.name),
+				nextCursor: res?.nextCursor,
+			});
+			return res;
 		},
 	});
 
