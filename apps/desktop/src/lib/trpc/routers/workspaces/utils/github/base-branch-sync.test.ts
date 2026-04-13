@@ -87,8 +87,8 @@ describe("baseRefName in PR schemas", () => {
 	});
 
 	test("detects base branch mismatch when PR target changes", () => {
-		const storedBaseBranch = "main";
-		const prBaseRefName = "develop";
+		const storedBaseBranch: string | null = "main";
+		const prBaseRefName: string | undefined = "develop";
 
 		const baseBranchChanged =
 			prBaseRefName && storedBaseBranch && prBaseRefName !== storedBaseBranch;
@@ -97,8 +97,8 @@ describe("baseRefName in PR schemas", () => {
 	});
 
 	test("no mismatch when PR target matches stored base branch", () => {
-		const storedBaseBranch = "main";
-		const prBaseRefName = "main";
+		const storedBaseBranch: string | null = "main";
+		const prBaseRefName: string | undefined = "main";
 
 		const baseBranchChanged =
 			prBaseRefName && storedBaseBranch && prBaseRefName !== storedBaseBranch;
