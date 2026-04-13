@@ -82,6 +82,14 @@ export const pendingWorkspaceSchema = z.object({
 	branchName: z.string(),
 	prompt: z.string(),
 	baseBranch: z.string().nullable().default(null),
+	// Picker hint: which form of `baseBranch` was selected. Lets the host-
+	// service skip re-resolution at create time so it can't be misled by a
+	// stale cached remote ref. Null when the caller didn't specify (legacy
+	// rows + non-picker callers fall back to server-side resolveStartPoint).
+	baseBranchSource: z
+		.enum(["local", "remote-tracking"])
+		.nullable()
+		.default(null),
 	runSetupScript: z.boolean().default(true),
 	linkedIssues: z.array(z.unknown()).default([]),
 	linkedPR: z.unknown().nullable().default(null),

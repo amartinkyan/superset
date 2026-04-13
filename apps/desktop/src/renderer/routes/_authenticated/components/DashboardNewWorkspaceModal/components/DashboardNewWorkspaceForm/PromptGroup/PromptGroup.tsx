@@ -137,7 +137,7 @@ function PromptGroupInner({
 		) {
 			previousProjectIdRef.current = projectId;
 			previousHostRef.current = nextHost;
-			updateDraft({ baseBranch: null });
+			updateDraft({ baseBranch: null, baseBranchSource: null });
 		}
 	}, [projectId, hostTarget, updateDraft]);
 
@@ -573,8 +573,11 @@ function PromptGroupInner({
 									onLoadMore={() => {
 										void fetchNextPage();
 									}}
-									onSelectCompareBaseBranch={(branch) =>
-										updateDraft({ baseBranch: branch })
+									onSelectCompareBaseBranch={(branch, source) =>
+										updateDraft({
+											baseBranch: branch,
+											baseBranchSource: source,
+										})
 									}
 									onCheckoutBranch={handleCheckout}
 									onOpenExisting={handleOpenExisting}

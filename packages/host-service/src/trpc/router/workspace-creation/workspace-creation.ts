@@ -7,6 +7,9 @@ import simpleGit from "simple-git";
 import { z } from "zod";
 import { projects, workspaces } from "../../../db/schema";
 import {
+	asLocalRef,
+	asRemoteRef,
+	type ResolvedRef,
 	resolveDefaultBranchName,
 	resolveRef,
 } from "../../../runtime/git/refs";
@@ -260,6 +263,32 @@ async function listBranchNames(
 	}
 }
 
+/**
+ * Build a `ResolvedRef` directly from the picker-supplied hint without
+ * probing git. Used when the caller already knows whether the row was
+ * local or remote-only — the picker has this info per row.
+ */
+function buildStartPointFromHint(
+	branch: string,
+	source: "local" | "remote-tracking",
+): ResolvedRef {
+	if (source === "local") {
+		return {
+			kind: "local",
+			fullRef: asLocalRef(branch),
+			shortName: branch,
+		};
+	}
+	const remote = "origin";
+	return {
+		kind: "remote-tracking",
+		fullRef: asRemoteRef(remote, branch),
+		shortName: branch,
+		remote,
+		remoteShortName: `${remote}/${branch}`,
+	};
+}
+
 // ── Router ───────────────────────────────────────────────────────────
 
 export const workspaceCreationRouter = router({
@@ -477,6 +506,12 @@ export const workspaceCreationRouter = router({
 				composer: z.object({
 					prompt: z.string().optional(),
 					baseBranch: z.string().optional(),
+					// Hint from the picker about which form of the base branch
+					// was selected. When provided, the server uses it directly
+					// instead of probing — avoids racing against stale cached
+					// remote refs that could win in a re-resolve. See
+					// `resolve-start-point.ts` for the fallback semantics.
+					baseBranchSource: z.enum(["local", "remote-tracking"]).optional(),
 					runSetupScript: z.boolean().optional(),
 				}),
 				linkedContext: z
@@ -565,14 +600,22 @@ export const workspaceCreationRouter = router({
 
 			const git = await ctx.git(localProject.repoPath);
 
-			// Resolve the best start point: prefer origin/<branch> for freshest
-			// code, fall back to local branch, then HEAD.
-			const startPoint = await resolveStartPoint(
-				git,
-				input.composer.baseBranch,
-			);
+			// Trust the picker's hint when provided: it knows whether the row
+			// the user clicked was local or remote-only. Re-resolving here
+			// races against stale cached refs (a workspace branch with an
+			// incidental `refs/remotes/origin/<name>` cache would silently win).
+			// Falls back to probing for callers that don't pass the hint.
+			const startPoint =
+				input.composer.baseBranch && input.composer.baseBranchSource
+					? buildStartPointFromHint(
+							input.composer.baseBranch,
+							input.composer.baseBranchSource,
+						)
+					: await resolveStartPoint(git, input.composer.baseBranch);
 			console.log(
-				`[workspaceCreation.create] start point resolved: ${startPoint.kind}`,
+				`[workspaceCreation.create] start point: ${startPoint.kind} (${
+					input.composer.baseBranchSource ? "from hint" : "resolved"
+				})`,
 			);
 
 			// If we resolved to a remote-tracking ref, fetch just that branch

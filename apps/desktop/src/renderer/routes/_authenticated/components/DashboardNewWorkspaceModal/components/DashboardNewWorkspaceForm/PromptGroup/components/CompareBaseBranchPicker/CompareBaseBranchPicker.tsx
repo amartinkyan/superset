@@ -32,7 +32,10 @@ interface CompareBaseBranchPickerProps {
 	isFetchingNextPage: boolean;
 	hasNextPage: boolean;
 	onLoadMore: () => void;
-	onSelectCompareBaseBranch: (branchName: string) => void;
+	onSelectCompareBaseBranch: (
+		branchName: string,
+		source: "local" | "remote-tracking",
+	) => void;
 	onCheckoutBranch: (branchName: string) => void;
 	onOpenExisting: (branchName: string) => void;
 	onAdoptWorktree: (branchName: string) => void;
@@ -151,7 +154,12 @@ export function CompareBaseBranchPicker({
 										key={branch.name}
 										value={branch.name}
 										onSelect={() => {
-											onSelectCompareBaseBranch(branch.name);
+											// Carry the row's locality through so the server doesn't
+											// re-resolve and risk picking a stale cached remote ref.
+											onSelectCompareBaseBranch(
+												branch.name,
+												branch.isLocal ? "local" : "remote-tracking",
+											);
 											setOpen(false);
 										}}
 										className="group h-11 flex items-center justify-between gap-3 px-3"

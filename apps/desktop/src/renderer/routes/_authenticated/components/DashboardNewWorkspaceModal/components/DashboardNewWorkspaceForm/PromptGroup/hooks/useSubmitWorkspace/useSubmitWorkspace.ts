@@ -59,6 +59,7 @@ export function useSubmitWorkspace(projectId: string | null) {
 			branchName,
 			prompt: draft.prompt,
 			baseBranch: draft.baseBranch ?? null,
+			baseBranchSource: draft.baseBranchSource ?? null,
 			runSetupScript: draft.runSetupScript,
 			linkedIssues: draft.linkedIssues as unknown[],
 			linkedPR: draft.linkedPR,
@@ -100,6 +101,7 @@ export function useSubmitWorkspace(projectId: string | null) {
 				composer: {
 					prompt: draft.prompt.trim() || undefined,
 					baseBranch: draft.baseBranch || undefined,
+					baseBranchSource: draft.baseBranchSource ?? undefined,
 					runSetupScript: draft.runSetupScript,
 				},
 				linkedContext: {

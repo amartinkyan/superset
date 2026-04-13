@@ -41,6 +41,7 @@ function useRetryCreate(
 		branchName: string;
 		prompt: string;
 		baseBranch: string | null;
+		baseBranchSource: "local" | "remote-tracking" | null;
 		runSetupScript: boolean;
 		linkedIssues: unknown[];
 		linkedPR: unknown;
@@ -96,6 +97,7 @@ function useRetryCreate(
 				composer: {
 					prompt: pending.prompt || undefined,
 					baseBranch: pending.baseBranch || undefined,
+					baseBranchSource: pending.baseBranchSource ?? undefined,
 					runSetupScript: pending.runSetupScript,
 				},
 				linkedContext: {
