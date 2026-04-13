@@ -1,0 +1,69 @@
+---
+title: Brand refresh, v2 diff viewer, browser pane, and standalone CLI
+date: 2026-04-13
+image: /changelog/IMAGE_PLACEHOLDER.png
+---
+
+{/* TODO: Replace header image with a screenshot of the new brand + v2 diff viewer */}
+
+## Brand Refresh <PRBadge url="https://github.com/superset-sh/superset/pull/3367" />
+
+New logo and icon treatment across the desktop app and marketing site. The dock icon, tray icon, DMG installer background, and in-app wordmark all use the updated design. In dev builds, each workspace gets a distinct color-coded corner fold on the dock icon so you can tell open workspaces apart at a glance.
+
+## v2 Diff Viewer <PRBadge url="https://github.com/superset-sh/superset/pull/3384" />
+
+{/* TODO: Screenshot of the diff viewer pane */}
+
+A GitHub-style multi-file diff pane is now available in v2 workspaces. Diffs lazy-load as you scroll so large changesets stay fast, and a persistent "Viewed" state syncs between the diff header and the sidebar Changes list — viewed files sort to the bottom.
+
+- Unified and split view toggle
+- Header actions: collapse, expand unchanged regions, copy file contents, revert unstaged changes
+- Sidebar clicks scroll the diff pane to the matching file
+- Viewed state persists when you reopen the workspace
+
+## Browser Pane in v2 Workspaces <PRBadge url="https://github.com/superset-sh/superset/pull/3346" />
+
+The browser pane is now fully ported to v2 workspaces. Pages stay loaded across tab switches and workspace navigations — no reloads, no lost scroll position or form state. Tab titles and favicons update live in the tab bar.
+
+- URL bar with back/forward/reload and history autocomplete
+- DevTools access, screenshot, hard reload, and clear data from the overflow menu
+
+## Standalone CLI with Embedded Host-Service <PRBadge url="https://github.com/superset-sh/superset/pull/3298" />
+
+The Superset CLI now ships as a self-contained tarball for macOS (arm64, x64) and Linux x64. You can run your own host-service on a remote server, CI box, or cloud VM and connect it to the relay without installing the desktop app.
+
+```bash
+tar -xzf superset-darwin-arm64.tar.gz -C ~/superset
+export PATH="$HOME/superset/bin:$PATH"
+
+superset auth login        # OAuth flow, picks your org
+superset host start --daemon   # Connects to relay.superset.sh
+superset host status       # PID, port, uptime
+superset host stop
+```
+
+## Improvements
+
+- **Terminal search** - `Cmd+F` / `Ctrl+Shift+F` opens a search overlay in the v2 terminal <PRBadge url="https://github.com/superset-sh/superset/pull/3289" />
+- **Kitty keyboard protocol** - Enabled on both v1 and v2 terminals for better modifier key support in neovim, fish 4+, and other tools <PRBadge url="https://github.com/superset-sh/superset/pull/3289" />
+- **Relay security setting** - New Settings → Security page to control whether this machine is exposed via the relay; defaults to off, requires typing "I understand" to enable <PRBadge url="https://github.com/superset-sh/superset/pull/3304" />
+- **v1/v2 toggle** - Switch between v1 and v2 interfaces from the top bar when v2 is enabled; preference persists across restarts <PRBadge url="https://github.com/superset-sh/superset/pull/3347" />
+- **Modifier-click in file tree** - `Cmd/Ctrl+click` a file to open it in your external editor or in a new tab <PRBadge url="https://github.com/superset-sh/superset/pull/3398" />
+- **Git decorations in v2 file tree** - Modified, added, and untracked files are now decorated in the v2 file tree <PRBadge url="https://github.com/superset-sh/superset/pull/3320" />
+- **v2 preset parity** - Preset execution mode now works in v2 workspaces, matching v1 behavior <PRBadge url="https://github.com/superset-sh/superset/pull/3354" />
+- **v2 setup scripts** - Workspace setup scripts now run when creating a v2 workspace <PRBadge url="https://github.com/superset-sh/superset/pull/3359" />
+- **Focus neighbor on workspace delete** - Deleting a v2 workspace focuses the previous neighbor, or the next if none, instead of dropping you to `/` <PRBadge url="https://github.com/superset-sh/superset/pull/3401" />
+
+---
+
+**Bug fixes**
+
+- Fixed Ctrl key bindings and `event.code` unification in keyboard settings <PRBadge url="https://github.com/superset-sh/superset/pull/3391" />
+- Restored auto-updater on macOS <PRBadge url="https://github.com/superset-sh/superset/pull/3291" /> <PRBadge url="https://github.com/superset-sh/superset/pull/3278" />
+- Switched CLI auth to OAuth PKCE + loopback for improved security <PRBadge url="https://github.com/superset-sh/superset/pull/3318" />
+- Fixed file attachments not passing through the prompt input <PRBadge url="https://github.com/superset-sh/superset/pull/3334" />
+- v2 file tree no longer blocks on `git.getStatus` in the tRPC batch <PRBadge url="https://github.com/superset-sh/superset/pull/3400" />
+- Fixed v2 Open In editor being workspace-scoped instead of project-scoped <PRBadge url="https://github.com/superset-sh/superset/pull/3393" />
+- Enabled modal focus trap on v1 + v2 workspace dialogs <PRBadge url="https://github.com/superset-sh/superset/pull/3392" />
+- Fixed MCP devices incorrectly classified as offline <PRBadge url="https://github.com/superset-sh/superset/pull/3299" />
+- Fixed xterm output garbling via tRPC-first terminal sessions <PRBadge url="https://github.com/superset-sh/superset/pull/3252" />
