@@ -5,44 +5,69 @@ import {
 	ResizablePanel,
 	ResizablePanelGroup,
 } from "@superset/ui/resizable";
+import { workspaceTrpc } from "@superset/workspace-client";
 import { eq } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { HiMiniXMark } from "react-icons/hi2";
 import { TbLayoutColumns, TbLayoutRows } from "react-icons/tb";
+import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences";
 import { HotkeyLabel, useHotkey } from "renderer/hotkeys";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { CommandPalette } from "renderer/screens/main/components/CommandPalette";
+import {
+	toAbsoluteWorkspacePath,
+	toRelativeWorkspacePath,
+} from "shared/absolute-paths";
 import { useStore } from "zustand";
+import { WorkspaceNotFoundState } from "../components/WorkspaceNotFoundState";
 import { AddTabMenu } from "./components/AddTabMenu";
 import { V2PresetsBar } from "./components/V2PresetsBar";
 import { WorkspaceEmptyState } from "./components/WorkspaceEmptyState";
-import { WorkspaceNotFoundState } from "./components/WorkspaceNotFoundState";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import { useConsumeAutomationRunLink } from "./hooks/useConsumeAutomationRunLink";
+import { useConsumePendingLaunch } from "./hooks/useConsumePendingLaunch";
 import { useDefaultContextMenuActions } from "./hooks/useDefaultContextMenuActions";
 import { usePaneRegistry } from "./hooks/usePaneRegistry";
 import { renderBrowserTabIcon } from "./hooks/usePaneRegistry/components/BrowserPane";
+import { useRecentlyViewedFiles } from "./hooks/useRecentlyViewedFiles";
 import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
 import { useWorkspaceHotkeys } from "./hooks/useWorkspaceHotkeys";
+import {
+	FileDocumentStoreProvider,
+	getDocument,
+} from "./state/fileDocumentStore";
 import type {
 	BrowserPaneData,
 	ChatPaneData,
+	CommentPaneData,
 	DiffPaneData,
 	FilePaneData,
 	PaneViewerData,
 	TerminalPaneData,
 } from "./types";
 
+interface WorkspaceSearch {
+	terminalId?: string;
+	chatSessionId?: string;
+}
+
 export const Route = createFileRoute(
 	"/_authenticated/_dashboard/v2-workspace/$workspaceId/",
 )({
 	component: V2WorkspacePage,
+	validateSearch: (raw: Record<string, unknown>): WorkspaceSearch => ({
+		terminalId: typeof raw.terminalId === "string" ? raw.terminalId : undefined,
+		chatSessionId:
+			typeof raw.chatSessionId === "string" ? raw.chatSessionId : undefined,
+	}),
 });
 
 function V2WorkspacePage() {
 	const { workspaceId } = Route.useParams();
+	const { terminalId, chatSessionId } = Route.useSearch();
 	const collections = useCollections();
 
 	const { data: workspaces } = useLiveQuery(
@@ -67,6 +92,8 @@ function V2WorkspacePage() {
 			projectId={workspace.projectId}
 			workspaceId={workspace.id}
 			workspaceName={workspace.name}
+			terminalId={terminalId}
+			chatSessionId={chatSessionId}
 		/>
 	);
 }
@@ -75,12 +102,21 @@ function WorkspaceContent({
 	projectId,
 	workspaceId,
 	workspaceName,
+	terminalId,
+	chatSessionId,
 }: {
 	projectId: string;
 	workspaceId: string;
 	workspaceName: string;
+	terminalId?: string;
+	chatSessionId?: string;
 }) {
-	const { localWorkspaceState, store } = useV2WorkspacePaneLayout({
+	const {
+		preferences: v2UserPreferences,
+		setRightSidebarOpen,
+		setRightSidebarTab,
+	} = useV2UserPreferences();
+	const { store } = useV2WorkspacePaneLayout({
 		projectId,
 		workspaceId,
 	});
@@ -89,10 +125,17 @@ function WorkspaceContent({
 		workspaceId,
 		projectId,
 	});
-	const paneRegistry = usePaneRegistry(workspaceId);
-	const defaultContextMenuActions = useDefaultContextMenuActions(paneRegistry);
+	useConsumePendingLaunch({ workspaceId, store });
+	useConsumeAutomationRunLink({ store, terminalId, chatSessionId });
 
-	const selectedFilePath = useStore(store, (s) => {
+	const workspaceQuery = workspaceTrpc.workspace.get.useQuery({
+		id: workspaceId,
+	});
+	const worktreePath = workspaceQuery.data?.worktreePath ?? "";
+
+	const { recentFiles, recordView } = useRecentlyViewedFiles(workspaceId);
+
+	const activeFilePanePath = useStore(store, (s) => {
 		const tab = s.tabs.find((t) => t.id === s.activeTabId);
 		if (!tab?.activePaneId) return undefined;
 		const pane = tab.panes[tab.activePaneId];
@@ -100,8 +143,47 @@ function WorkspaceContent({
 		return undefined;
 	});
 
+	const [selectedFilePath, setSelectedFilePath] = useState<string | undefined>(
+		activeFilePanePath,
+	);
+	// Every reveal request is a fresh object, so the FilesTab effect keyed on
+	// `pendingReveal` re-runs even when the path is the same (e.g. user
+	// collapsed a folder and re-⌘-clicked it in the terminal).
+	const [pendingReveal, setPendingReveal] = useState<{
+		path: string;
+		isDirectory: boolean;
+	} | null>(null);
+
+	useEffect(() => {
+		if (activeFilePanePath !== undefined) {
+			setSelectedFilePath(activeFilePanePath);
+			setPendingReveal({ path: activeFilePanePath, isDirectory: false });
+		}
+	}, [activeFilePanePath]);
+
+	const openFilePathsKey = useStore(store, (s) =>
+		s.tabs
+			.flatMap((t) =>
+				Object.values(t.panes)
+					.filter((p) => p.kind === "file")
+					.map((p) => (p.data as FilePaneData).filePath),
+			)
+			.join("\u0000"),
+	);
+	const openFilePaths = useMemo(
+		() => new Set(openFilePathsKey ? openFilePathsKey.split("\u0000") : []),
+		[openFilePathsKey],
+	);
+
 	const openFilePane = useCallback(
 		(filePath: string, openInNewTab?: boolean) => {
+			if (worktreePath) {
+				const absolutePath = toAbsoluteWorkspacePath(worktreePath, filePath);
+				const relativePath = toRelativeWorkspacePath(worktreePath, filePath);
+				if (relativePath && relativePath !== ".") {
+					recordView({ relativePath, absolutePath });
+				}
+			}
 			const state = store.getState();
 			if (openInNewTab) {
 				state.addTab({
@@ -111,7 +193,6 @@ function WorkspaceContent({
 							data: {
 								filePath,
 								mode: "editor",
-								hasChanges: false,
 							} as FilePaneData,
 						},
 					],
@@ -132,13 +213,28 @@ function WorkspaceContent({
 					data: {
 						filePath,
 						mode: "editor",
-						hasChanges: false,
 					} as FilePaneData,
 				},
 			});
 		},
-		[store],
+		[store, worktreePath, recordView],
 	);
+
+	const revealPath = useCallback(
+		(path: string, options?: { isDirectory?: boolean }) => {
+			setRightSidebarOpen(true);
+			setRightSidebarTab("files");
+			setSelectedFilePath(path);
+			setPendingReveal({ path, isDirectory: options?.isDirectory === true });
+		},
+		[setRightSidebarOpen, setRightSidebarTab],
+	);
+
+	const paneRegistry = usePaneRegistry(workspaceId, {
+		onOpenFile: openFilePane,
+		onRevealPath: revealPath,
+	});
+	const defaultContextMenuActions = useDefaultContextMenuActions(paneRegistry);
 
 	const openDiffPane = useCallback(
 		(filePath: string) => {
@@ -211,6 +307,33 @@ function WorkspaceContent({
 		});
 	}, [store]);
 
+	const openCommentPane = useCallback(
+		(comment: CommentPaneData) => {
+			const state = store.getState();
+			for (const tab of state.tabs) {
+				for (const pane of Object.values(tab.panes)) {
+					if (pane.kind !== "comment") continue;
+					state.setPaneData({
+						paneId: pane.id,
+						data: comment as PaneViewerData,
+					});
+					state.setActiveTab(tab.id);
+					state.setActivePane({ tabId: tab.id, paneId: pane.id });
+					return;
+				}
+			}
+			state.addTab({
+				panes: [
+					{
+						kind: "comment",
+						data: comment as PaneViewerData,
+					},
+				],
+			});
+		},
+		[store],
+	);
+
 	const [quickOpenOpen, setQuickOpenOpen] = useState(false);
 	const handleQuickOpen = useCallback(() => setQuickOpenOpen(true), []);
 
@@ -239,20 +362,25 @@ function WorkspaceContent({
 			{
 				key: "close",
 				icon: <HiMiniXMark className="size-3.5" />,
-				tooltip: <HotkeyLabel label="Close pane" id="CLOSE_TERMINAL" />,
+				tooltip: <HotkeyLabel label="Close pane" id="CLOSE_PANE" />,
 				onClick: (ctx) => ctx.actions.close(),
 			},
 		],
 		[],
 	);
 
-	const sidebarOpen = localWorkspaceState?.rightSidebarOpen ?? false;
+	const sidebarOpen = v2UserPreferences.rightSidebarOpen;
 
-	useWorkspaceHotkeys({ store, workspaceId, matchedPresets, executePreset });
+	useWorkspaceHotkeys({
+		store,
+		matchedPresets,
+		executePreset,
+		paneRegistry,
+	});
 	useHotkey("QUICK_OPEN", handleQuickOpen);
 
 	return (
-		<>
+		<FileDocumentStoreProvider workspaceId={workspaceId}>
 			<ResizablePanelGroup direction="horizontal" className="flex-1">
 				<ResizablePanel defaultSize={80} minSize={30}>
 					<div
@@ -286,19 +414,19 @@ function WorkspaceContent({
 								/>
 							)}
 							onBeforeCloseTab={(tab) => {
-								const dirtyFiles = Object.values(tab.panes)
-									.filter(
-										(p) =>
-											p.kind === "file" && (p.data as FilePaneData).hasChanges,
-									)
-									.map((p) =>
-										(p.data as FilePaneData).filePath.split("/").pop(),
-									);
-								if (dirtyFiles.length === 0) return true;
+								const dirtyPanes = Object.values(tab.panes).filter((p) => {
+									if (p.kind !== "file") return false;
+									const filePath = (p.data as FilePaneData).filePath;
+									return getDocument(workspaceId, filePath)?.dirty === true;
+								});
+								const dirtyFileNames = dirtyPanes.map((p) =>
+									(p.data as FilePaneData).filePath.split("/").pop(),
+								);
+								if (dirtyPanes.length === 0) return true;
 								const title =
-									dirtyFiles.length === 1
-										? `Do you want to save the changes you made to ${dirtyFiles[0]}?`
-										: `Do you want to save changes to ${dirtyFiles.length} files?`;
+									dirtyPanes.length === 1
+										? `Do you want to save the changes you made to ${dirtyFileNames[0]}?`
+										: `Do you want to save changes to ${dirtyPanes.length} files?`;
 								return new Promise<boolean>((resolve) => {
 									alert({
 										title,
@@ -307,15 +435,33 @@ function WorkspaceContent({
 										actions: [
 											{
 												label: "Save All",
-												onClick: () => {
-													// TODO: wire up save via editor refs
+												onClick: async () => {
+													for (const pane of dirtyPanes) {
+														const filePath = (pane.data as FilePaneData)
+															.filePath;
+														const doc = getDocument(workspaceId, filePath);
+														if (!doc) continue;
+														const result = await doc.save();
+														if (result.status !== "saved") {
+															resolve(false);
+															return;
+														}
+													}
 													resolve(true);
 												},
 											},
 											{
 												label: "Don't Save",
 												variant: "secondary",
-												onClick: () => resolve(true),
+												onClick: async () => {
+													for (const pane of dirtyPanes) {
+														const filePath = (pane.data as FilePaneData)
+															.filePath;
+														const doc = getDocument(workspaceId, filePath);
+														if (doc) await doc.reload();
+													}
+													resolve(true);
+												},
 											},
 											{
 												label: "Cancel",
@@ -339,8 +485,10 @@ function WorkspaceContent({
 								workspaceName={workspaceName}
 								onSelectFile={openFilePane}
 								onSelectDiffFile={openDiffPane}
+								onOpenComment={openCommentPane}
 								onSearch={handleQuickOpen}
 								selectedFilePath={selectedFilePath}
+								pendingReveal={pendingReveal}
 							/>
 						</ResizablePanel>
 					</>
@@ -352,7 +500,9 @@ function WorkspaceContent({
 				onOpenChange={setQuickOpenOpen}
 				onSelectFile={openFilePane}
 				variant="v2"
+				recentlyViewedFiles={recentFiles}
+				openFilePaths={openFilePaths}
 			/>
-		</>
+		</FileDocumentStoreProvider>
 	);
 }

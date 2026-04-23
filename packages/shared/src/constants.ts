@@ -2,6 +2,8 @@
 export const AUTH_PROVIDERS = ["github", "google"] as const;
 export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
 
+export const ORGANIZATION_HEADER = "x-superset-organization-id";
+
 // Deep link protocol schemes (used for desktop OAuth callbacks)
 export const PROTOCOL_SCHEMES = {
 	DEV: "superset-dev",
@@ -24,9 +26,14 @@ export const COMPANY = {
 		(process.env.NEXT_PUBLIC_MARKETING_URL || "https://superset.sh") +
 		"/changelog",
 	X_URL: "https://x.com/superset_sh",
+	LINKEDIN_URL: "https://www.linkedin.com/company/superset-sh",
+	YOUTUBE_URL: "https://www.youtube.com/@superset-sh",
 	MAIL_TO: "mailto:founders@superset.sh",
 	REPORT_ISSUE_URL: "https://github.com/superset-sh/superset/issues/new",
 	DISCORD_URL: "https://discord.gg/cZeD9WYcV7",
+	STATUS_URL: "https://status.superset.sh",
+	TRUST_URL: "https://trust.superset.sh",
+	CAREERS_URL: "https://www.ycombinator.com/companies/superset/jobs",
 } as const;
 
 // Theme
@@ -44,6 +51,9 @@ export const TOKEN_CONFIG = {
 	/** Refresh access token when this many seconds remain (5 minutes) */
 	REFRESH_THRESHOLD: 5 * 60,
 } as const;
+
+// Workspace teardown
+export const TEARDOWN_TIMEOUT_MS = 60_000;
 
 // PostHog
 export const POSTHOG_COOKIE_NAME = "superset";
@@ -63,4 +73,11 @@ export const FEATURE_FLAGS = {
 	DISABLE_REMOTE_AGENT: "disable-remote-agent",
 	/** Gates access to V2 Cloud features (host-service, cloud sprites). */
 	V2_CLOUD: "v2-cloud",
+	/**
+	 * Gates the Automations feature in the UI (sidebar entry, routes, create
+	 * flow). Complementary to the subscriptions.plan paid-tier check —
+	 * server-side procedures still enforce paid plan; this flag controls
+	 * UI visibility and staged rollout.
+	 */
+	AUTOMATIONS_ACCESS: "automations-access",
 } as const;

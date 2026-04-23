@@ -33,11 +33,14 @@ import { useTabsStore } from "renderer/stores/tabs/store";
 import type { Tab } from "renderer/stores/tabs/types";
 import { useTabsWithPresets } from "renderer/stores/tabs/useTabsWithPresets";
 import {
+	type FocusDirection,
 	findPanePath,
 	getFirstPaneId,
+	getSpatialNeighborMosaicPaneId,
 	resolveActiveTabIdForWorkspace,
 } from "renderer/stores/tabs/utils";
 import {
+	useHasCompletedInitThisSession,
 	useHasWorkspaceFailed,
 	useIsWorkspaceInitializing,
 } from "renderer/stores/workspace-init";
@@ -120,12 +123,18 @@ function WorkspacePage() {
 	// Check if workspace is initializing or failed
 	const isInitializing = useIsWorkspaceInitializing(workspaceId);
 	const hasFailed = useHasWorkspaceFailed(workspaceId);
+	// If we witnessed this workspace reach "ready" in the current app session,
+	// never misidentify it as mid-init even if the workspace query momentarily
+	// returns a null gitStatus (happens on the first navigation after create,
+	// because WorkspaceInitEffects clears the progress entry post-setup).
+	const completedThisSession = useHasCompletedInitThisSession(workspaceId);
 
 	// Check for incomplete init after app restart
 	const gitStatus = workspace?.worktree?.gitStatus;
 	const hasIncompleteInit =
+		!completedThisSession &&
 		workspace?.type === "worktree" &&
-		(gitStatus === null || gitStatus === undefined);
+		gitStatus === null;
 
 	// Show full-screen initialization view for:
 	// - Actively initializing workspaces (shows progress)
@@ -299,7 +308,6 @@ function WorkspacePage() {
 			});
 		}
 	}, [workspace?.worktreePath, resolvedDefaultApp, mutateOpenInApp, projectId]);
-	useHotkey("OPEN_IN_APP", handleOpenInApp);
 
 	// Copy path shortcut
 	const { copyToClipboard } = useCopyToClipboard();
@@ -329,8 +337,8 @@ function WorkspacePage() {
 	// Toggle changes sidebar (⌘L)
 	useHotkey("TOGGLE_SIDEBAR", () => toggleSidebar());
 
-	// Toggle expand/collapse sidebar (⌘⇧L)
-	useHotkey("TOGGLE_EXPAND_SIDEBAR", () => {
+	// Open diff viewer (⌘⇧L)
+	useHotkey("OPEN_DIFF_VIEWER", () => {
 		if (!isSidebarOpen) {
 			setSidebarOpen(true);
 			setSidebarMode(SidebarMode.Changes);
@@ -408,6 +416,23 @@ function WorkspacePage() {
 			equalizePaneSplits(activeTabId);
 		}
 	});
+
+	const moveFocusDirectional = useCallback(
+		(dir: FocusDirection) => {
+			if (!activeTabId || !activeTab?.layout || !focusedPaneId) return;
+			const neighbor = getSpatialNeighborMosaicPaneId(
+				activeTab.layout,
+				focusedPaneId,
+				dir,
+			);
+			if (neighbor) setFocusedPane(activeTabId, neighbor);
+		},
+		[activeTabId, activeTab?.layout, focusedPaneId, setFocusedPane],
+	);
+	useHotkey("FOCUS_PANE_LEFT", () => moveFocusDirectional("left"));
+	useHotkey("FOCUS_PANE_RIGHT", () => moveFocusDirectional("right"));
+	useHotkey("FOCUS_PANE_UP", () => moveFocusDirectional("up"));
+	useHotkey("FOCUS_PANE_DOWN", () => moveFocusDirectional("down"));
 
 	const getPreviousWorkspace =
 		electronTrpc.workspaces.getPreviousWorkspace.useQuery(

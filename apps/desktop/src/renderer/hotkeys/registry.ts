@@ -102,13 +102,21 @@ export const HOTKEYS_REGISTRY = {
 		category: "Workspace",
 	},
 	PREV_WORKSPACE: {
-		key: { mac: null, windows: null, linux: null },
+		key: {
+			mac: "meta+alt+up",
+			windows: "ctrl+shift+alt+up",
+			linux: "ctrl+shift+alt+up",
+		},
 		label: "Previous Workspace",
 		category: "Workspace",
 		description: "Navigate to the previous workspace in the sidebar",
 	},
 	NEXT_WORKSPACE: {
-		key: { mac: null, windows: null, linux: null },
+		key: {
+			mac: "meta+alt+down",
+			windows: "ctrl+shift+alt+down",
+			linux: "ctrl+shift+alt+down",
+		},
 		label: "Next Workspace",
 		category: "Workspace",
 		description: "Navigate to the next workspace in the sidebar",
@@ -178,14 +186,16 @@ export const HOTKEYS_REGISTRY = {
 		label: "Toggle Changes Tab",
 		category: "Layout",
 	},
-	TOGGLE_EXPAND_SIDEBAR: {
+	OPEN_DIFF_VIEWER: {
 		key: {
 			mac: "meta+shift+l",
 			windows: "ctrl+shift+alt+l",
 			linux: "ctrl+shift+alt+l",
 		},
-		label: "Toggle Expand Sidebar",
+		label: "Open Diff Viewer",
 		category: "Layout",
+		description:
+			"Open the diff viewer in a new tab, or focus the existing diff viewer",
 	},
 	TOGGLE_WORKSPACE_SIDEBAR: {
 		key: { mac: "meta+b", windows: "ctrl+shift+b", linux: "ctrl+shift+b" },
@@ -321,8 +331,8 @@ export const HOTKEYS_REGISTRY = {
 	SCROLL_TO_BOTTOM: {
 		key: {
 			mac: "meta+shift+down",
-			windows: "ctrl+shift+alt+down",
-			linux: "ctrl+shift+alt+down",
+			windows: "ctrl+end",
+			linux: "ctrl+end",
 		},
 		label: "Scroll to Bottom",
 		category: "Terminal",
@@ -343,53 +353,45 @@ export const HOTKEYS_REGISTRY = {
 		category: "Terminal",
 	},
 	PREV_TAB: {
-		key: { mac: null, windows: null, linux: null },
-		label: "Previous Tab",
-		category: "Terminal",
-		description: "Focus the previous tab in the active workspace",
-	},
-	NEXT_TAB: {
-		key: { mac: null, windows: null, linux: null },
-		label: "Next Tab",
-		category: "Terminal",
-		description: "Focus the next tab in the active workspace",
-	},
-	FOCUS_PANE_LEFT: {
 		key: {
 			mac: "meta+alt+left",
 			windows: "ctrl+shift+alt+left",
 			linux: "ctrl+shift+alt+left",
 		},
-		label: "Focus Pane Left",
+		label: "Previous Tab",
 		category: "Terminal",
-		description: "Focus the pane to the left of the active pane",
+		description: "Focus the previous tab in the active workspace",
 	},
-	FOCUS_PANE_RIGHT: {
+	NEXT_TAB: {
 		key: {
 			mac: "meta+alt+right",
 			windows: "ctrl+shift+alt+right",
 			linux: "ctrl+shift+alt+right",
 		},
+		label: "Next Tab",
+		category: "Terminal",
+		description: "Focus the next tab in the active workspace",
+	},
+	FOCUS_PANE_LEFT: {
+		key: { mac: null, windows: null, linux: null },
+		label: "Focus Pane Left",
+		category: "Terminal",
+		description: "Focus the pane to the left of the active pane",
+	},
+	FOCUS_PANE_RIGHT: {
+		key: { mac: null, windows: null, linux: null },
 		label: "Focus Pane Right",
 		category: "Terminal",
 		description: "Focus the pane to the right of the active pane",
 	},
 	FOCUS_PANE_UP: {
-		key: {
-			mac: "meta+alt+up",
-			windows: "ctrl+shift+alt+up",
-			linux: "ctrl+shift+alt+up",
-		},
+		key: { mac: null, windows: null, linux: null },
 		label: "Focus Pane Up",
 		category: "Terminal",
 		description: "Focus the pane above the active pane",
 	},
 	FOCUS_PANE_DOWN: {
-		key: {
-			mac: "meta+alt+down",
-			windows: "ctrl+shift+alt+down",
-			linux: "ctrl+shift+alt+down",
-		},
+		key: { mac: null, windows: null, linux: null },
 		label: "Focus Pane Down",
 		category: "Terminal",
 		description: "Focus the pane below the active pane",
@@ -532,11 +534,6 @@ export const HOTKEYS_REGISTRY = {
 		label: "Add Attachment",
 		category: "Terminal",
 	},
-	CHAT_LINK_ISSUE: {
-		key: { mac: "meta+i", windows: "ctrl+shift+i", linux: "ctrl+shift+i" },
-		label: "Link Issue",
-		category: "Terminal",
-	},
 
 	// Window
 	OPEN_IN_APP: {
@@ -564,7 +561,7 @@ export const HOTKEYS_REGISTRY = {
 	},
 	SHOW_HOTKEYS: {
 		key: {
-			mac: "meta+slash",
+			mac: "meta+shift+slash",
 			windows: "ctrl+shift+slash",
 			linux: "ctrl+shift+slash",
 		},

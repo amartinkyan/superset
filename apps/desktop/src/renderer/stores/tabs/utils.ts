@@ -13,6 +13,7 @@ import { hasRenderedPreview, isImageFile } from "shared/file-types";
 import {
 	acknowledgedStatus,
 	type BrowserPaneState,
+	type CommentPaneState,
 	type DevToolsPaneState,
 	type DiffLayout,
 	type FileViewerMode,
@@ -359,6 +360,42 @@ export const createChatTabWithPane = (
 };
 
 /**
+ * Creates a new comment pane (PR review / conversation comment viewer)
+ */
+export const createCommentPane = (
+	tabId: string,
+	comment: CommentPaneState,
+): Pane => {
+	const id = generateId("pane");
+	return {
+		id,
+		tabId,
+		type: "comment",
+		name: `@${comment.authorLogin}`,
+		comment,
+	};
+};
+
+/**
+ * Creates a new tab with a comment pane atomically
+ */
+export const createCommentTabWithPane = (
+	workspaceId: string,
+	comment: CommentPaneState,
+): { tab: Tab; pane: Pane } => {
+	const tabId = generateId("tab");
+	const pane = createCommentPane(tabId, comment);
+	const tab: Tab = {
+		id: tabId,
+		name: `@${comment.authorLogin}`,
+		workspaceId,
+		layout: pane.id,
+		createdAt: Date.now(),
+	};
+	return { tab, pane };
+};
+
+/**
  * Generates a static tab name based on existing tabs
  * (e.g., "Terminal 1", "Terminal 2", finding the next available number)
  */
@@ -552,6 +589,70 @@ export const findPanePath = (
 	]);
 	if (secondPath) return secondPath;
 
+	return null;
+};
+
+export type FocusDirection = "left" | "right" | "up" | "down";
+
+const findEdgeMosaicPaneId = (
+	node: MosaicNode<string>,
+	dir: FocusDirection,
+	alignmentPath: MosaicBranch[] = [],
+): string => {
+	if (typeof node === "string") return node;
+	const axis: "row" | "column" =
+		dir === "left" || dir === "right" ? "row" : "column";
+	if (node.direction === axis) {
+		const nearEdge: MosaicBranch =
+			dir === "right" || dir === "down" ? "first" : "second";
+		return findEdgeMosaicPaneId(node[nearEdge], dir, alignmentPath);
+	}
+	const [alignedBranch = "first", ...rest] = alignmentPath;
+	return findEdgeMosaicPaneId(node[alignedBranch], dir, rest);
+};
+
+const getMosaicNodeAtPath = (
+	node: MosaicNode<string>,
+	path: MosaicBranch[],
+): MosaicNode<string> | null => {
+	let current: MosaicNode<string> = node;
+	for (const branch of path) {
+		if (typeof current === "string") return null;
+		current = current[branch];
+	}
+	return current;
+};
+
+/**
+ * Visually adjacent pane in `dir`, or null at the outer edge of the grid.
+ * Preserves cross-axis alignment when descending through perpendicular splits.
+ */
+export const getSpatialNeighborMosaicPaneId = (
+	root: MosaicNode<string>,
+	paneId: string,
+	dir: FocusDirection,
+): string | null => {
+	const path = findPanePath(root, paneId);
+	if (!path) return null;
+
+	const axis: "row" | "column" =
+		dir === "left" || dir === "right" ? "row" : "column";
+	const wantSecond = dir === "right" || dir === "down";
+
+	for (let i = path.length - 1; i >= 0; i--) {
+		const ancestor = getMosaicNodeAtPath(root, path.slice(0, i));
+		if (!ancestor || typeof ancestor === "string") continue;
+		if (ancestor.direction !== axis) continue;
+		const cameFrom = path[i];
+		if (wantSecond && cameFrom !== "first") continue;
+		if (!wantSecond && cameFrom !== "second") continue;
+		const siblingBranch: MosaicBranch = wantSecond ? "second" : "first";
+		return findEdgeMosaicPaneId(
+			ancestor[siblingBranch],
+			dir,
+			path.slice(i + 1),
+		);
+	}
 	return null;
 };
 

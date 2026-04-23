@@ -16,8 +16,9 @@ import type {
 	DashboardSidebarWorkspace,
 } from "../../types";
 
-// Pending workspaces are always rendered at the end of the project's workspace list
-const PENDING_WORKSPACE_TAB_ORDER = Number.MAX_SAFE_INTEGER;
+// Sits above every real workspace so the pending row lines up with the real one,
+// which is inserted via getPrependTabOrder.
+const PENDING_WORKSPACE_TAB_ORDER = Number.MIN_SAFE_INTEGER;
 
 export function useDashboardSidebarData() {
 	const { data: session } = authClient.useSession();
@@ -120,6 +121,7 @@ export function useDashboardSidebarData() {
 					projectId: sidebarWorkspaces.sidebarState.projectId,
 					hostId: workspaces.hostId,
 					hostMachineId: hosts?.machineId ?? null,
+					hostIsOnline: hosts?.isOnline ?? null,
 					name: workspaces.name,
 					branch: workspaces.branch,
 					createdAt: workspaces.createdAt,
@@ -239,6 +241,10 @@ export function useDashboardSidebarData() {
 				projectId: workspace.projectId,
 				hostId: workspace.hostId,
 				hostType,
+				hostIsOnline:
+					hostType === "remote-device"
+						? (workspace.hostIsOnline ?? null)
+						: null,
 				accentColor: null,
 				name: workspace.name,
 				branch: workspace.branch,
@@ -290,6 +296,7 @@ export function useDashboardSidebarData() {
 				projectId: pw.projectId,
 				hostId: "",
 				hostType: "local-device",
+				hostIsOnline: null,
 				accentColor: null,
 				name: pw.name,
 				branch: pw.branchName,
@@ -324,9 +331,31 @@ export function useDashboardSidebarData() {
 				sectionMap: _sectionMap,
 				...sidebarProject
 			} = resolvedProject;
-			sidebarProject.children = childEntries
+
+			const sortedChildren = childEntries
 				.sort((left, right) => left.tabOrder - right.tabOrder)
 				.map(({ child }) => child);
+
+			// Ungrouped workspaces rendered after a section header are visually
+			// grouped with that section (shared accent, collapse-together) and will
+			// be committed into it on next DnD. Reparent them here so section counts
+			// match what the user sees.
+			const children: DashboardSidebarProjectChild[] = [];
+			let currentSection: DashboardSidebarSection | null = null;
+			for (const child of sortedChildren) {
+				if (child.type === "section") {
+					currentSection = child.section;
+					children.push(child);
+				} else if (currentSection) {
+					currentSection.workspaces.push({
+						...child.workspace,
+						accentColor: currentSection.color,
+					});
+				} else {
+					children.push(child);
+				}
+			}
+			sidebarProject.children = children;
 			return [sidebarProject];
 		});
 	}, [

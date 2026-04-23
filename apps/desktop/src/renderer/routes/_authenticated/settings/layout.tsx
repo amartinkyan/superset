@@ -5,10 +5,12 @@ import {
 	useNavigate,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import {
 	type SettingsSection,
 	useSetSettingsSearchQuery,
+	useSettingsOriginRoute,
 	useSettingsSearchQuery,
 } from "renderer/stores/settings-state";
 import { SearchResultsBanner } from "./components/SearchResultsBanner";
@@ -30,6 +32,7 @@ const SECTION_ORDER: SettingsSection[] = [
 	"behavior",
 	"git",
 	"terminal",
+	"links",
 	"models",
 	"organization",
 	"integrations",
@@ -47,6 +50,7 @@ function getSectionFromPath(pathname: string): SettingsSection | null {
 	if (pathname.includes("/settings/behavior")) return "behavior";
 	if (pathname.includes("/settings/git")) return "git";
 	if (pathname.includes("/settings/terminal")) return "terminal";
+	if (pathname.includes("/settings/links")) return "links";
 	if (pathname.includes("/settings/models")) return "models";
 	if (pathname.includes("/settings/integrations")) return "integrations";
 	if (pathname.includes("/settings/permissions")) return "permissions";
@@ -72,6 +76,8 @@ function getPathFromSection(section: SettingsSection): string {
 			return "/settings/git";
 		case "terminal":
 			return "/settings/terminal";
+		case "links":
+			return "/settings/links";
 		case "models":
 			return "/settings/models";
 		case "integrations":
@@ -88,6 +94,7 @@ function SettingsLayout() {
 	const isMac = platform === undefined || platform === "darwin";
 	const searchQuery = useSettingsSearchQuery();
 	const setSearchQuery = useSetSettingsSearchQuery();
+	const originRoute = useSettingsOriginRoute();
 	const location = useLocation();
 	const navigate = useNavigate();
 	const normalizedSearchQuery = searchQuery.trim();
@@ -116,6 +123,17 @@ function SettingsLayout() {
 			}
 		}
 	}, [isSearchActive, location.pathname, navigate, normalizedSearchQuery]);
+
+	useHotkeys(
+		"escape",
+		(event) => {
+			if (document.querySelector('[data-state="open"]')) return;
+			event.preventDefault();
+			navigate({ to: originRoute });
+		},
+		{ enableOnFormTags: false, enableOnContentEditable: false },
+		[navigate, originRoute],
+	);
 
 	return (
 		<div className="flex flex-col h-screen w-screen bg-tertiary">

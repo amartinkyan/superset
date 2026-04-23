@@ -1,32 +1,36 @@
+import { sanitizeUserBranchName } from "@superset/shared/workspace-launch";
 import {
 	PromptInput,
 	PromptInputAttachment,
 	PromptInputAttachments,
+	PromptInputButton,
 	PromptInputFooter,
 	PromptInputSubmit,
 	PromptInputTextarea,
 	PromptInputTools,
 	useProviderAttachments,
 } from "@superset/ui/ai-elements/prompt-input";
+import { Button } from "@superset/ui/button";
 import { Input } from "@superset/ui/input";
+import { isEnterSubmit } from "@superset/ui/lib/keyboard";
 import { cn } from "@superset/ui/utils";
+import { useNavigate } from "@tanstack/react-router";
+import type { FileUIPart } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { GoIssueOpened } from "react-icons/go";
 import { LuGitPullRequest } from "react-icons/lu";
+import { SiLinear } from "react-icons/si";
 import { AgentSelect } from "renderer/components/AgentSelect";
 import { LinkedIssuePill } from "renderer/components/Chat/ChatInterface/components/ChatInputFooter/components/LinkedIssuePill";
 import { IssueLinkCommand } from "renderer/components/Chat/ChatInterface/components/IssueLinkCommand";
 import { useAgentLaunchPreferences } from "renderer/hooks/useAgentLaunchPreferences";
+import { useEnabledAgents } from "renderer/hooks/useEnabledAgents";
 import { PLATFORM } from "renderer/hotkeys";
-import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useNewWorkspaceModalOpen } from "renderer/stores/new-workspace-modal";
-import { getEnabledAgentConfigs } from "shared/utils/agent-settings";
-import { sanitizeUserBranchName, slugifyForBranch } from "shared/utils/branch";
-import type { LinkedPR } from "../../../DashboardNewWorkspaceDraftContext";
 import { useDashboardNewWorkspaceDraft } from "../../../DashboardNewWorkspaceDraftContext";
 import { DevicePicker } from "../components/DevicePicker";
-import { useBranchContext } from "../hooks/useBranchContext";
 import { AttachmentButtons } from "./components/AttachmentButtons";
 import { CompareBaseBranchPicker } from "./components/CompareBaseBranchPicker";
 import { GitHubIssueLinkCommand } from "./components/GitHubIssueLinkCommand";
@@ -34,7 +38,12 @@ import { LinkedGitHubIssuePill } from "./components/LinkedGitHubIssuePill";
 import { LinkedPRPill } from "./components/LinkedPRPill";
 import { PRLinkCommand } from "./components/PRLinkCommand";
 import { ProjectPickerPill } from "./components/ProjectPickerPill";
-import { useSubmitWorkspace } from "./hooks/useSubmitWorkspace";
+import { useBranchPickerController } from "./hooks/useBranchPickerController";
+import { useLinkedContext } from "./hooks/useLinkedContext";
+import {
+	type SubmitAttachment,
+	useSubmitWorkspace,
+} from "./hooks/useSubmitWorkspace";
 import {
 	AGENT_STORAGE_KEY,
 	PILL_BUTTON_CLASS,
@@ -49,11 +58,7 @@ interface PromptGroupProps {
 	onSelectProject: (projectId: string) => void;
 }
 
-export function PromptGroup(props: PromptGroupProps) {
-	return <PromptGroupInner {...props} />;
-}
-
-function PromptGroupInner({
+export function PromptGroup({
 	projectId,
 	selectedProject,
 	recentProjects,
@@ -62,7 +67,18 @@ function PromptGroupInner({
 	const modKey = PLATFORM === "mac" ? "⌘" : "Ctrl";
 	const isNewWorkspaceModalOpen = useNewWorkspaceModalOpen();
 	const { closeModal, draft, updateDraft } = useDashboardNewWorkspaceDraft();
+	const navigate = useNavigate();
 	const attachments = useProviderAttachments();
+	const needsSetup = selectedProject?.needsSetup === true;
+	const handleGoToSetup = useCallback(() => {
+		if (!selectedProject?.id) return;
+		const targetProjectId = selectedProject.id;
+		closeModal();
+		void navigate({
+			to: "/settings/projects/$projectId",
+			params: { projectId: targetProjectId },
+		});
+	}, [closeModal, navigate, selectedProject?.id]);
 	const {
 		baseBranch,
 		hostTarget,
@@ -72,14 +88,12 @@ function PromptGroupInner({
 		branchNameEdited,
 		linkedIssues,
 		linkedPR,
+		friendlyFallback,
 	} = draft;
 
 	// ── Agent presets ────────────────────────────────────────────────
-	const agentPresetsQuery = electronTrpc.settings.getAgentPresets.useQuery();
-	const enabledAgentPresets = useMemo(
-		() => getEnabledAgentConfigs(agentPresetsQuery.data ?? []),
-		[agentPresetsQuery.data],
-	);
+	const { agents: enabledAgentPresets, isFetched: agentsFetched } =
+		useEnabledAgents();
 	const selectableAgentIds = useMemo(
 		() => enabledAgentPresets.map((preset) => preset.id),
 		[enabledAgentPresets],
@@ -90,31 +104,14 @@ function PromptGroupInner({
 			defaultAgent: "claude",
 			fallbackAgent: "none",
 			validAgents: ["none", ...selectableAgentIds],
-			agentsReady: agentPresetsQuery.isFetched,
+			agentsReady: agentsFetched,
 		});
-
-	// ── Link commands ────────────────────────────────────────────────
-	const [issueLinkOpen, setIssueLinkOpen] = useState(false);
-	const [gitHubIssueLinkOpen, setGitHubIssueLinkOpen] = useState(false);
-	const [prLinkOpen, setPRLinkOpen] = useState(false);
-	const plusMenuRef = useRef<HTMLDivElement>(null);
-	const trimmedPrompt = prompt.trim();
-
-	// ── Branch data ──────────────────────────────────────────────────
-	const {
-		data: branchData,
-		isLoading: isBranchesLoading,
-		isError: isBranchesError,
-	} = useBranchContext(projectId, hostTarget);
-
-	const effectiveCompareBaseBranch =
-		baseBranch || branchData?.defaultBranch || null;
 
 	const branchPreview = branchNameEdited
 		? sanitizeUserBranchName(branchName)
-		: slugifyForBranch(trimmedPrompt);
+		: friendlyFallback;
 
-	// Reset baseBranch on project or host change
+	// Reset baseBranch on project or host change.
 	const previousProjectIdRef = useRef(projectId);
 	const previousHostRef = useRef(JSON.stringify(hostTarget));
 	useEffect(() => {
@@ -125,74 +122,74 @@ function PromptGroupInner({
 		) {
 			previousProjectIdRef.current = projectId;
 			previousHostRef.current = nextHost;
-			updateDraft({ baseBranch: null });
+			updateDraft({ baseBranch: null, baseBranchSource: null });
 		}
 	}, [projectId, hostTarget, updateDraft]);
 
-	// ── Create ───────────────────────────────────────────────────────
-	const handleCreate = useSubmitWorkspace(projectId);
+	// ── Branch picker controller ─────────────────────────────────────
+	const { pickerProps } = useBranchPickerController({
+		projectId,
+		hostTarget,
+		baseBranch,
+		runSetupScript: draft.runSetupScript,
+		typedWorkspaceName: workspaceName,
+		onBaseBranchChange: (branch, source) =>
+			updateDraft({ baseBranch: branch, baseBranchSource: source }),
+		closeModal,
+	});
 
-	const handlePromptSubmit = useCallback(() => {
-		void handleCreate();
-	}, [handleCreate]);
+	// ── Submit (fork) ────────────────────────────────────────────────
+	const createWorkspace = useSubmitWorkspace(projectId);
+	const handleSubmit = useCallback(
+		(files: SubmitAttachment[] = []) => {
+			if (needsSetup) {
+				handleGoToSetup();
+				return;
+			}
+			void createWorkspace(files);
+		},
+		[createWorkspace, handleGoToSetup, needsSetup],
+	);
+	const handlePromptSubmit = useCallback(
+		(message: { text?: string; files?: FileUIPart[] }) => {
+			// Library converts blob: → data: URLs before calling us; pass them
+			// through. We intentionally do not read attachments from the
+			// provider here — the library clears + revokes before onSubmit, so
+			// the provider's state is stale by this point.
+			const files = (message.files ?? [])
+				.filter((f) => typeof f.url === "string" && f.url.length > 0)
+				.map((f) => ({
+					url: f.url,
+					mediaType: f.mediaType,
+					filename: f.filename,
+				}));
+			handleSubmit(files);
+		},
+		[handleSubmit],
+	);
 
 	useEffect(() => {
 		if (!isNewWorkspaceModalOpen) return;
 		const handler = (e: KeyboardEvent) => {
-			if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-				e.preventDefault();
-				void handleCreate();
-			}
+			if (!isEnterSubmit(e, { requireMod: true })) return;
+			e.preventDefault();
+			// Keyboard fallback: submit without attachments. Inside the
+			// modal's form focus, PromptInput's own Enter handler fires
+			// instead and routes through handlePromptSubmit with files.
+			handleSubmit();
 		};
 		window.addEventListener("keydown", handler);
 		return () => window.removeEventListener("keydown", handler);
-	}, [isNewWorkspaceModalOpen, handleCreate]);
+	}, [isNewWorkspaceModalOpen, handleSubmit]);
 
-	// ── Issue / PR linking ───────────────────────────────────────────
-	const addLinkedIssue = (
-		slug: string,
-		title: string,
-		taskId: string | undefined,
-		url?: string,
-	) => {
-		if (linkedIssues.some((issue) => issue.slug === slug)) return;
-		updateDraft({
-			linkedIssues: [
-				...linkedIssues,
-				{ slug, title, source: "internal", taskId, url },
-			],
-		});
-	};
-
-	const addLinkedGitHubIssue = (
-		issueNumber: number,
-		title: string,
-		url: string,
-		state: string,
-	) => {
-		if (linkedIssues.some((i) => i.url === url)) return;
-		updateDraft({
-			linkedIssues: [
-				...linkedIssues,
-				{
-					slug: `#${issueNumber}`,
-					title,
-					source: "github" as const,
-					url,
-					number: issueNumber,
-					state: state.toLowerCase() === "closed" ? "closed" : "open",
-				},
-			],
-		});
-	};
-
-	const removeLinkedIssue = (slug: string) =>
-		updateDraft({
-			linkedIssues: linkedIssues.filter((i) => i.slug !== slug),
-		});
-
-	const setLinkedPR = (pr: LinkedPR) => updateDraft({ linkedPR: pr });
-	const removeLinkedPR = () => updateDraft({ linkedPR: null });
+	// ── Linked issues / PR ───────────────────────────────────────────
+	const {
+		addLinkedIssue,
+		addLinkedGitHubIssue,
+		removeLinkedIssue,
+		setLinkedPR,
+		removeLinkedPR,
+	} = useLinkedContext(linkedIssues, updateDraft);
 
 	// ── Render ────────────────────────────────────────────────────────
 	return (
@@ -322,52 +319,63 @@ function PromptGroupInner({
 					</PromptInputTools>
 					<div className="flex items-center gap-2">
 						<AttachmentButtons
-							anchorRef={plusMenuRef}
-							onOpenIssueLink={() =>
-								requestAnimationFrame(() => setIssueLinkOpen(true))
+							linearIssueTrigger={
+								<IssueLinkCommand
+									onSelect={addLinkedIssue}
+									tooltipLabel="Link issue"
+								>
+									<PromptInputButton
+										aria-label="Link issue"
+										className={`${PILL_BUTTON_CLASS} w-[22px]`}
+									>
+										<SiLinear className="size-3.5" />
+									</PromptInputButton>
+								</IssueLinkCommand>
 							}
-							onOpenGitHubIssue={() =>
-								requestAnimationFrame(() => setGitHubIssueLinkOpen(true))
+							githubIssueTrigger={
+								<GitHubIssueLinkCommand
+									onSelect={(issue) =>
+										addLinkedGitHubIssue(
+											issue.issueNumber,
+											issue.title,
+											issue.url,
+											issue.state,
+										)
+									}
+									projectId={projectId}
+									hostTarget={hostTarget}
+									tooltipLabel="Link GitHub issue"
+								>
+									<PromptInputButton
+										aria-label="Link GitHub issue"
+										className={`${PILL_BUTTON_CLASS} w-[22px]`}
+									>
+										<GoIssueOpened className="size-3.5" />
+									</PromptInputButton>
+								</GitHubIssueLinkCommand>
 							}
-							onOpenPRLink={() =>
-								requestAnimationFrame(() => setPRLinkOpen(true))
+							prTrigger={
+								<PRLinkCommand
+									onSelect={setLinkedPR}
+									projectId={projectId}
+									hostTarget={hostTarget}
+									tooltipLabel="Link pull request"
+								>
+									<PromptInputButton
+										aria-label="Link pull request"
+										className={`${PILL_BUTTON_CLASS} w-[22px]`}
+									>
+										<LuGitPullRequest className="size-3.5" />
+									</PromptInputButton>
+								</PRLinkCommand>
 							}
-						/>
-						<IssueLinkCommand
-							variant="popover"
-							anchorRef={plusMenuRef}
-							open={issueLinkOpen}
-							onOpenChange={setIssueLinkOpen}
-							onSelect={addLinkedIssue}
-						/>
-						<GitHubIssueLinkCommand
-							open={gitHubIssueLinkOpen}
-							onOpenChange={setGitHubIssueLinkOpen}
-							onSelect={(issue) =>
-								addLinkedGitHubIssue(
-									issue.issueNumber,
-									issue.title,
-									issue.url,
-									issue.state,
-								)
-							}
-							projectId={projectId}
-							hostTarget={hostTarget}
-							anchorRef={plusMenuRef}
-						/>
-						<PRLinkCommand
-							open={prLinkOpen}
-							onOpenChange={setPRLinkOpen}
-							onSelect={setLinkedPR}
-							projectId={projectId}
-							hostTarget={hostTarget}
-							anchorRef={plusMenuRef}
 						/>
 						<PromptInputSubmit
 							className="size-[22px] rounded-full border border-transparent bg-foreground/10 shadow-none p-[5px] hover:bg-foreground/20"
+							disabled={needsSetup}
 							onClick={(e) => {
 								e.preventDefault();
-								void handleCreate();
+								handleSubmit();
 							}}
 						>
 							<ArrowUpIcon className="size-3.5 text-muted-foreground" />
@@ -379,9 +387,13 @@ function PromptGroupInner({
 			{/* Bottom bar */}
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2 min-w-0 flex-1">
+					<DevicePicker
+						hostTarget={hostTarget}
+						onSelectHostTarget={(t) => updateDraft({ hostTarget: t })}
+					/>
 					<ProjectPickerPill
 						selectedProject={selectedProject}
-						recentProjects={recentProjects}
+						projects={recentProjects}
 						onSelectProject={onSelectProject}
 					/>
 					<AnimatePresence mode="wait" initial={false}>
@@ -406,28 +418,27 @@ function PromptGroupInner({
 								exit={{ opacity: 0, x: 8, filter: "blur(4px)" }}
 								transition={{ duration: 0.2, ease: "easeOut" }}
 							>
-								<CompareBaseBranchPicker
-									effectiveCompareBaseBranch={effectiveCompareBaseBranch}
-									defaultBranch={branchData?.defaultBranch}
-									isBranchesLoading={isBranchesLoading}
-									isBranchesError={isBranchesError}
-									branches={branchData?.branches ?? []}
-									onSelectCompareBaseBranch={(branch) =>
-										updateDraft({ baseBranch: branch })
-									}
-								/>
+								<CompareBaseBranchPicker {...pickerProps} />
 							</motion.div>
 						)}
 					</AnimatePresence>
 				</div>
 				<div className="flex items-center gap-1.5">
-					<DevicePicker
-						hostTarget={hostTarget}
-						onSelectHostTarget={(t) => updateDraft({ hostTarget: t })}
-					/>
-					<span className="text-[11px] text-muted-foreground/50">
-						{modKey}↵
-					</span>
+					{needsSetup ? (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="h-6 px-2 text-[11px] text-amber-500 hover:text-amber-500"
+							onClick={handleGoToSetup}
+						>
+							Set up project…
+						</Button>
+					) : (
+						<span className="text-[11px] text-muted-foreground/50">
+							{modKey}↵
+						</span>
+					)}
 				</div>
 			</div>
 		</div>

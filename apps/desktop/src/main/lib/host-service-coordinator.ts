@@ -1,7 +1,7 @@
 import * as childProcess from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { createServer } from "node:net";
+import * as fs from "node:fs";
 import path from "node:path";
 import { settings } from "@superset/local-db";
 import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
@@ -18,11 +18,25 @@ import {
 	readManifest,
 	removeManifest,
 } from "./host-service-manifest";
+import {
+	findFreePort,
+	HEALTH_POLL_TIMEOUT_MS,
+	MAX_HOST_LOG_BYTES,
+	openRotatingLogFd,
+	pollHealthCheck,
+} from "./host-service-utils";
 import { localDb } from "./local-db";
 import { HOOK_PROTOCOL_VERSION } from "./terminal/env";
 
-/** Minimum host-service version this app can work with. */
-const MIN_HOST_SERVICE_VERSION = "0.1.0";
+/**
+ * Minimum host-service version this app can work with. Bumping this forces
+ * the coordinator to kill + respawn any adopted service older than this,
+ * which is how we prevent the renderer from talking to a stale host-service
+ * that's missing newly-added procedures/params.
+ *
+ * 0.2.0: `workspaceCreation.adopt` gained optional `worktreePath`.
+ */
+const MIN_HOST_SERVICE_VERSION = "0.2.0";
 
 export type HostServiceStatus = "starting" | "running" | "stopped";
 
@@ -50,49 +64,7 @@ interface HostServiceProcess {
 	status: HostServiceStatus;
 }
 
-const HEALTH_POLL_INTERVAL = 200;
-const HEALTH_POLL_TIMEOUT = 10_000;
 const ADOPTED_LIVENESS_INTERVAL = 5_000;
-
-async function findFreePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const server = createServer();
-		server.listen(0, "127.0.0.1", () => {
-			const addr = server.address();
-			if (addr && typeof addr === "object") {
-				const { port } = addr;
-				server.close(() => resolve(port));
-			} else {
-				server.close(() => reject(new Error("Could not get port")));
-			}
-		});
-		server.on("error", reject);
-	});
-}
-
-async function pollHealthCheck(
-	endpoint: string,
-	secret: string,
-	timeoutMs = HEALTH_POLL_TIMEOUT,
-): Promise<boolean> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		try {
-			const controller = new AbortController();
-			const timeout = setTimeout(() => controller.abort(), 2_000);
-			const res = await fetch(`${endpoint}/trpc/health.check`, {
-				signal: controller.signal,
-				headers: { Authorization: `Bearer ${secret}` },
-			});
-			clearTimeout(timeout);
-			if (res.ok) return true;
-		} catch {
-			// Not ready yet
-		}
-		await new Promise((r) => setTimeout(r, HEALTH_POLL_INTERVAL));
-	}
-	return false;
-}
 
 export class HostServiceCoordinator extends EventEmitter {
 	private instances = new Map<string, HostServiceProcess>();
@@ -103,6 +75,7 @@ export class HostServiceCoordinator extends EventEmitter {
 	>();
 	private scriptPath = path.join(__dirname, "host-service.js");
 	private machineId = getHashedDeviceId();
+	private devReloadWatcher: fs.FSWatcher | null = null;
 
 	async start(
 		organizationId: string,
@@ -222,6 +195,92 @@ export class HostServiceCoordinator extends EventEmitter {
 		);
 	}
 
+	/**
+	 * Dev-only: watch the built host-service bundle and restart running
+	 * instances when it changes. Gives a fast edit→reload loop for code
+	 * under packages/host-service and src/main/host-service without
+	 * restarting Electron. In-memory host-service state (PTYs, watchers,
+	 * chat streams) is torn down on each reload — this is not true HMR.
+	 */
+	enableDevReload(
+		configProvider: () => Promise<SpawnConfig | null>,
+	): () => void {
+		if (this.devReloadWatcher) return () => {};
+
+		const scriptDir = path.dirname(this.scriptPath);
+		const scriptFile = path.basename(this.scriptPath);
+		let debounce: ReturnType<typeof setTimeout> | null = null;
+		let reloading = false;
+
+		const waitForStableBundle = async (): Promise<boolean> => {
+			const deadline = Date.now() + 5_000;
+			let lastSize = -1;
+			let stableSince = 0;
+			while (Date.now() < deadline) {
+				try {
+					const stat = fs.statSync(this.scriptPath);
+					if (stat.size > 0 && stat.size === lastSize) {
+						if (Date.now() - stableSince >= 150) return true;
+					} else {
+						lastSize = stat.size;
+						stableSince = Date.now();
+					}
+				} catch {
+					lastSize = -1;
+					stableSince = 0;
+				}
+				await new Promise((r) => setTimeout(r, 50));
+			}
+			return false;
+		};
+
+		const trigger = () => {
+			if (debounce) clearTimeout(debounce);
+			debounce = setTimeout(() => {
+				void (async () => {
+					if (reloading) return;
+					if (this.getActiveOrganizationIds().length === 0) return;
+					reloading = true;
+					try {
+						const ready = await waitForStableBundle();
+						if (!ready) {
+							console.warn(
+								"[host-service] bundle did not stabilize, skipping reload",
+							);
+							return;
+						}
+						const config = await configProvider();
+						if (!config) return;
+						console.log(
+							"[host-service] bundle changed, restarting running instances",
+						);
+						await this.restartAll(config);
+					} catch (error) {
+						console.error("[host-service] dev reload failed:", error);
+					} finally {
+						reloading = false;
+					}
+				})();
+			}, 250);
+		};
+
+		try {
+			this.devReloadWatcher = fs.watch(scriptDir, (_event, filename) => {
+				if (filename && filename !== scriptFile) return;
+				trigger();
+			});
+		} catch (error) {
+			console.error("[host-service] failed to enable dev reload:", error);
+			return () => {};
+		}
+
+		return () => {
+			if (debounce) clearTimeout(debounce);
+			this.devReloadWatcher?.close();
+			this.devReloadWatcher = null;
+		};
+	}
+
 	// ── Adoption ──────────────────────────────────────────────────────
 
 	private async tryAdopt(organizationId: string): Promise<Connection | null> {
@@ -313,11 +372,50 @@ export class HostServiceCoordinator extends EventEmitter {
 		this.instances.set(organizationId, instance);
 		this.emitStatus(organizationId, "starting", null);
 
-		const env = await this.buildEnv(organizationId, port, secret, config);
-		const child = childProcess.spawn(process.execPath, [this.scriptPath], {
-			stdio: ["ignore", "pipe", "pipe"],
-			env,
-		});
+		const childEnv = await this.buildEnv(organizationId, port, secret, config);
+		// Gate on app.isPackaged — the authoritative "running from an installed
+		// bundle" signal. NODE_ENV is ambient (shell, wrappers, debug launches)
+		// and could silently flip detach off in a packaged app, which would
+		// re-introduce the exact Squirrel kill-chain this file exists to fix.
+		const isPackaged = app.isPackaged;
+
+		// In packaged builds, detach so the child survives app relaunch:
+		// auto-updater's quitAndInstall would otherwise take the host-service
+		// (and its PTYs) down with the old app's process group. Stdio must
+		// point at real fds — piped stdio would EPIPE once the parent exits.
+		// Unpackaged (dev) keeps pipes so logs flow to the Electron console;
+		// enableDevReload restarts instances on rebuild, so survival isn't
+		// needed.
+		const logFd = isPackaged
+			? openRotatingLogFd(
+					path.join(manifestDir(organizationId), "host-service.log"),
+					MAX_HOST_LOG_BYTES,
+				)
+			: -1;
+		const stdio: childProcess.StdioOptions = !isPackaged
+			? ["ignore", "pipe", "pipe"]
+			: logFd >= 0
+				? ["ignore", logFd, logFd]
+				: ["ignore", "ignore", "ignore"];
+
+		let child: ReturnType<typeof childProcess.spawn>;
+		try {
+			child = childProcess.spawn(process.execPath, [this.scriptPath], {
+				detached: isPackaged,
+				stdio,
+				env: childEnv,
+				// Avoid a flashing CMD window on Windows for the detached child.
+				windowsHide: true,
+			});
+		} finally {
+			if (logFd >= 0) {
+				try {
+					fs.closeSync(logFd);
+				} catch {
+					// Best-effort — child has its own dup of the fd.
+				}
+			}
+		}
 
 		const childPid = child.pid;
 		if (!childPid) {
@@ -327,14 +425,18 @@ export class HostServiceCoordinator extends EventEmitter {
 
 		instance.pid = childPid;
 
-		child.stdout?.on("data", (data: Buffer) => {
-			console.log(`[host-service:${organizationId}] ${data.toString().trim()}`);
-		});
-		child.stderr?.on("data", (data: Buffer) => {
-			console.error(
-				`[host-service:${organizationId}] ${data.toString().trim()}`,
-			);
-		});
+		if (!isPackaged) {
+			child.stdout?.on("data", (data: Buffer) => {
+				console.log(
+					`[host-service:${organizationId}] ${data.toString().trim()}`,
+				);
+			});
+			child.stderr?.on("data", (data: Buffer) => {
+				console.error(
+					`[host-service:${organizationId}] ${data.toString().trim()}`,
+				);
+			});
+		}
 		child.on("exit", (code) => {
 			console.log(`[host-service:${organizationId}] exited with code ${code}`);
 			const current = this.instances.get(organizationId);
@@ -353,7 +455,7 @@ export class HostServiceCoordinator extends EventEmitter {
 			child.kill("SIGTERM");
 			this.instances.delete(organizationId);
 			throw new Error(
-				`Host service failed to start within ${HEALTH_POLL_TIMEOUT}ms`,
+				`Host service failed to start within ${HEALTH_POLL_TIMEOUT_MS}ms`,
 			);
 		}
 

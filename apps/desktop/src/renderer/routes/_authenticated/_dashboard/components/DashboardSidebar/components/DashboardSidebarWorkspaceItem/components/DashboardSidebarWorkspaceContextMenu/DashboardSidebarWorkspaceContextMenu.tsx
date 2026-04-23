@@ -22,6 +22,7 @@ import {
 	LuCopy,
 	LuFolderOpen,
 	LuFolderPlus,
+	LuGitBranch,
 	LuPencil,
 	LuTrash2,
 	LuX,
@@ -32,11 +33,13 @@ interface DashboardSidebarWorkspaceContextMenuProps {
 	hoverCardContent?: React.ReactNode;
 	projectId: string;
 	isInSection?: boolean;
+	isLocalWorkspace: boolean;
 	onHoverCardOpen?: () => void;
 	onCreateSection: () => void;
 	onMoveToSection: (sectionId: string | null) => void;
 	onOpenInFinder: () => void;
 	onCopyPath: () => void;
+	onCopyBranchName: () => void;
 	onRemoveFromSidebar: () => void;
 	onRename: () => void;
 	onDelete: () => void;
@@ -46,12 +49,14 @@ interface DashboardSidebarWorkspaceContextMenuProps {
 export function DashboardSidebarWorkspaceContextMenu({
 	projectId,
 	isInSection,
+	isLocalWorkspace,
 	onHoverCardOpen,
 	hoverCardContent,
 	onCreateSection,
 	onMoveToSection,
 	onOpenInFinder,
 	onCopyPath,
+	onCopyBranchName,
 	onRemoveFromSidebar,
 	onRename,
 	onDelete,
@@ -81,43 +86,54 @@ export function DashboardSidebarWorkspaceContextMenu({
 				<LuPencil className="size-4 mr-2" />
 				Rename
 			</ContextMenuItem>
-			<ContextMenuSeparator />
-			<ContextMenuItem onSelect={onOpenInFinder}>
-				<LuFolderOpen className="size-4 mr-2" />
-				Open in Finder
-			</ContextMenuItem>
-			<ContextMenuItem onSelect={onCopyPath}>
-				<LuCopy className="size-4 mr-2" />
-				Copy Path
-			</ContextMenuItem>
-			<ContextMenuSeparator />
-			<ContextMenuSub>
-				<ContextMenuSubTrigger>
-					<LuArrowRightLeft className="size-4 mr-2" />
-					Move to Section
-				</ContextMenuSubTrigger>
-				<ContextMenuSubContent>
-					<ContextMenuItem onSelect={onCreateSection}>
-						<LuFolderPlus className="size-4 mr-2" />
-						New Section
+			{isLocalWorkspace && (
+				<>
+					<ContextMenuSeparator />
+					<ContextMenuItem onSelect={onOpenInFinder}>
+						<LuFolderOpen className="size-4 mr-2" />
+						Open in Finder
 					</ContextMenuItem>
-					{sections.length > 0 && <ContextMenuSeparator />}
-					{sections.map((section) => (
-						<ContextMenuItem
-							key={section.id}
-							onSelect={() => onMoveToSection(section.id)}
-						>
-							{section.color && (
-								<span
-									className="size-2 shrink-0 rounded-full mr-2"
-									style={{ backgroundColor: section.color }}
-								/>
-							)}
-							{section.name}
-						</ContextMenuItem>
-					))}
-				</ContextMenuSubContent>
-			</ContextMenuSub>
+					<ContextMenuItem onSelect={onCopyPath}>
+						<LuCopy className="size-4 mr-2" />
+						Copy Path
+					</ContextMenuItem>
+				</>
+			)}
+			{!isLocalWorkspace && <ContextMenuSeparator />}
+			<ContextMenuItem onSelect={onCopyBranchName}>
+				<LuGitBranch className="size-4 mr-2" />
+				Copy Branch Name
+			</ContextMenuItem>
+			<ContextMenuSeparator />
+			<ContextMenuItem onSelect={onCreateSection}>
+				<LuFolderPlus className="size-4 mr-2" />
+				Create Section Below
+			</ContextMenuItem>
+			{(sections.length > 0 || isInSection) && <ContextMenuSeparator />}
+			{sections.length > 0 && (
+				<ContextMenuSub>
+					<ContextMenuSubTrigger>
+						<LuArrowRightLeft className="size-4 mr-2" />
+						Move to Section
+					</ContextMenuSubTrigger>
+					<ContextMenuSubContent>
+						{sections.map((section) => (
+							<ContextMenuItem
+								key={section.id}
+								onSelect={() => onMoveToSection(section.id)}
+							>
+								{section.color && (
+									<span
+										className="size-2 shrink-0 rounded-full mr-2"
+										style={{ backgroundColor: section.color }}
+									/>
+								)}
+								{section.name}
+							</ContextMenuItem>
+						))}
+					</ContextMenuSubContent>
+				</ContextMenuSub>
+			)}
 			{isInSection && (
 				<ContextMenuItem onSelect={() => onMoveToSection(null)}>
 					<LuArrowUp className="size-4 mr-2" />

@@ -1,3 +1,4 @@
+import { generateFriendlyBranchName } from "@superset/shared/workspace-launch";
 import { toast } from "@superset/ui/sonner";
 import {
 	createContext,
@@ -27,11 +28,15 @@ export type LinkedPR = {
 	state: string;
 };
 
+export type BaseBranchSource = "local" | "remote-tracking";
+
 export interface DashboardNewWorkspaceDraft {
 	selectedProjectId: string | null;
 	hostTarget: WorkspaceHostTarget;
 	prompt: string;
 	baseBranch: string | null;
+	/** Picker hint: which form of `baseBranch` the user selected. */
+	baseBranchSource: BaseBranchSource | null;
 	runSetupScript: boolean;
 	workspaceName: string;
 	workspaceNameEdited: boolean;
@@ -39,6 +44,12 @@ export interface DashboardNewWorkspaceDraft {
 	branchNameEdited: boolean;
 	linkedIssues: LinkedIssue[];
 	linkedPR: LinkedPR | null;
+	/**
+	 * Random friendly name (e.g. `curious-otter`) generated once per draft.
+	 * Used as the submit fallback AND the picker preview so the user sees the
+	 * same name that will be committed.
+	 */
+	friendlyFallback: string;
 }
 
 interface DashboardNewWorkspaceDraftState extends DashboardNewWorkspaceDraft {
@@ -46,11 +57,15 @@ interface DashboardNewWorkspaceDraftState extends DashboardNewWorkspaceDraft {
 	resetKey: number;
 }
 
-const initialDraft: DashboardNewWorkspaceDraft = {
+const initialDraftWithoutFallback: Omit<
+	DashboardNewWorkspaceDraft,
+	"friendlyFallback"
+> = {
 	selectedProjectId: null,
 	hostTarget: { kind: "local" },
 	prompt: "",
 	baseBranch: null,
+	baseBranchSource: null,
 	runSetupScript: true,
 	workspaceName: "",
 	workspaceNameEdited: false,
@@ -60,9 +75,16 @@ const initialDraft: DashboardNewWorkspaceDraft = {
 	linkedPR: null,
 };
 
+function buildInitialDraft(): DashboardNewWorkspaceDraft {
+	return {
+		...initialDraftWithoutFallback,
+		friendlyFallback: generateFriendlyBranchName(),
+	};
+}
+
 function buildInitialDraftState(): DashboardNewWorkspaceDraftState {
 	return {
-		...initialDraft,
+		...buildInitialDraft(),
 		draftVersion: 0,
 		resetKey: 0,
 	};
@@ -119,7 +141,7 @@ export function DashboardNewWorkspaceDraftProvider({
 
 	const resetDraft = useCallback(() => {
 		setState((state) => ({
-			...initialDraft,
+			...buildInitialDraft(),
 			draftVersion: state.draftVersion + 1,
 			resetKey: state.resetKey + 1,
 		}));
@@ -157,6 +179,7 @@ export function DashboardNewWorkspaceDraftProvider({
 				hostTarget: state.hostTarget,
 				prompt: state.prompt,
 				baseBranch: state.baseBranch,
+				baseBranchSource: state.baseBranchSource,
 				runSetupScript: state.runSetupScript,
 				workspaceName: state.workspaceName,
 				workspaceNameEdited: state.workspaceNameEdited,
@@ -164,6 +187,7 @@ export function DashboardNewWorkspaceDraftProvider({
 				branchNameEdited: state.branchNameEdited,
 				linkedIssues: state.linkedIssues,
 				linkedPR: state.linkedPR,
+				friendlyFallback: state.friendlyFallback,
 			},
 			draftVersion: state.draftVersion,
 			resetKey: state.resetKey,

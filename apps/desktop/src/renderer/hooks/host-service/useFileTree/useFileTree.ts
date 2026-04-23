@@ -28,7 +28,7 @@ export interface UseFileTreeResult {
 	toggle: (path: string) => Promise<void>;
 	refreshAll: () => Promise<void>;
 	refreshPath: (path: string) => Promise<void>;
-	reveal: (path: string) => Promise<void>;
+	reveal: (path: string, options?: { isDirectory?: boolean }) => Promise<void>;
 }
 
 interface FileTreeState {
@@ -482,10 +482,12 @@ export function useFileTree({
 	]);
 
 	const reveal = useCallback(
-		async (absolutePath: string): Promise<void> => {
+		async (
+			absolutePath: string,
+			options?: { isDirectory?: boolean },
+		): Promise<void> => {
 			if (!rootPath || !absolutePath.startsWith(rootPath)) return;
 
-			// Collect ancestor directories from rootPath down to the parent of the target
 			const ancestors: string[] = [];
 			let current = getParentPath(absolutePath);
 			while (current.length >= rootPath.length && current !== absolutePath) {
@@ -494,9 +496,19 @@ export function useFileTree({
 				current = getParentPath(current);
 			}
 
-			// Expand all ancestors and load their contents
 			for (const dir of ancestors) {
 				await expand(dir);
+			}
+
+			// Trust a caller's explicit isDirectory hint (e.g. terminal link-click
+			// that already stat'd the path) — the loaded `entriesByPath` may not
+			// contain the target if its path form (case, symlink resolution) differs
+			// from what `listDirectory` produced for the parent.
+			const entry = stateRef.current.entriesByPath.get(absolutePath);
+			const isDirectory =
+				options?.isDirectory === true || entry?.kind === "directory";
+			if (isDirectory) {
+				await expand(absolutePath);
 			}
 		},
 		[expand, rootPath],

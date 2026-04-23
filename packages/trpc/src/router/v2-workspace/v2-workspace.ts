@@ -2,13 +2,10 @@ import { dbWs } from "@superset/db/client";
 import { v2Hosts, v2Projects, v2Workspaces } from "@superset/db/schema";
 import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { jwtProcedure, protectedProcedure } from "../../trpc";
-import {
-	requireActiveOrgId,
-	requireActiveOrgMembership,
-} from "../utils/active-org";
+import { requireActiveOrgId } from "../utils/active-org";
 import {
 	requireOrgResourceAccess,
 	requireOrgScopedResource,
@@ -50,7 +47,10 @@ async function getScopedHost(organizationId: string, hostId: string) {
 	);
 }
 
-async function getScopedWorkspace(organizationId: string, workspaceId: string) {
+async function _getScopedWorkspace(
+	organizationId: string,
+	workspaceId: string,
+) {
 	return requireOrgScopedResource(
 		() =>
 			dbWs.query.v2Workspaces.findFirst({
@@ -142,10 +142,7 @@ export const v2WorkspaceRouter = {
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const organizationId = requireActiveOrgId(
-				ctx.session,
-				"No active organization",
-			);
+			const organizationId = requireActiveOrgId(ctx, "No active organization");
 			const workspace = await getWorkspaceAccess(
 				ctx.session.user.id,
 				input.id,
@@ -187,15 +184,78 @@ export const v2WorkspaceRouter = {
 			return updated;
 		}),
 
-	delete: protectedProcedure
+	// JWT-authed so host-service can apply AI-generated workspace names
+	// after create without an end-user session. Optional `expectedCurrentName`
+	// is folded into the UPDATE's WHERE so a concurrent user edit can't be
+	// clobbered between check and write.
+	updateNameFromHost: jwtProcedure
+		.input(
+			z.object({
+				id: z.string().uuid(),
+				name: z.string().min(1),
+				expectedCurrentName: z.string().optional(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const conditions = [
+				eq(v2Workspaces.id, input.id),
+				inArray(v2Workspaces.organizationId, ctx.organizationIds),
+			];
+			if (input.expectedCurrentName !== undefined) {
+				conditions.push(eq(v2Workspaces.name, input.expectedCurrentName));
+			}
+			const [updated] = await dbWs
+				.update(v2Workspaces)
+				.set({ name: input.name })
+				.where(and(...conditions))
+				.returning();
+			if (updated) return updated;
+
+			// Nothing updated — disambiguate for a useful error. Happy path
+			// already returned above, so this fetch only runs when id/org/name
+			// failed to match.
+			const workspace = await dbWs.query.v2Workspaces.findFirst({
+				where: eq(v2Workspaces.id, input.id),
+			});
+			if (!workspace) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Workspace not found",
+				});
+			}
+			if (!ctx.organizationIds.includes(workspace.organizationId)) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "Not a member of this organization",
+				});
+			}
+			// Expected-name mismatch: a user edit landed first. Return the
+			// current row so host-service can observe the skip.
+			return workspace;
+		}),
+
+	// JWT-authed so host-service can orchestrate the full delete saga
+	// (terminals → teardown → worktree → branch → cloud → host sqlite) via
+	// its own JWT auth provider. The session-backed protectedProcedure
+	// would reject host-service callers with 401.
+	delete: jwtProcedure
 		.input(z.object({ id: z.string().uuid() }))
 		.mutation(async ({ ctx, input }) => {
-			const organizationId = await requireActiveOrgMembership(
-				ctx.session,
-				"No active organization",
-			);
-			const workspace = await getScopedWorkspace(organizationId, input.id);
+			const workspace = await dbWs.query.v2Workspaces.findFirst({
+				columns: { id: true, organizationId: true },
+				where: eq(v2Workspaces.id, input.id),
+			});
+			if (!workspace) {
+				// Already gone in the cloud; idempotent success.
+				return { success: true, alreadyGone: true as const };
+			}
+			if (!ctx.organizationIds.includes(workspace.organizationId)) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message: "Not a member of this organization",
+				});
+			}
 			await dbWs.delete(v2Workspaces).where(eq(v2Workspaces.id, workspace.id));
-			return { success: true };
+			return { success: true, alreadyGone: false as const };
 		}),
 } satisfies TRPCRouterRecord;

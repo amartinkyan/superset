@@ -1,9 +1,14 @@
 import os from "node:os";
 import { getDeviceName, getHashedDeviceId } from "@superset/shared/device-info";
 import { TRPCError } from "@trpc/server";
+import type { ApiClient } from "../../../types";
 import { protectedProcedure, router } from "../../index";
 
-const HOST_SERVICE_VERSION = "0.1.0";
+// 0.2.0: `workspaceCreation.adopt` accepts optional `worktreePath` for
+// adopting worktrees at arbitrary paths (not just <repoPath>/.worktrees/).
+// The v1→v2 migration depends on this to adopt legacy ~/.superset/worktrees
+// paths. Clients using the new param must refuse to adopt an older service.
+const HOST_SERVICE_VERSION = "0.2.0";
 const ORGANIZATION_CACHE_TTL_MS = 60 * 60 * 1000;
 
 let cachedOrganization: {
@@ -11,19 +16,13 @@ let cachedOrganization: {
 	cachedAt: number;
 } | null = null;
 
-async function getOrganization(input: {
-	api?: {
-		organization: {
-			getActiveFromJwt: {
-				query: () => Promise<{ id: string; name: string; slug: string } | null>;
-			};
-		};
-	};
-	organizationId: string;
-}): Promise<{ id: string; name: string; slug: string }> {
-	if (!input.api) {
+async function getOrganization(
+	api: ApiClient | undefined,
+	organizationId: string,
+): Promise<{ id: string; name: string; slug: string }> {
+	if (!api) {
 		return {
-			id: input.organizationId,
+			id: organizationId,
 			name: "Local Development",
 			slug: "local-development",
 		};
@@ -31,16 +30,19 @@ async function getOrganization(input: {
 
 	if (
 		cachedOrganization &&
+		cachedOrganization.data.id === organizationId &&
 		Date.now() - cachedOrganization.cachedAt < ORGANIZATION_CACHE_TTL_MS
 	) {
 		return cachedOrganization.data;
 	}
 
-	const organization = await input.api.organization.getActiveFromJwt.query();
+	const organization = await api.organization.getByIdFromJwt.query({
+		id: organizationId,
+	});
 	if (!organization) {
 		throw new TRPCError({
 			code: "PRECONDITION_FAILED",
-			message: "No active organization",
+			message: "Organization not found or not accessible from JWT",
 		});
 	}
 
@@ -50,10 +52,7 @@ async function getOrganization(input: {
 
 export const hostRouter = router({
 	info: protectedProcedure.query(async ({ ctx }) => {
-		const organization = await getOrganization({
-			api: ctx.api,
-			organizationId: ctx.organizationId,
-		});
+		const organization = await getOrganization(ctx.api, ctx.organizationId);
 
 		return {
 			hostId: getHashedDeviceId(),
