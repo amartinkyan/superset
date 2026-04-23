@@ -46,10 +46,15 @@ export function LocalHostServiceProvider({
 	);
 
 	useEffect(() => {
-		for (const organizationId of organizationIds) {
+		const idsToStart = new Set(organizationIds);
+		if (activeOrganizationId) {
+			idsToStart.add(activeOrganizationId);
+		}
+
+		for (const organizationId of idsToStart) {
 			startHostService({ organizationId });
 		}
-	}, [organizationIds, startHostService]);
+	}, [activeOrganizationId, organizationIds, startHostService]);
 
 	const { data: activeConnection } =
 		electronTrpc.hostServiceCoordinator.getConnection.useQuery(

@@ -53,8 +53,8 @@ export interface HostServiceStatusEvent {
 }
 
 export interface SpawnConfig {
-	authToken: string;
-	cloudApiUrl: string;
+	authToken?: string;
+	cloudApiUrl?: string;
 }
 
 interface HostServiceProcess {
@@ -493,9 +493,15 @@ export class HostServiceCoordinator extends EventEmitter {
 			SUPERSET_HOME_DIR: SUPERSET_HOME_DIR,
 			SUPERSET_AGENT_HOOK_PORT: String(sharedEnv.DESKTOP_NOTIFICATIONS_PORT),
 			SUPERSET_AGENT_HOOK_VERSION: HOOK_PROTOCOL_VERSION,
-			AUTH_TOKEN: config.authToken,
-			CLOUD_API_URL: config.cloudApiUrl,
 		});
+
+		if (config.authToken && config.cloudApiUrl) {
+			childEnv.AUTH_TOKEN = config.authToken;
+			childEnv.CLOUD_API_URL = config.cloudApiUrl;
+		} else {
+			delete childEnv.AUTH_TOKEN;
+			delete childEnv.CLOUD_API_URL;
+		}
 
 		// `getProcessEnvWithShellPath` merges in the user's interactive shell env,
 		// which in dev has `RELAY_URL` set. Enforce the toggle *after* that merge

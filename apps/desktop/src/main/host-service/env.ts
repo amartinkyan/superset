@@ -3,8 +3,8 @@ import { z } from "zod";
 
 export const env = createEnv({
 	server: {
-		AUTH_TOKEN: z.string().min(1),
-		CLOUD_API_URL: z.string().url(),
+		AUTH_TOKEN: z.string().min(1).optional(),
+		CLOUD_API_URL: z.string().url().optional(),
 		HOST_DB_PATH: z.string().min(1),
 		HOST_MIGRATIONS_FOLDER: z.string().min(1),
 		HOST_SERVICE_SECRET: z.string().min(1),

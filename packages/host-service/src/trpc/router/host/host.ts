@@ -17,9 +17,17 @@ let cachedOrganization: {
 } | null = null;
 
 async function getOrganization(
-	api: ApiClient,
+	api: ApiClient | undefined,
 	organizationId: string,
 ): Promise<{ id: string; name: string; slug: string }> {
+	if (!api) {
+		return {
+			id: organizationId,
+			name: "Local Development",
+			slug: "local-development",
+		};
+	}
+
 	if (
 		cachedOrganization &&
 		cachedOrganization.data.id === organizationId &&
